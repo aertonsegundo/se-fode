@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, nextHandSize, validBidOptions } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, nextHandSize, validBidOptions, suggestedBid } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -36,4 +36,11 @@ test("o último apostador nunca pode fechar a soma no número de vazas", () => {
   assert.deepEqual(validBidOptions(1, [1], true), [1]);
   assert.deepEqual(validBidOptions(3, [1, 0], true), [0, 1, 3]);
   assert.deepEqual(validBidOptions(1, [], false), [0, 1]);
+});
+
+test("bots espertos reconhecem o Zap como vitória", () => {
+  const zap = [{ id: "4♣", rank: "4", suit: "♣" }];
+  assert.equal(suggestedBid(zap, "normal", 4), 1);
+  assert.equal(suggestedBid(zap, "hard", 8), 1);
+  assert.equal(suggestedBid(zap, "easy", 4), null);
 });

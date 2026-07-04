@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, nextHandSize, validBidOptions } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -58,6 +58,7 @@ function publicState(room, viewerId) {
     trick: room.trick,
     manilhas: FIXED_MANILHAS,
     message: room.message,
+    botDifficulty: room.botDifficulty,
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
@@ -105,6 +106,7 @@ function newRoom(code, host) {
     trick: 0,
     table: [],
     history: [],
+    botDifficulty: "normal",
     message: "Esperando a turma chegar.",
   };
 }
@@ -148,6 +150,28 @@ function submitPlay(room, playerId, cardId) {
   return null;
 }
 
+function chooseBotBid(room, bot) {
+  const choices = validBids(room, bot.id);
+  if (room.botDifficulty === "easy") return choices[Math.floor(Math.random() * choices.length)];
+  const target = suggestedBid(bot.hand, room.botDifficulty, activePlayers(room).length);
+  return choices.reduce((best, bid) => {
+    const distance = Math.abs(bid - target);
+    const bestDistance = Math.abs(best - target);
+    return distance < bestDistance || (distance === bestDistance && bid > best) ? bid : best;
+  });
+}
+
+function chooseBotCard(room, bot) {
+  const cards = [...bot.hand].sort((a, b) => cardStrength(a) - cardStrength(b));
+  if (room.botDifficulty === "easy") return cards[Math.floor(Math.random() * cards.length)];
+  if (bot.wins >= bot.bid) return cards[0];
+  if (room.botDifficulty === "hard" && room.table.length) {
+    const winning = cards.find((card) => trickWinner([...room.table, { playerId: bot.id, card }])?.playerId === bot.id);
+    if (winning) return winning;
+  }
+  return cards.at(-1);
+}
+
 function scheduleBot(room) {
   const bot = playerById(room, room.turnId);
   if (!bot?.isBot || room.botTimer) return;
@@ -155,13 +179,11 @@ function scheduleBot(room) {
     room.botTimer = null;
     if (room.turnId !== bot.id || bot.eliminated) return;
     if (room.phase === "bidding") {
-      const choices = validBids(room, bot.id);
-      submitBid(room, bot.id, choices[Math.floor(Math.random() * choices.length)]);
+      submitBid(room, bot.id, chooseBotBid(room, bot));
       return;
     }
     if (room.phase === "playing") {
-      const cards = [...bot.hand].sort((a, b) => cardStrength(a) - cardStrength(b));
-      const card = bot.wins < bot.bid ? cards.at(-1) : cards[0];
+      const card = chooseBotCard(room, bot);
       submitPlay(room, bot.id, card?.id);
     }
   }, 700);
@@ -280,12 +302,14 @@ function endGame(room) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("solo-game", ({ name, botCount } = {}) => {
+  socket.on("solo-game", ({ name, botCount, botDifficulty } = {}) => {
     name = cleanName(name);
     if (!name) return notice(socket, "Digite seu nome.");
     botCount = Math.min(7, Math.max(1, Number.isInteger(Number(botCount)) ? Number(botCount) : 3));
+    botDifficulty = ["easy", "normal", "hard"].includes(botDifficulty) ? botDifficulty : "normal";
     const code = roomCode();
     const room = newRoom(code, createPlayer(socket, name));
+    room.botDifficulty = botDifficulty;
     room.players.push(...Array.from({ length: botCount }, (_, index) => createBot(code, index)));
     rooms.set(code, room);
     socket.data.roomCode = code;

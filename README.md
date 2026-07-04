@@ -3,6 +3,7 @@
 Jogo de cartas multiplayer em tempo real inspirado no “Fodinha”. Crie uma sala, compartilhe o código e jogue no navegador com 2 a 8 pessoas.
 
 Também há um modo solo com escolha de **1 a 7 bots**, ideal para aprender as regras e testar uma partida completa.
+Os bots podem jogar nos níveis **fácil**, **normal** ou **difícil**.
 
 ## Rodar localmente
 

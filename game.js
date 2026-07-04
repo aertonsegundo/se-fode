@@ -29,6 +29,21 @@ export function cardStrength(card) {
   return RANKS.indexOf(card.rank);
 }
 
+export function suggestedBid(hand, difficulty, playerCount) {
+  if (difficulty === "easy") return null;
+  const strengths = hand.map(cardStrength);
+  if (difficulty === "normal") {
+    return strengths.filter((strength) => strength >= 8).length;
+  }
+  const opponents = Math.max(1, playerCount - 1);
+  const expected = strengths.reduce((sum, strength) => {
+    if (strength === 103) return sum + 1;
+    if (strength >= 100) return sum + ((strength - 99) / 4) ** opponents;
+    return sum + ((strength + 1) / 10) ** opponents;
+  }, 0);
+  return Math.min(hand.length, Math.round(expected));
+}
+
 // Cartas de força idêntica melam. Entre as que sobram, ganha a mais forte.
 export function trickWinner(plays) {
   const withStrength = plays.map((play) => ({ ...play, strength: cardStrength(play.card) }));
