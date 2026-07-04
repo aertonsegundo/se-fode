@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, manilhaRank, cardStrength, trickWinner, nextHandSize } from "../game.js";
+import { makeDeck, manilhaRank, cardStrength, trickWinner, nextHandSize, validBidOptions } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -32,4 +32,10 @@ test("mão cresce até o limite e então diminui", () => {
   assert.deepEqual(nextHandSize(9, 1, 4), { handSize: 8, direction: -1 });
   assert.deepEqual(nextHandSize(5, -1, 4), { handSize: 4, direction: -1 });
   assert.deepEqual(nextHandSize(1, -1, 4), { handSize: 2, direction: 1 });
+});
+
+test("o último apostador nunca pode fechar a soma no número de vazas", () => {
+  assert.deepEqual(validBidOptions(1, [1], true), [1]);
+  assert.deepEqual(validBidOptions(3, [1, 0], true), [0, 1, 3]);
+  assert.deepEqual(validBidOptions(1, [], false), [0, 1]);
 });

@@ -22,6 +22,6 @@ O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service
 - Baralho de truco com 40 cartas; ordem `4 5 6 7 Q J K A 2 3`.
 - A manilha é o valor seguinte ao vira; entre manilhas, `♦ ♠ ♥ ♣`.
 - Cartas de mesma força melam. Se todas melarem, ninguém leva a vaza.
-- O pé da mesa não pode fechar a soma das apostas no número de cartas, exceto na rodada de uma carta.
+- O pé da mesa nunca pode fechar a soma das apostas no número de cartas, inclusive na rodada de uma carta.
 - Cada erro entre aposta e resultado custa uma vida. Todos começam com cinco.
 - O número de cartas sobe até o limite do baralho, desce até uma e então inicia um novo ciclo.

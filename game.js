@@ -48,3 +48,10 @@ export function nextHandSize(current, direction, activePlayers) {
   }
   return { handSize: current + direction, direction };
 }
+
+export function validBidOptions(handSize, previousBids, isLast) {
+  const options = Array.from({ length: handSize + 1 }, (_, bid) => bid);
+  if (!isLast) return options;
+  const total = previousBids.reduce((sum, bid) => sum + bid, 0);
+  return options.filter((bid) => total + bid !== handSize);
+}

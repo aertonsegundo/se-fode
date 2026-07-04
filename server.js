@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { makeDeck, shuffle, manilhaRank, cardStrength, trickWinner, nextHandSize } from "./game.js";
+import { makeDeck, shuffle, manilhaRank, cardStrength, trickWinner, nextHandSize, validBidOptions } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -78,6 +78,7 @@ function publicState(room, viewerId) {
     } : null,
     table: room.table,
     bidOrder: room.bidOrder,
+    allowedBids: room.phase === "bidding" && room.turnId === viewerId ? validBids(room, viewerId) : [],
     history: room.history.slice(-5),
   };
 }
@@ -118,19 +119,17 @@ function createBot(code) {
 }
 
 function validBids(room, playerId) {
-  return Array.from({ length: room.handSize + 1 }, (_, bid) => bid).filter((bid) => {
-    const isLast = room.bidOrder.at(-1) === playerId;
-    if (room.handSize === 1 || !isLast) return true;
-    const total = activePlayers(room).reduce((sum, player) => sum + (player.bid ?? 0), 0) + bid;
-    return total !== room.handSize;
-  });
+  const previousBids = activePlayers(room)
+    .filter((player) => player.id !== playerId && player.bid != null)
+    .map((player) => player.bid);
+  return validBidOptions(room.handSize, previousBids, room.bidOrder.at(-1) === playerId);
 }
 
 function submitBid(room, playerId, rawBid) {
   if (!room || room.phase !== "bidding" || room.turnId !== playerId) return "Não é sua vez de apostar.";
   const bid = Number(rawBid);
   if (!Number.isInteger(bid) || !validBids(room, playerId).includes(bid)) {
-    return room.bidOrder.at(-1) === playerId && room.handSize > 1
+    return room.bidOrder.at(-1) === playerId
       ? `Como pé da mesa, a soma não pode dar ${room.handSize}.`
       : "Aposta inválida.";
   }

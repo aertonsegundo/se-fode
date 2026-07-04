@@ -91,6 +91,19 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .scoreboard .panel-title { grid-column:1/-1; }
   .action-panel { order:3; text-align:center; }
   .felt-wrap { order:1; }
+  .game[data-phase="round_end"] .action-panel,
+  .game[data-phase="game_over"] .action-panel {
+    order:0;
+    padding:1rem;
+    background:#24231f;
+    border:1px solid #45433c;
+  }
+  .game[data-phase="round_end"] .action-panel button,
+  .game[data-phase="game_over"] .action-panel button { width:100%; }
+  .game[data-phase="round_end"] .scoreboard,
+  .game[data-phase="game_over"] .scoreboard { order:1; }
+  .game[data-phase="round_end"] .felt-wrap,
+  .game[data-phase="game_over"] .felt-wrap { order:2; }
   .felt { min-height:330px; border-radius:42%; }
   .round-label { display:none; }
   .game-top { grid-template-columns:1fr auto; }

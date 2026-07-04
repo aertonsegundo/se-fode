@@ -42,6 +42,7 @@ socket.on("state", (next) => {
 });
 
 function render() {
+  game.dataset.phase = state.phase;
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `RODADA ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
@@ -78,7 +79,8 @@ function renderAction() {
     return;
   }
   if (state.phase === "bidding" && state.turnId === state.me.id) {
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>Escolha sua aposta. Errar custa vidas.</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}">${bid}</button>`).join("")}</div>`;
+    const isLast = state.bidOrder.at(-1) === state.me.id;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
