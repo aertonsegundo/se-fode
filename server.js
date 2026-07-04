@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { makeDeck, shuffle, manilhaRank, cardStrength, trickWinner, nextHandSize, validBidOptions } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, nextHandSize, validBidOptions } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -55,8 +55,7 @@ function publicState(room, viewerId) {
     handSize: room.handSize,
     round: room.round,
     trick: room.trick,
-    vira: room.vira,
-    manilha: room.vira ? manilhaRank(room.vira) : null,
+    manilhas: FIXED_MANILHAS,
     message: room.message,
     players: room.players.map((player) => ({
       id: player.id,
@@ -103,7 +102,6 @@ function newRoom(code, host) {
     direction: 1,
     round: 0,
     trick: 0,
-    vira: null,
     table: [],
     history: [],
     message: "Esperando a turma chegar.",
@@ -161,7 +159,7 @@ function scheduleBot(room) {
       return;
     }
     if (room.phase === "playing") {
-      const cards = [...bot.hand].sort((a, b) => cardStrength(a, room.vira) - cardStrength(b, room.vira));
+      const cards = [...bot.hand].sort((a, b) => cardStrength(a) - cardStrength(b));
       const card = bot.wins < bot.bid ? cards.at(-1) : cards[0];
       submitPlay(room, bot.id, card?.id);
     }
@@ -183,7 +181,6 @@ function startRound(room) {
   for (let card = 0; card < room.handSize; card += 1) {
     for (const player of active) player.hand.push(deck.pop());
   }
-  room.vira = deck.pop();
   const dealerIndex = active.findIndex((player) => player.id === room.dealerId);
   const first = active[(dealerIndex + 1) % active.length];
   room.bidOrder = orderedFrom(room, first.id).map((player) => player.id);
@@ -225,7 +222,7 @@ function advancePlay(room) {
     return broadcast(room);
   }
 
-  const winner = trickWinner(room.table, room.vira);
+  const winner = trickWinner(room.table);
   if (winner) playerById(room, winner.playerId).wins += 1;
   room.history.push({
     type: "trick",

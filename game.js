@@ -1,5 +1,6 @@
 export const SUITS = ["♦", "♠", "♥", "♣"];
 export const RANKS = ["4", "5", "6", "7", "Q", "J", "K", "A", "2", "3"];
+export const FIXED_MANILHAS = ["7♦", "A♠", "7♥", "4♣"];
 
 export function makeDeck() {
   return RANKS.flatMap((rank) => SUITS.map((suit) => ({
@@ -18,19 +19,19 @@ export function shuffle(deck, random = Math.random) {
   return result;
 }
 
-export function manilhaRank(vira) {
-  return RANKS[(RANKS.indexOf(vira.rank) + 1) % RANKS.length];
+export function isManilha(card) {
+  return FIXED_MANILHAS.includes(card?.id ?? `${card?.rank}${card?.suit}`);
 }
 
-export function cardStrength(card, vira) {
-  const manilha = manilhaRank(vira);
-  if (card.rank === manilha) return 100 + SUITS.indexOf(card.suit);
+export function cardStrength(card) {
+  const manilha = FIXED_MANILHAS.indexOf(card?.id ?? `${card?.rank}${card?.suit}`);
+  if (manilha >= 0) return 100 + manilha;
   return RANKS.indexOf(card.rank);
 }
 
 // Cartas de força idêntica melam. Entre as que sobram, ganha a mais forte.
-export function trickWinner(plays, vira) {
-  const withStrength = plays.map((play) => ({ ...play, strength: cardStrength(play.card, vira) }));
+export function trickWinner(plays) {
+  const withStrength = plays.map((play) => ({ ...play, strength: cardStrength(play.card) }));
   const counts = new Map();
   for (const play of withStrength) counts.set(play.strength, (counts.get(play.strength) || 0) + 1);
   const valid = withStrength.filter((play) => counts.get(play.strength) === 1);
@@ -39,7 +40,7 @@ export function trickWinner(plays, vira) {
 }
 
 export function nextHandSize(current, direction, activePlayers) {
-  const maximum = Math.max(1, Math.floor(39 / activePlayers));
+  const maximum = Math.max(1, Math.floor(40 / activePlayers));
   if (direction === -1 && current <= 1) {
     return { handSize: Math.min(2, maximum), direction: 1 };
   }

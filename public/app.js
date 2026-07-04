@@ -1,5 +1,6 @@
 const socket = io();
 let state = null;
+let animatedRound = 0;
 const $ = (selector) => document.querySelector(selector);
 const home = $("#home");
 const game = $("#game");
@@ -7,7 +8,7 @@ const toast = $("#toast");
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
 const isRed = (card) => card && ["♦", "♥"].includes(card.suit);
-const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? "red" : ""} ${state?.manilha === card.rank ? "manilha" : ""} ${extra}"><span>${card.rank}${card.suit}</span><span class="big-suit">${card.suit}</span><span style="transform:rotate(180deg)">${card.rank}${card.suit}</span></div>` : "";
+const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? "red" : ""} ${state?.manilhas?.includes(card.id) ? "manilha" : ""} ${extra}"><span>${card.rank}${card.suit}</span><span class="big-suit">${card.suit}</span><span style="transform:rotate(180deg)">${card.rank}${card.suit}</span></div>` : "";
 const me = () => state?.players.find((player) => player.id === state.me?.id);
 const isHost = () => state?.hostId === state.me?.id;
 
@@ -42,6 +43,7 @@ socket.on("state", (next) => {
 });
 
 function render() {
+  const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `RODADA ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
@@ -50,11 +52,15 @@ function render() {
   renderTable();
   renderAction();
   renderHand();
+  if (shouldAnimateDeal) {
+    animatedRound = state.round;
+    requestAnimationFrame(animateDeal);
+  }
 }
 
 function renderPlayers() {
-  $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player) => `
-    <div class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""}">
+  $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player, index) => `
+    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""}">
       <div class="avatar">${escapeHtml(player.name[0].toUpperCase())}</div>
       <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
       <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
@@ -62,13 +68,43 @@ function renderPlayers() {
 }
 
 function renderTable() {
-  $("#vira").innerHTML = state.vira ? `VIRA${cardHtml(state.vira)}` : "";
+  $("#manilhas").innerHTML = `<span>MANILHAS FIXAS</span><b>4♣</b> › <b class="red-text">7♥</b> › <b>A♠</b> › <b class="red-text">7♦</b>`;
   $("#table").innerHTML = state.table.map((play, index) => {
     const player = state.players.find((item) => item.id === play.playerId);
     const angle = (index / Math.max(state.players.length, 1)) * Math.PI * 2;
     return `<div class="played" style="--r:${index * 13 - 15}deg;--x:${Math.cos(angle) * 72}px;--y:${Math.sin(angle) * 55}px"><small>${escapeHtml(player?.name)}</small>${cardHtml(play.card)}</div>`;
   }).join("");
   $("#empty-table").classList.toggle("hidden", state.table.length > 0 || state.phase === "lobby");
+}
+
+function animateDeal() {
+  const layer = $("#deal-animation");
+  const felt = $(".felt")?.getBoundingClientRect();
+  if (!felt) return;
+  layer.innerHTML = "";
+  const startX = felt.left + felt.width / 2 - 18;
+  const startY = felt.top + felt.height / 2 - 26;
+  const players = state.players.filter((player) => !player.eliminated);
+  let sequence = 0;
+  for (let card = 0; card < state.handSize; card += 1) {
+    for (const player of players) {
+      const index = state.players.findIndex((item) => item.id === player.id);
+      const target = player.id === state.me.id ? $("#hand") : $(`[data-player-index="${index}"]`);
+      const rect = target?.getBoundingClientRect();
+      if (!rect) continue;
+      const element = document.createElement("i");
+      element.className = "deal-card";
+      element.style.left = `${startX}px`;
+      element.style.top = `${startY}px`;
+      element.style.setProperty("--dx", `${rect.left + rect.width / 2 - startX - 18}px`);
+      element.style.setProperty("--dy", `${rect.top + rect.height / 2 - startY - 26}px`);
+      element.style.setProperty("--delay", `${sequence * 110}ms`);
+      element.style.setProperty("--rotate", `${(index % 2 ? 12 : -12) + card * 2}deg`);
+      layer.appendChild(element);
+      sequence += 1;
+    }
+  }
+  setTimeout(() => { layer.innerHTML = ""; }, sequence * 110 + 850);
 }
 
 function renderAction() {

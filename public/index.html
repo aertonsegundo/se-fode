@@ -41,7 +41,7 @@
         <aside id="scoreboard" class="scoreboard"></aside>
         <section class="felt-wrap">
           <div class="felt">
-            <div id="vira" class="vira"></div>
+            <div id="manilhas" class="manilhas-fixas"></div>
             <div id="table" class="table"></div>
             <div id="empty-table" class="empty-table">A MESA ESTÁ<br />ESPERANDO</div>
           </div>
@@ -58,12 +58,13 @@
     <h2>COMO NÃO<br />SE FODER</h2>
     <ol>
       <li><b>Aposte.</b> Diga quantas vazas você acha que vai ganhar.</li>
-      <li><b>Jogue.</b> A maior carta leva. A manilha é a carta seguinte ao vira.</li>
+      <li><b>Jogue.</b> A maior carta leva. As manilhas mineiras são fixas.</li>
       <li><b>Mele.</b> Cartas de mesma força se anulam; ganha a maior que sobrar.</li>
       <li><b>Crave.</b> Você perde uma vida por cada ponto de diferença entre aposta e resultado.</li>
     </ol>
-    <p class="fine">Na rodada de uma carta, a sua fica na testa: todos veem, menos você. Em toda rodada, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>
+    <p class="fine">Manilhas, da mais forte para a mais fraca: 4♣, 7♥, A♠ e 7♦. Na rodada de uma carta, a sua fica na testa: todos veem, menos você. Em toda rodada, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>
   </dialog>
+  <div id="deal-animation" class="deal-animation" aria-hidden="true"></div>
   <div id="toast" role="status"></div>
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="/app.js"></script>
