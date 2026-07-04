@@ -3,6 +3,9 @@ const SESSION_KEY = "fode-session";
 let state = null;
 let animatedRound = 0;
 let connectedBefore = false;
+let myPlayerId = null;
+let chatOpen = false;
+let chatUnread = 0;
 const $ = (selector) => document.querySelector(selector);
 const home = $("#home");
 const game = $("#game");
@@ -39,6 +42,8 @@ function leaveRoom() {
   localStorage.removeItem(SESSION_KEY);
   state = null;
   stopTurnClock();
+  setChatOpen(false);
+  $("#chat-log").innerHTML = "";
   game.classList.add("hidden");
   home.classList.remove("hidden");
   history.replaceState(null, "", location.pathname);
@@ -78,7 +83,10 @@ socket.on("connect", () => {
   connectedBefore = true;
 });
 socket.on("disconnect", () => { if (state) showToast("Conexão perdida. Tentando voltar…"); });
-socket.on("session", (session) => localStorage.setItem(SESSION_KEY, JSON.stringify(session)));
+socket.on("session", (session) => {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  myPlayerId = session.playerId;
+});
 socket.on("session-expired", () => {
   localStorage.removeItem(SESSION_KEY);
   state = null;
@@ -94,6 +102,58 @@ socket.on("state", (next) => {
   render();
 });
 socket.connect();
+
+// ===== Chat da sala =====
+const chatLog = $("#chat-log");
+const chatBadge = $("#chat-badge");
+
+function appendChat(message) {
+  const mine = message.playerId === myPlayerId;
+  const row = document.createElement("div");
+  row.className = `chat-msg ${mine ? "mine" : ""}`;
+  row.innerHTML = `<span class="chat-name">${escapeHtml(mine ? "você" : message.name)}</span><span class="chat-text">${escapeHtml(message.text)}</span>`;
+  chatLog.appendChild(row);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function setChatOpen(open) {
+  chatOpen = open;
+  $("#chat").classList.toggle("hidden", !open);
+  $("#chat-toggle").classList.toggle("active", open);
+  if (open) {
+    chatUnread = 0;
+    chatBadge.classList.add("hidden");
+    chatLog.scrollTop = chatLog.scrollHeight;
+    $("#chat-input").focus();
+  }
+}
+
+socket.on("chat-history", (list) => {
+  chatLog.innerHTML = "";
+  chatUnread = 0;
+  chatBadge.classList.add("hidden");
+  (list || []).forEach(appendChat);
+});
+
+socket.on("chat", (message) => {
+  appendChat(message);
+  if (!chatOpen && message.playerId !== myPlayerId) {
+    chatUnread += 1;
+    chatBadge.textContent = chatUnread > 9 ? "9+" : String(chatUnread);
+    chatBadge.classList.remove("hidden");
+  }
+});
+
+$("#chat-toggle").onclick = () => setChatOpen(!chatOpen);
+$("#chat-close").onclick = () => setChatOpen(false);
+$("#chat-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  socket.emit("chat", text);
+  input.value = "";
+});
 
 const TURN_SECONDS = 10;
 let turnClockTimer = null;
@@ -151,6 +211,7 @@ function render() {
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
+  $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
   renderAutoBar();
   renderPot();
   renderSeats();

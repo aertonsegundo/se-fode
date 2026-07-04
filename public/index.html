@@ -73,6 +73,18 @@
         <aside id="action-panel" class="action-panel"></aside>
       </div>
       <section id="hand" class="hand"></section>
+
+      <button id="chat-toggle" class="chat-toggle hidden" aria-label="Abrir chat da sala">
+        <span>💬</span><span id="chat-badge" class="chat-badge hidden">0</span>
+      </button>
+      <div id="chat" class="chat hidden">
+        <div class="chat-head"><b>CHAT DA SALA</b><button id="chat-close" aria-label="Fechar chat">×</button></div>
+        <div id="chat-log" class="chat-log"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" maxlength="200" placeholder="Manda a real…" autocomplete="off" />
+          <button type="submit" aria-label="Enviar">➤</button>
+        </form>
+      </div>
     </section>
   </main>
 

@@ -18,6 +18,7 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 
 const cleanName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);
+const cleanChat = (value) => String(value || "").replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 const cleanCode = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
 const roomCode = () => {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -45,6 +46,7 @@ function sendSession(socket, room, player) {
   player.socketId = socket.id;
   player.connected = true;
   socket.emit("session", { code: room.code, playerId: player.id, resumeToken: player.resumeToken });
+  socket.emit("chat-history", room.chat);
 }
 
 function transferHost(room) {
@@ -129,6 +131,7 @@ function newRoom(code, host) {
     trick: 0,
     table: [],
     history: [],
+    chat: [],
     trickResult: null,
     roundLosers: [],
     pot: 0,
@@ -502,6 +505,20 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     const error = submitPlay(room, socket.data.playerId, cardId);
     if (error) notice(socket, error);
+  });
+
+  socket.on("chat", (raw) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player) return;
+    const text = cleanChat(raw);
+    if (!text) return;
+    const message = { id: randomUUID(), playerId: player.id, name: player.name, text };
+    room.chat.push(message);
+    if (room.chat.length > 60) room.chat.shift();
+    for (const member of room.players) {
+      if (!member.isBot && member.connected && member.socketId) io.to(member.socketId).emit("chat", message);
+    }
   });
 
   socket.on("next-round", () => {
