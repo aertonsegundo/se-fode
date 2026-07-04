@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
-const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣" };
+const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡" };
 
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
