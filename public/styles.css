@@ -61,13 +61,6 @@ button { cursor:pointer; }
 .manilhas-fixas b { color:var(--paper); }
 .manilhas-fixas .red-text { color:#ff7b72; }
 .table { width:68%; min-height:230px; position:relative; z-index:3; }
-.played { position:absolute; left:calc(50% - 38px); top:calc(50% - 55px); transform:rotate(var(--r)) translate(var(--x),var(--y)); text-align:center; }
-.played small { background:#171713dd; padding:.12rem .35rem; font-size:.58rem; position:relative; z-index:2; }
-.played.winning { z-index:5; animation:trick-win .5s ease; }
-.played.winning .card { box-shadow:0 0 0 3px var(--acid),6px 8px 0 #1118; }
-.played.winning small { background:var(--acid); color:var(--ink); font-weight:800; }
-@keyframes trick-win { 0% { transform:rotate(var(--r)) translate(var(--x),var(--y)) scale(1); } 40% { transform:rotate(var(--r)) translate(var(--x),var(--y)) scale(1.14); } 100% { transform:rotate(var(--r)) translate(var(--x),var(--y)) scale(1.06); } }
-@media (prefers-reduced-motion:reduce) { .played.winning { animation:none; } }
 .empty-table { color:#ffffff55; font:1rem/1.2 "Archivo Black"; letter-spacing:.08em; text-align:center; z-index:2; }
 .card { width:76px; height:110px; background:#faf7ed; color:#171713; border-radius:6px; border:1px solid #d4cfc0; box-shadow:3px 4px 0 #1115; display:flex; flex-direction:column; justify-content:space-between; padding:.42rem; font:1.25rem "Archivo Black"; text-align:left; position:relative; }
 .card.red { color:#e52e29; }
@@ -139,9 +132,72 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .game[data-phase="game_over"] .scoreboard { order:1; }
   .game[data-phase="round_end"] .felt-wrap,
   .game[data-phase="game_over"] .felt-wrap { order:2; }
-  .felt { min-height:330px; border-radius:42%; }
   .round-label { display:none; }
   .game-top { grid-template-columns:1fr auto; }
   .room-code { justify-self:end; }
   .card { width:65px; height:94px; }
+}
+
+/* ===== Mesa estilo pôquer ===== */
+.game-layout { display:grid; grid-template-columns:1fr minmax(230px,290px); gap:1.5rem; align-items:center; }
+.table-stage { display:flex; justify-content:center; align-items:center; min-width:0; }
+.poker { position:relative; width:100%; max-width:680px; aspect-ratio:8/6; margin:auto; --seat-rx:46%; --seat-ry:44%; --card-rx:24%; --card-ry:25%; }
+.felt { position:absolute; inset:9% 4%; min-height:0; border-radius:50%/60%; background:radial-gradient(120% 120% at 50% 35%,#2b5946,#1f4133 70%); border:11px solid #33291e; box-shadow:inset 0 0 0 3px #547363,inset 0 8px 30px #0006,0 22px 45px #0009; display:grid; place-items:center; }
+.felt::after { content:"SE FODE"; color:#ffffff0d; font:clamp(2.4rem,7vw,5.4rem) "Archivo Black"; transform:rotate(-9deg); position:absolute; white-space:nowrap; pointer-events:none; }
+.manilhas-fixas { position:static; max-width:none; text-align:center; font-size:.64rem; letter-spacing:.03em; color:#c7c3b6; margin:-.2rem 0 .3rem; }
+.manilhas-fixas span { margin-right:.45rem; color:#8d897e; letter-spacing:.14em; }
+.manilhas-fixas b { color:var(--paper); }
+.manilhas-fixas .red-text { color:#ff7b72; }
+.empty-table { color:#ffffff44; font:clamp(.8rem,2.2vw,1.1rem)/1.2 "Archivo Black"; letter-spacing:.08em; text-align:center; z-index:2; }
+
+.seats { position:absolute; inset:0; z-index:3; pointer-events:none; }
+.seat { position:absolute; left:calc(50% + var(--cos) * var(--seat-rx)); top:calc(50% + var(--sin) * var(--seat-ry)); transform:translate(-50%,-50%); width:142px; padding:.4rem .5rem; background:#20201bef; border:1px solid #403e37; border-radius:12px; box-shadow:0 6px 16px #0006; z-index:2; transition:box-shadow .18s,border-color .18s,transform .18s; }
+.seat.me { border-color:#5a6f2b; background:#232414ef; }
+.seat.turn { border-color:var(--acid); box-shadow:0 0 0 2px var(--acid),0 0 22px #d8ff4577; z-index:6; }
+.seat.out { opacity:.4; filter:grayscale(.7); }
+.seat.out b { text-decoration:line-through; }
+.seat.off { opacity:.6; }
+.seat.won { border-color:var(--acid); }
+.seat.fodeu { border-color:var(--red); box-shadow:0 0 0 2px var(--red),0 0 20px #ff3b3066; }
+.seat-body { display:grid; grid-template-columns:2rem 1fr; gap:.45rem; align-items:center; }
+.seat .avatar { position:relative; width:2rem; height:2rem; font-size:.9rem; }
+.seat .dealer { position:absolute; right:-6px; bottom:-6px; width:1.05rem; height:1.05rem; border-radius:50%; background:var(--paper); color:var(--ink); font:.6rem/1.05rem "Archivo Black"; text-align:center; box-shadow:0 1px 3px #0008; transform:none; }
+.seat-info { min-width:0; }
+.seat-info b { display:block; font-size:.76rem; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.seat-meta { font-size:.6rem; color:#a7a396; margin:.06rem 0; }
+.seat .hearts { font-size:.72rem; }
+.turn-flag { display:none; position:absolute; top:-1.35rem; left:50%; transform:translateX(-50%); background:var(--acid); color:var(--ink); font:.58rem "Archivo Black"; letter-spacing:.1em; padding:.15rem .5rem; border-radius:4px; white-space:nowrap; box-shadow:0 3px 8px #0007; }
+.turn-flag::after { content:""; position:absolute; left:50%; bottom:-4px; transform:translateX(-50%); border:4px solid transparent; border-top-color:var(--acid); border-bottom:0; }
+.seat.turn .turn-flag { display:block; animation:turn-pulse 1.1s ease-in-out infinite; }
+@keyframes turn-pulse { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-3px); } }
+.seat-tag { margin-top:.28rem; text-align:center; font:.54rem "Archivo Black"; letter-spacing:.06em; padding:.14rem .3rem; border-radius:4px; }
+.seat-tag.win { background:var(--acid); color:var(--ink); }
+.seat-tag.lose { background:var(--red); color:#fff; }
+.seat-tag.off { background:#6d6a62; color:#fff; }
+
+.seat-card-slot { position:absolute; left:calc(50% + var(--cos) * var(--card-rx)); top:calc(50% + var(--sin) * var(--card-ry)); transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
+.seat-card { position:relative; filter:drop-shadow(0 6px 10px #000a); }
+.seat-card .card { width:58px; height:84px; font-size:.95rem; padding:.32rem; }
+.seat-card .card .big-suit { font-size:1.5rem; }
+.seat-card.winning .card { box-shadow:0 0 0 3px var(--acid),0 6px 12px #000a; animation:seat-win .45s ease; }
+.forehead-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%); background:#171713; color:var(--acid); font-size:.5rem; font-weight:800; letter-spacing:.08em; padding:.08rem .3rem; border-radius:3px; z-index:2; white-space:nowrap; }
+@keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
+.mystery-card { background:#27251f; color:var(--acid); display:grid; place-items:center; font:2rem "Archivo Black"; }
+@media (prefers-reduced-motion:reduce) { .seat.turn .turn-flag,.seat-card.winning .card { animation:none; } }
+
+@media (max-width:850px) {
+  .game-layout { grid-template-columns:1fr; gap:1rem; }
+  .table-stage { order:1; }
+  .action-panel { order:2; }
+  .poker { max-width:400px; aspect-ratio:6/6; --seat-rx:33%; --seat-ry:47%; --card-rx:19%; --card-ry:27%; }
+  .seat { width:90px; padding:.3rem .34rem; border-radius:10px; }
+  .seat-tag { font-size:.5rem; }
+  .seat-body { grid-template-columns:1.6rem 1fr; gap:.35rem; }
+  .seat .avatar { width:1.6rem; height:1.6rem; font-size:.75rem; }
+  .seat-info b { font-size:.66rem; }
+  .seat-card .card { width:46px; height:66px; font-size:.78rem; }
+  .game[data-phase="round_end"] .action-panel,
+  .game[data-phase="game_over"] .action-panel { order:0; padding:1rem; background:#24231f; border:1px solid #45433c; }
+  .game[data-phase="round_end"] .table-stage,
+  .game[data-phase="game_over"] .table-stage { order:1; }
 }

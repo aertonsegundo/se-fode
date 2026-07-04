@@ -74,8 +74,7 @@ function render() {
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `RODADA ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
-  renderPlayers();
-  renderTable();
+  renderSeats();
   renderAction();
   renderHand();
   if (shouldAnimateDeal) {
@@ -84,29 +83,56 @@ function render() {
   }
 }
 
-function renderPlayers() {
-  $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player, index) => {
+function renderSeats() {
+  $("#manilhas").innerHTML = `<span>MANILHAS FIXAS</span><b>4♣</b> › <b class="red-text">7♥</b> › <b>A♠</b> › <b class="red-text">7♦</b>`;
+  const players = state.players;
+  const total = Math.max(players.length, 1);
+  const meIndex = Math.max(0, players.findIndex((player) => player.id === state.me?.id));
+  // "Eu" fico embaixo; os demais preenchem a mesa no sentido horário (mesma direção do jogo).
+  const ordered = [...players.slice(meIndex), ...players.slice(0, meIndex)];
+  const forehead = state.handSize === 1 && state.phase !== "lobby";
+
+  $("#seats").innerHTML = ordered.map((player, k) => {
+    const angle = Math.PI / 2 + (k / total) * Math.PI * 2;
+    const cos = Math.cos(angle).toFixed(4);
+    const sin = Math.sin(angle).toFixed(4);
+    const isMe = player.id === state.me?.id;
+    const isTurn = state.turnId === player.id;
+    const isDealer = state.dealerId === player.id;
     const wonTrick = state.phase === "trick_reveal" && state.trickResult?.winnerId === player.id;
     const fodeu = state.phase === "round_end" && player.roundLoss > 0;
-    return `
-    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "disconnected" : ""} ${wonTrick ? "won-trick" : ""} ${fodeu ? "fodeu" : ""}">
-      <div class="avatar">${escapeHtml(player.name[0].toUpperCase())}</div>
-      <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}${!player.connected ? '<span class="offline-chip">RECONECTANDO</span>' : ""}${wonTrick ? '<span class="won-chip">LEVOU</span>' : ""}${fodeu ? `<span class="fodeu-chip">SE FODEU −${player.roundLoss}</span>` : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
-      <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
-    </div>`;
-  }).join("");
-}
+    const play = state.table.find((item) => item.playerId === player.id);
+    const foreheadCard = forehead && !isMe ? player.foreheadCard : null;
 
-function renderTable() {
-  $("#manilhas").innerHTML = `<span>MANILHAS FIXAS</span><b>4♣</b> › <b class="red-text">7♥</b> › <b>A♠</b> › <b class="red-text">7♦</b>`;
-  const winnerId = state.phase === "trick_reveal" ? state.trickResult?.winnerId : null;
-  $("#table").innerHTML = state.table.map((play, index) => {
-    const player = state.players.find((item) => item.id === play.playerId);
-    const angle = (index / Math.max(state.players.length, 1)) * Math.PI * 2;
-    const won = winnerId && play.playerId === winnerId ? "winning" : "";
-    return `<div class="played ${won}" style="--r:${index * 13 - 15}deg;--x:${Math.cos(angle) * 72}px;--y:${Math.sin(angle) * 55}px"><small>${escapeHtml(player?.name)}</small>${cardHtml(play.card)}</div>`;
+    const cardZone = play
+      ? `<div class="seat-card ${wonTrick ? "winning" : ""}">${cardHtml(play.card)}</div>`
+      : foreheadCard
+        ? `<div class="seat-card"><span class="forehead-tag">TESTA</span>${cardHtml(foreheadCard)}</div>`
+        : "";
+
+    const meta = player.bid == null
+      ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
+      : `aposta ${player.bid} · fez ${player.wins}`;
+
+    return `
+      <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
+      <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""}" style="--cos:${cos};--sin:${sin}">
+        <div class="turn-flag">VEZ</div>
+        <div class="seat-body">
+          <div class="avatar">${escapeHtml((player.name[0] || "?").toUpperCase())}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
+          <div class="seat-info">
+            <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
+            <div class="seat-meta">${meta}</div>
+            <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
+          </div>
+        </div>
+        ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
+        ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
+        ${!player.connected ? '<div class="seat-tag off">RECONECTANDO</div>' : ""}
+      </div>`;
   }).join("");
-  $("#empty-table").classList.toggle("hidden", state.table.length > 0 || state.phase === "lobby");
+
+  $("#empty-table").classList.toggle("hidden", state.phase === "lobby" || state.table.length > 0 || forehead);
 }
 
 function animateDeal() {
@@ -121,7 +147,7 @@ function animateDeal() {
   for (let card = 0; card < state.handSize; card += 1) {
     for (const player of players) {
       const index = state.players.findIndex((item) => item.id === player.id);
-      const target = player.id === state.me.id ? $("#hand") : $(`[data-player-index="${index}"]`);
+      const target = player.id === state.me.id ? $("#hand") : $(`[data-seat="${player.id}"]`);
       const rect = target?.getBoundingClientRect();
       if (!rect) continue;
       const element = document.createElement("i");
@@ -184,8 +210,7 @@ function renderHand() {
   const hand = $("#hand");
   if (state.phase === "lobby" || state.phase === "game_over") { hand.innerHTML = ""; return; }
   if (state.handSize === 1) {
-    const visible = state.players.filter((player) => player.foreheadCard);
-    hand.innerHTML = `<div class="foreheads">${visible.map((player) => `<div class="forehead">${cardHtml(player.foreheadCard)}<span>NA TESTA DE ${escapeHtml(player.name.toUpperCase())}</span></div>`).join("")}<div class="forehead"><div class="card" style="background:#27251f;color:#d8ff45;display:grid;place-items:center;font-size:2rem">?</div><span>SUA CARTA</span></div></div>`;
+    hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div><span>SUA CARTA — TODO MUNDO VÊ, MENOS VOCÊ</span></div></div>`;
     return;
   }
   hand.innerHTML = state.me.hand.map((card) => cardHtml(card)).join("");
