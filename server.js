@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -76,6 +76,8 @@ function publicState(room, viewerId) {
     message: room.message,
     trickResult: room.trickResult,
     roundLosers: room.roundLosers,
+    melada: trickOutcome(room.table).melada,
+    pot: room.pot,
     botDifficulty: room.botDifficulty,
     solo: room.solo,
     players: room.players.map((player) => ({
@@ -129,6 +131,8 @@ function newRoom(code, host) {
     history: [],
     trickResult: null,
     roundLosers: [],
+    pot: 0,
+    lastWinnerId: null,
     botDifficulty: "normal",
     solo: false,
     autoTurnId: null,
@@ -248,6 +252,8 @@ function startRound(room) {
   room.table = [];
   room.trickResult = null;
   room.roundLosers = [];
+  room.pot = 0;
+  room.lastWinnerId = null;
   const deck = shuffle(makeDeck());
   for (const player of room.players) {
     player.hand = [];
@@ -265,7 +271,7 @@ function startRound(room) {
   room.phase = "bidding";
   room.message = room.handSize === 1
     ? "Carta na testa: você vê todas, menos a sua. Aposte 0 ou 1."
-    : `Hora das apostas: quantas vazas você leva com ${room.handSize} cartas?`;
+    : `Hora das apostas: quantas rodadas você leva com ${room.handSize} cartas?`;
   broadcast(room);
 }
 
@@ -300,28 +306,45 @@ function advancePlay(room) {
     room.turnId = order[(current + 1) % order.length].id;
     return broadcast(room);
   }
-  // A última carta da vaza acabou de entrar: revela a mesa completa antes de resolver.
+  // A última carta da rodada acabou de entrar: revela a mesa completa antes de resolver.
   revealTrick(room);
 }
 
 function revealTrick(room) {
   const winner = trickWinner(room.table);
-  if (winner) playerById(room, winner.playerId).wins += 1;
   const lastTrick = activePlayers(room)[0].hand.length === 0;
+  const outcome = resolveTrickScore({ pot: room.pot, lastWinnerId: room.lastWinnerId }, winner?.playerId || null, lastTrick);
+  if (outcome.credit) playerById(room, outcome.credit.playerId).wins += outcome.credit.amount;
+  room.pot = outcome.pot;
+  room.lastWinnerId = outcome.lastWinnerId;
+  const took = outcome.took;
+  const potAmount = outcome.potAmount;
+  const potWinnerName = outcome.potWinnerId ? playerById(room, outcome.potWinnerId).name : null;
+  const name = winner ? playerById(room, winner.playerId).name : null;
   const text = winner
-    ? `${playerById(room, winner.playerId).name} levou a vaza ${room.trick}.`
-    : `A vaza ${room.trick} melou inteira.`;
+    ? (took > 1 ? `${name} levou ${took} rodadas acumuladas.` : `${name} levou a rodada ${room.trick}.`)
+    : potWinnerName
+      ? `Melou tudo — as ${potAmount} rodadas acumuladas vão para ${potWinnerName}.`
+      : `A rodada ${room.trick} melou inteira.`;
   room.history.push({ type: "trick", text });
   room.turnId = null; // congela a mesa: nenhum bot joga durante a revelação
   room.phase = "trick_reveal";
   room.trickResult = {
     trick: room.trick,
     winnerId: winner?.playerId || null,
-    winnerName: winner ? playerById(room, winner.playerId).name : null,
+    winnerName: name,
     melou: !winner,
+    took,
+    pot: room.pot,
+    potWinnerName,
+    potAmount,
     lastTrick,
   };
-  room.message = lastTrick ? `${text} Última carta da rodada — confere aí.` : text;
+  room.message = winner
+    ? (took > 1 ? `${name} levou ${took} rodadas de uma vez!` : text)
+    : potWinnerName
+      ? `Melou na última — ${potWinnerName} fica com ${potAmount} rodada${potAmount > 1 ? "s" : ""} acumulada${potAmount > 1 ? "s" : ""}.`
+      : `Melou tudo! A próxima rodada vale por ${room.pot + 1}.`;
   broadcast(room);
   if (room.revealTimer) clearTimeout(room.revealTimer);
   room.revealTimer = setTimeout(() => {
@@ -333,13 +356,19 @@ function revealTrick(room) {
 function resolveTrick(room, winner, lastTrick) {
   if (room.phase !== "trick_reveal") return;
   room.trickResult = null;
-  if (lastTrick) return scoreRound(room);
+  if (lastTrick) {
+    room.pot = 0; // resíduo (mão inteira melada, sem vencedor anterior) é descartado
+    return scoreRound(room);
+  }
   room.phase = "playing";
   room.trick += 1;
   room.table = [];
+  // Rodada melada: reabre com o MESMO jogador que começou a rodada (o líder original da melada).
   room.turnId = winner?.playerId || room.bidOrder[0];
   room.bidOrder = orderedFrom(room, room.turnId).map((player) => player.id);
-  room.message = winner ? `${playerById(room, winner.playerId).name} abre a próxima.` : "Melou tudo. O primeiro da vaza abre de novo.";
+  room.message = winner
+    ? `${playerById(room, winner.playerId).name} abre a próxima.`
+    : `Melou! O mesmo jogador reabre — a rodada agora vale por ${room.pot + 1}.`;
   broadcast(room);
 }
 

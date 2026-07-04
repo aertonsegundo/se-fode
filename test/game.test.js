@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, nextHandSize, validBidOptions, suggestedBid } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -26,13 +26,69 @@ test("cartas iguais melam e a maior restante vence", () => {
   assert.equal(trickWinner(plays).playerId, "c");
 });
 
+test("melada é aos pares: com 3 cartas iguais só as 2 primeiras melam", () => {
+  const plays = [
+    { playerId: "a", card: { id: "3♦", rank: "3", suit: "♦" } },
+    { playerId: "b", card: { id: "3♠", rank: "3", suit: "♠" } },
+    { playerId: "c", card: { id: "3♥", rank: "3", suit: "♥" } },
+    { playerId: "d", card: { id: "K♣", rank: "K", suit: "♣" } },
+  ];
+  const { winner, melada } = trickOutcome(plays);
+  assert.deepEqual(melada, ["3♦", "3♠"]); // as duas primeiras jogadas
+  assert.equal(winner.playerId, "c"); // o 3º três (força 8) sobrevive e vence o K (força 6)
+});
+
+test("quatro cartas iguais melam todas (dois pares)", () => {
+  const plays = ["♦", "♠", "♥", "♣"].map((suit, i) => ({ playerId: `p${i}`, card: { id: `2${suit}`, rank: "2", suit } }));
+  const { winner, melada } = trickOutcome(plays);
+  assert.equal(melada.length, 4);
+  assert.equal(winner, null);
+});
+
+test("rodada melada acumula e o próximo vencedor leva tudo", () => {
+  // rodada normal: leva 1
+  let s = resolveTrickScore({ pot: 0, lastWinnerId: null }, "a", false);
+  assert.equal(s.credit.amount, 1);
+  assert.equal(s.pot, 0);
+  assert.equal(s.lastWinnerId, "a");
+
+  // duas rodadas seguidas melam: bolo acumula, ninguém pontua
+  let m1 = resolveTrickScore({ pot: 0, lastWinnerId: "a" }, null, false);
+  assert.equal(m1.credit, null);
+  assert.equal(m1.pot, 1);
+  let m2 = resolveTrickScore({ pot: m1.pot, lastWinnerId: "a" }, null, false);
+  assert.equal(m2.pot, 2);
+
+  // alguém finalmente vence: leva 1 + 2 acumuladas = 3
+  let win = resolveTrickScore({ pot: m2.pot, lastWinnerId: "a" }, "b", false);
+  assert.equal(win.credit.playerId, "b");
+  assert.equal(win.credit.amount, 3);
+  assert.equal(win.took, 3);
+  assert.equal(win.pot, 0);
+});
+
+test("mão que acaba melada: o bolo vai para quem venceu antes da melada", () => {
+  // última rodada mela com bolo pendente e havia um vencedor anterior (c)
+  const s = resolveTrickScore({ pot: 1, lastWinnerId: "c" }, null, true);
+  assert.equal(s.credit.playerId, "c");
+  assert.equal(s.credit.amount, 2); // 1 acumulada + esta = 2
+  assert.equal(s.potWinnerId, "c");
+  assert.equal(s.pot, 0);
+});
+
+test("mão inteira melada, sem vencedor anterior: bolo é descartado", () => {
+  const s = resolveTrickScore({ pot: 2, lastWinnerId: null }, null, true);
+  assert.equal(s.credit, null);
+  assert.equal(s.pot, 0);
+});
+
 test("mão cresce até o limite e então diminui", () => {
   assert.deepEqual(nextHandSize(10, 1, 4), { handSize: 9, direction: -1 });
   assert.deepEqual(nextHandSize(5, -1, 4), { handSize: 4, direction: -1 });
   assert.deepEqual(nextHandSize(1, -1, 4), { handSize: 2, direction: 1 });
 });
 
-test("o último apostador nunca pode fechar a soma no número de vazas", () => {
+test("o último apostador nunca pode fechar a soma no número de rodadas", () => {
   assert.deepEqual(validBidOptions(1, [1], true), [1]);
   assert.deepEqual(validBidOptions(3, [1, 0], true), [0, 1, 3]);
   assert.deepEqual(validBidOptions(1, [], false), [0, 1]);

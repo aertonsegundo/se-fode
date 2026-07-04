@@ -149,6 +149,9 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .manilhas-fixas b { color:var(--paper); }
 .manilhas-fixas .red-text { color:#ff7b72; }
 .empty-table { color:#ffffff44; font:clamp(.8rem,2.2vw,1.1rem)/1.2 "Archivo Black"; letter-spacing:.08em; text-align:center; z-index:2; }
+.pot { position:absolute; top:5%; left:50%; transform:translateX(-50%); z-index:6; background:var(--red); color:#fff; font:.72rem "Archivo Black"; letter-spacing:.06em; padding:.32rem .7rem; border-radius:6px; box-shadow:0 4px 12px #000a; white-space:nowrap; animation:pot-pop .3s ease; }
+@keyframes pot-pop { from { transform:translateX(-50%) scale(.8); } to { transform:translateX(-50%) scale(1); } }
+@media (prefers-reduced-motion:reduce) { .pot { animation:none; } }
 
 .seats { position:absolute; inset:0; z-index:3; pointer-events:none; }
 .seat { position:absolute; left:calc(50% + var(--cos) * var(--seat-rx)); top:calc(50% + var(--sin) * var(--seat-ry)); transform:translate(-50%,-50%); width:142px; padding:.4rem .5rem; background:#20201bef; border:1px solid #403e37; border-radius:12px; box-shadow:0 6px 16px #0006; z-index:2; transition:box-shadow .18s,border-color .18s,transform .18s; }
@@ -180,6 +183,9 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-card .card { width:58px; height:84px; font-size:.95rem; padding:.32rem; }
 .seat-card .card .big-suit { font-size:1.5rem; }
 .seat-card.winning .card { box-shadow:0 0 0 3px var(--acid),0 6px 12px #000a; animation:seat-win .45s ease; }
+.seat-card.melada { filter:grayscale(.55) brightness(.72); }
+.seat-card.melada .card { box-shadow:0 0 0 2px var(--red),0 4px 10px #000a; }
+.melada-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%) rotate(-6deg); background:var(--red); color:#fff; font:.52rem "Archivo Black"; letter-spacing:.05em; padding:.1rem .38rem; border-radius:3px; z-index:3; white-space:nowrap; box-shadow:0 2px 5px #0007; }
 .forehead-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%); background:#171713; color:var(--acid); font-size:.5rem; font-weight:800; letter-spacing:.08em; padding:.08rem .3rem; border-radius:3px; z-index:2; white-space:nowrap; }
 @keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
 .mystery-card { background:#27251f; color:var(--acid); display:grid; place-items:center; font:2rem "Archivo Black"; }

@@ -130,6 +130,13 @@ function maybeStartTurnClock() {
   turnClockTimer = setInterval(tickTurnClock, 150);
 }
 
+function renderPot() {
+  const el = $("#pot");
+  const show = state.pot > 0 && ["playing", "trick_reveal"].includes(state.phase);
+  el.classList.toggle("hidden", !show);
+  if (show) el.innerHTML = `🔥 ACUMULOU · A RODADA VALE ×${state.pot + 1}`;
+}
+
 function renderAutoBar() {
   const bar = $("#auto-bar");
   const active = me()?.auto && state.phase !== "lobby" && state.phase !== "game_over";
@@ -142,9 +149,10 @@ function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
   $("#copy-code").textContent = state.code;
-  $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `RODADA ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
+  $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
   renderAutoBar();
+  renderPot();
   renderSeats();
   renderAction();
   renderHand();
@@ -175,9 +183,10 @@ function renderSeats() {
     const fodeu = state.phase === "round_end" && player.roundLoss > 0;
     const play = state.table.find((item) => item.playerId === player.id);
     const foreheadCard = forehead && !isMe ? player.foreheadCard : null;
+    const melada = play && (state.melada || []).includes(play.card.id);
 
     const cardZone = play
-      ? `<div class="seat-card ${wonTrick ? "winning" : ""}">${cardHtml(play.card)}</div>`
+      ? `<div class="seat-card ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
       : foreheadCard
         ? `<div class="seat-card"><span class="forehead-tag">TESTA</span>${cardHtml(foreheadCard)}</div>`
         : "";
@@ -276,7 +285,21 @@ function renderAction() {
   }
   if (state.phase === "trick_reveal") {
     const result = state.trickResult || {};
-    panel.innerHTML = `<div class="panel-title">VAZA ${result.trick ?? ""}</div><h3>${result.melou ? "MELOU GERAL" : `${escapeHtml(result.winnerName || "")} LEVOU`}</h3><p>${result.lastTrick ? "Última carta da rodada na mesa. Confere antes de fechar as contas." : "Todas as cartas na mesa. Já vem a próxima vaza."}</p>`;
+    let title, text;
+    if (result.potWinnerName) {
+      title = `${escapeHtml(result.potWinnerName.toUpperCase())} FICA COM AS RODADAS`;
+      text = `Melou na última rodada — leva ${result.potAmount} rodada${result.potAmount > 1 ? "s" : ""} acumulada${result.potAmount > 1 ? "s" : ""} por ter vencido antes da melada.`;
+    } else if (result.melou) {
+      title = "MELOU GERAL";
+      text = result.lastTrick ? "Melou tudo na última rodada." : `Ninguém levou — a próxima rodada vale por ${result.pot + 1}. Quem abriu a rodada reabre.`;
+    } else if (result.took > 1) {
+      title = `${escapeHtml((result.winnerName || "").toUpperCase())} LEVOU ×${result.took}`;
+      text = `Levou ${result.took} rodadas acumuladas de uma vez!`;
+    } else {
+      title = `${escapeHtml(result.winnerName || "")} LEVOU`;
+      text = result.lastTrick ? "Última carta da mão na mesa. Confere antes de fechar as contas." : "Todas as cartas na mesa. Já vem a próxima rodada.";
+    }
+    panel.innerHTML = `<div class="panel-title">RODADA ${result.trick ?? ""}</div><h3>${title}</h3><p>${text}</p>`;
     return;
   }
   if (state.phase === "round_end") {
@@ -284,7 +307,7 @@ function renderAction() {
     const list = losers.length
       ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
       : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
-    panel.innerHTML = `<div class="panel-title">FIM DA RODADA</div><h3>QUEM SE FODEU</h3>${list}${isHost() ? '<button id="next">PRÓXIMA RODADA</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
+    panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${isHost() ? '<button id="next">PRÓXIMA MÃO</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
     return;
   }

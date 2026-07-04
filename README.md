@@ -23,7 +23,9 @@ O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service
 
 - Baralho de truco com 40 cartas; ordem `4 5 6 7 Q J K A 2 3`.
 - As manilhas são fixas como no truco mineiro: `4♣ > 7♥ > A♠ > 7♦`.
-- Cartas de mesma força melam. Se todas melarem, ninguém leva a vaza.
-- O pé da mesa nunca pode fechar a soma das apostas no número de cartas, inclusive na rodada de uma carta.
+- Uma **mão** é composta por várias **rodadas** — uma para cada carta distribuída.
+- Cartas de mesma força melam aos pares, na ordem em que foram jogadas (3 iguais: as 2 primeiras melam, a 3ª sobrevive).
+- Rodada que mela inteira acumula: a próxima vale por duas, e assim por diante, até alguém vencer e levar tudo. Se a mão acabar melada, o bolo vai para quem venceu a rodada antes da melada.
+- O pé da mesa nunca pode fechar a soma das apostas no número de cartas, inclusive na mão de uma carta.
 - Cada erro entre aposta e resultado custa uma vida. Todos começam com cinco.
 - O número de cartas sobe até o limite do baralho, desce até uma e então inicia um novo ciclo.
