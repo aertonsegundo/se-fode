@@ -13,6 +13,11 @@ const toast = $("#toast");
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
 const isRed = (card) => card && ["♦", "♥"].includes(card.suit);
+const HAND_RANKS = ["4", "5", "6", "7", "Q", "J", "K", "A", "2", "3"];
+const cardStrength = (card) => {
+  const manilha = (state?.manilhas || []).indexOf(card.id ?? `${card.rank}${card.suit}`);
+  return manilha >= 0 ? 100 + manilha : HAND_RANKS.indexOf(card.rank);
+};
 const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? "red" : ""} ${state?.manilhas?.includes(card.id) ? "manilha" : ""} ${extra}"><span>${card.rank}${card.suit}</span><span class="big-suit">${card.suit}</span><span style="transform:rotate(180deg)">${card.rank}${card.suit}</span></div>` : "";
 const me = () => state?.players.find((player) => player.id === state.me?.id);
 const isHost = () => state?.hostId === state.me?.id;
@@ -225,7 +230,7 @@ function spawnEmote({ key, emoji, name } = {}) {
   fly.addEventListener("animationend", () => fly.remove());
 }
 
-const TURN_SECONDS = 10;
+const TURN_SECONDS = 20;
 let turnClockTimer = null;
 let turnClockKey = "";
 let turnClockStart = 0;
@@ -460,11 +465,13 @@ function renderHand() {
     hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div><span>SUA CARTA — TODO MUNDO VÊ, MENOS VOCÊ</span></div></div>`;
     return;
   }
-  hand.innerHTML = state.me.hand.map((card) => cardHtml(card)).join("");
+  // Mão organizada por força: mais forte à esquerda, mais fraca à direita.
+  const sorted = [...state.me.hand].sort((a, b) => cardStrength(b) - cardStrength(a));
+  hand.innerHTML = sorted.map((card) => cardHtml(card)).join("");
   hand.querySelectorAll(".card").forEach((element, index) => {
     element.onclick = () => {
       if (state.phase !== "playing" || state.turnId !== state.me.id) return showToast("Ainda não é sua vez.");
-      socket.emit("play-card", state.me.hand[index].id);
+      socket.emit("play-card", sorted[index].id);
     };
   });
 }
