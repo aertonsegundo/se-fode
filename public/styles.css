@@ -230,3 +230,45 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .turn-timer i { display:block; height:100%; width:100%; background:var(--acid); border-radius:5px; transition:width .15s linear; }
 .turn-timer i.low { background:var(--red); }
 .turn-hint { display:block; color:#aaa69a; font-size:.68rem; margin-top:.35rem; }
+
+/* ===== Chat da sala ===== */
+.chat-toggle { position:fixed; left:1.2rem; bottom:1.2rem; z-index:28; width:3.2rem; height:3.2rem; border:0; border-radius:50%; background:var(--acid); color:var(--ink); font-size:1.4rem; box-shadow:0 6px 16px #0007; display:grid; place-items:center; }
+.chat-toggle.active { background:#2a2820; box-shadow:0 0 0 2px var(--acid); }
+.chat-badge { position:absolute; top:-3px; right:-3px; min-width:1.15rem; height:1.15rem; padding:0 .25rem; border-radius:1rem; background:var(--red); color:#fff; font-size:.62rem; font-weight:800; display:grid; place-items:center; }
+.chat { position:fixed; left:1.2rem; bottom:5.4rem; z-index:28; width:min(320px, calc(100vw - 2.4rem)); height:min(420px, 60vh); display:flex; flex-direction:column; background:#1c1b17; border:1px solid #45433c; border-radius:12px; box-shadow:0 16px 40px #000a; overflow:hidden; }
+.chat-head { display:flex; align-items:center; justify-content:space-between; padding:.6rem .85rem; background:#24231f; border-bottom:1px solid #3a3931; font-size:.68rem; letter-spacing:.12em; }
+.chat-head button { border:0; background:none; color:#aaa69a; font-size:1.4rem; line-height:1; cursor:pointer; }
+.chat-log { flex:1; overflow-y:auto; padding:.7rem; display:flex; flex-direction:column; gap:.5rem; }
+.chat-log:empty::after { content:"Sem mensagens ainda. Manda a primeira!"; color:#6d6a62; font-size:.72rem; margin:auto; text-align:center; padding:0 1rem; }
+.chat-msg { display:flex; flex-direction:column; max-width:85%; align-self:flex-start; }
+.chat-msg.mine { align-self:flex-end; align-items:flex-end; }
+.chat-name { font-size:.56rem; font-weight:800; letter-spacing:.06em; color:var(--acid); text-transform:uppercase; margin-bottom:.12rem; }
+.chat-msg.mine .chat-name { color:var(--blue); }
+.chat-text { background:#2a2820; padding:.4rem .6rem; border-radius:10px; font-size:.82rem; line-height:1.32; word-break:break-word; }
+.chat-msg.mine .chat-text { background:#33402a; }
+.chat-form { display:flex; gap:.4rem; padding:.55rem; border-top:1px solid #3a3931; }
+.chat-form input { flex:1; min-width:0; border:1px solid #4a483f; background:#141310; color:var(--paper); padding:.5rem .6rem; border-radius:8px; font-size:.85rem; outline:none; }
+.chat-form input:focus { border-color:var(--acid); }
+.chat-form button { border:0; background:var(--acid); color:var(--ink); font-weight:900; padding:0 .9rem; border-radius:8px; font-size:1rem; cursor:pointer; }
+@media (max-width:850px) { .chat-toggle { left:.9rem; bottom:.9rem; } .chat { left:.9rem; bottom:5rem; } }
+
+/* ===== Emotes ===== */
+.emote-bar { position:fixed; left:5.2rem; bottom:1.5rem; z-index:28; display:flex; gap:.25rem; background:#1c1b17dd; border:1px solid #45433c; border-radius:2rem; padding:.28rem .4rem; box-shadow:0 6px 16px #0007; max-width:calc(100vw - 6.6rem); }
+.emote-bar button { border:0; background:none; font-size:1.3rem; line-height:1; width:2.1rem; height:2.1rem; border-radius:50%; cursor:pointer; transition:transform .12s, background .12s; }
+.emote-bar button:hover { transform:scale(1.25); background:#ffffff14; }
+.emote-bar button:active { transform:scale(.9); }
+.emote-layer { position:fixed; inset:0; z-index:29; pointer-events:none; overflow:hidden; }
+.emote-fly { position:absolute; bottom:9%; display:flex; flex-direction:column; align-items:center; animation:emote-fly 4.8s cubic-bezier(.25,.6,.3,1) forwards; will-change:transform,opacity; }
+.emote-emoji { font-size:5.8rem; filter:drop-shadow(0 6px 12px #000a); }
+img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
+.emote-bar button img.emote-btn-media { width:1.7rem; height:1.7rem; object-fit:contain; display:block; }
+.emote-bar button span.emote-btn-media { font-size:1.3rem; line-height:1; }
+.emote-who { margin-top:.15rem; font-size:.6rem; font-weight:800; color:var(--paper); background:#000000aa; padding:.06rem .35rem; border-radius:5px; white-space:nowrap; }
+@keyframes emote-fly {
+  0% { opacity:0; transform:translateY(24px) scale(.4); }
+  14% { opacity:1; transform:translateY(0) scale(1.15) rotate(var(--rot)); }
+  45% { transform:translate(var(--drift), -34vh) rotate(calc(var(--rot) * -1)) scale(1); }
+  100% { opacity:0; transform:translate(var(--drift), -74vh) rotate(var(--rot)) scale(.85); }
+}
+@media (prefers-reduced-motion:reduce) { .emote-fly { animation-duration:1.4s; } }
+@media (max-width:850px) { .emote-bar { left:.9rem; right:.9rem; bottom:4.6rem; max-width:none; justify-content:center; } .emote-bar button { width:1.95rem; height:1.95rem; font-size:1.2rem; } }

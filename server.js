@@ -13,11 +13,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
+const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡" };
 
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 
 const cleanName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);
+const cleanChat = (value) => String(value || "").replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 const cleanCode = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
 const roomCode = () => {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -45,6 +47,7 @@ function sendSession(socket, room, player) {
   player.socketId = socket.id;
   player.connected = true;
   socket.emit("session", { code: room.code, playerId: player.id, resumeToken: player.resumeToken });
+  socket.emit("chat-history", room.chat);
 }
 
 function transferHost(room) {
@@ -129,10 +132,12 @@ function newRoom(code, host) {
     trick: 0,
     table: [],
     history: [],
+    chat: [],
     trickResult: null,
     roundLosers: [],
     pot: 0,
     lastWinnerId: null,
+    resetHand: false,
     botDifficulty: "normal",
     solo: false,
     autoTurnId: null,
@@ -280,6 +285,7 @@ function startGame(room) {
   room.handSize = 1;
   room.direction = 1;
   room.round = 0;
+  room.resetHand = false;
   room.history = [];
   room.dealerId = room.players[Math.floor(Math.random() * room.players.length)].id;
   startRound(room);
@@ -384,6 +390,8 @@ function scoreRound(room) {
     results.push(`${player.name}: apostou ${player.bid}, fez ${player.wins}${lost ? ` e perdeu ${lost} vida${lost > 1 ? "s" : ""}` : " — cravou"}`);
   }
   room.roundLosers = losers;
+  // Alguém morreu nesta mão → a próxima volta para 1 carta (na testa).
+  room.resetHand = losers.some((loser) => loser.eliminated);
   room.history.push({ type: "round", text: results.join(" • ") });
   room.phase = "round_end";
   room.turnId = null;
@@ -404,9 +412,16 @@ function nextRound(room) {
     if (!candidate.eliminated) { nextDealer = candidate; break; }
   }
   room.dealerId = nextDealer?.id || active[0].id;
-  const next = nextHandSize(room.handSize, room.direction, active.length);
-  room.handSize = next.handSize;
-  room.direction = next.direction;
+  if (room.resetHand) {
+    // Depois de uma morte, reinicia o ciclo em 1 carta (rodada na testa).
+    room.handSize = 1;
+    room.direction = 1;
+    room.resetHand = false;
+  } else {
+    const next = nextHandSize(room.handSize, room.direction, active.length);
+    room.handSize = next.handSize;
+    room.direction = next.direction;
+  }
   startRound(room);
 }
 
@@ -502,6 +517,30 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     const error = submitPlay(room, socket.data.playerId, cardId);
     if (error) notice(socket, error);
+  });
+
+  socket.on("chat", (raw) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player) return;
+    const text = cleanChat(raw);
+    if (!text) return;
+    const message = { id: randomUUID(), playerId: player.id, name: player.name, text };
+    room.chat.push(message);
+    if (room.chat.length > 60) room.chat.shift();
+    for (const member of room.players) {
+      if (!member.isBot && member.connected && member.socketId) io.to(member.socketId).emit("chat", message);
+    }
+  });
+
+  socket.on("emote", (key) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player || !EMOTES[key]) return;
+    const payload = { playerId: player.id, name: player.name, key, emoji: EMOTES[key] };
+    for (const member of room.players) {
+      if (!member.isBot && member.connected && member.socketId) io.to(member.socketId).emit("emote", payload);
+    }
   });
 
   socket.on("next-round", () => {

@@ -3,6 +3,9 @@ const SESSION_KEY = "fode-session";
 let state = null;
 let animatedRound = 0;
 let connectedBefore = false;
+let myPlayerId = null;
+let chatOpen = false;
+let chatUnread = 0;
 const $ = (selector) => document.querySelector(selector);
 const home = $("#home");
 const game = $("#game");
@@ -39,6 +42,8 @@ function leaveRoom() {
   localStorage.removeItem(SESSION_KEY);
   state = null;
   stopTurnClock();
+  setChatOpen(false);
+  $("#chat-log").innerHTML = "";
   game.classList.add("hidden");
   home.classList.remove("hidden");
   history.replaceState(null, "", location.pathname);
@@ -78,7 +83,10 @@ socket.on("connect", () => {
   connectedBefore = true;
 });
 socket.on("disconnect", () => { if (state) showToast("Conexão perdida. Tentando voltar…"); });
-socket.on("session", (session) => localStorage.setItem(SESSION_KEY, JSON.stringify(session)));
+socket.on("session", (session) => {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  myPlayerId = session.playerId;
+});
 socket.on("session-expired", () => {
   localStorage.removeItem(SESSION_KEY);
   state = null;
@@ -94,6 +102,128 @@ socket.on("state", (next) => {
   render();
 });
 socket.connect();
+
+// ===== Chat da sala =====
+const chatLog = $("#chat-log");
+const chatBadge = $("#chat-badge");
+
+function appendChat(message) {
+  const mine = message.playerId === myPlayerId;
+  const row = document.createElement("div");
+  row.className = `chat-msg ${mine ? "mine" : ""}`;
+  row.innerHTML = `<span class="chat-name">${escapeHtml(mine ? "você" : message.name)}</span><span class="chat-text">${escapeHtml(message.text)}</span>`;
+  chatLog.appendChild(row);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function setChatOpen(open) {
+  chatOpen = open;
+  $("#chat").classList.toggle("hidden", !open);
+  $("#chat-toggle").classList.toggle("active", open);
+  if (open) {
+    chatUnread = 0;
+    chatBadge.classList.add("hidden");
+    chatLog.scrollTop = chatLog.scrollHeight;
+    $("#chat-input").focus();
+  }
+}
+
+socket.on("chat-history", (list) => {
+  chatLog.innerHTML = "";
+  chatUnread = 0;
+  chatBadge.classList.add("hidden");
+  (list || []).forEach(appendChat);
+});
+
+socket.on("chat", (message) => {
+  appendChat(message);
+  if (!chatOpen && message.playerId !== myPlayerId) {
+    chatUnread += 1;
+    chatBadge.textContent = chatUnread > 9 ? "9+" : String(chatUnread);
+    chatBadge.classList.remove("hidden");
+  }
+});
+
+$("#chat-toggle").onclick = () => setChatOpen(!chatOpen);
+$("#chat-close").onclick = () => setChatOpen(false);
+$("#chat-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+  socket.emit("chat", text);
+  input.value = "";
+});
+
+// ===== Emotes =====
+// Cada emote tenta usar a imagem /emotes/<key>.png; se o arquivo não existir,
+// cai automaticamente para o emoji Unicode correspondente.
+const EMOTE_LIST = [
+  { key: "joia", emoji: "👍", title: "Joia" },
+  { key: "estiloso", emoji: "😎", title: "Estiloso" },
+  { key: "raiva", emoji: "😡", title: "Raiva" },
+  { key: "medo", emoji: "😨", title: "Medo" },
+  { key: "choro", emoji: "😭", title: "Choro" },
+  { key: "lingua", emoji: "😝", title: "Língua" },
+  { key: "sorriso", emoji: "😁", title: "Sorrisão" },
+  { key: "risada", emoji: "🤣", title: "Risada" },
+  { key: "ideia", emoji: "💡", title: "Ideia" },
+];
+const EMOTE_EMOJI = Object.fromEntries(EMOTE_LIST.map((e) => [e.key, e.emoji]));
+let emoteCooldown = 0;
+
+function emoteMedia(key, emoji, cls) {
+  const img = document.createElement("img");
+  img.className = cls;
+  img.src = `/emotes/${key}.png`;
+  img.alt = emoji;
+  img.onerror = () => {
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = emoji;
+    img.replaceWith(span);
+  };
+  return img;
+}
+
+function buildEmoteBar() {
+  const bar = $("#emote-bar");
+  bar.innerHTML = "";
+  for (const { key, emoji, title } of EMOTE_LIST) {
+    const button = document.createElement("button");
+    button.dataset.emote = key;
+    button.title = title;
+    button.appendChild(emoteMedia(key, emoji, "emote-btn-media"));
+    button.onclick = () => {
+      const now = performance.now();
+      if (now - emoteCooldown < 400) return; // evita spam
+      emoteCooldown = now;
+      socket.emit("emote", key);
+    };
+    bar.appendChild(button);
+  }
+}
+buildEmoteBar();
+
+socket.on("emote", (payload) => spawnEmote(payload));
+
+function spawnEmote({ key, emoji, name } = {}) {
+  const face = emoji || EMOTE_EMOJI[key];
+  if (!face && !key) return;
+  const layer = $("#emote-layer");
+  const fly = document.createElement("div");
+  fly.className = "emote-fly";
+  fly.style.left = `${8 + Math.random() * 78}%`;
+  fly.style.setProperty("--drift", `${Math.random() * 90 - 45}px`);
+  fly.style.setProperty("--rot", `${Math.random() * 34 - 17}deg`);
+  fly.appendChild(emoteMedia(key, face || "❓", "emote-emoji"));
+  const who = document.createElement("span");
+  who.className = "emote-who";
+  who.textContent = name || "";
+  fly.appendChild(who);
+  layer.appendChild(fly);
+  fly.addEventListener("animationend", () => fly.remove());
+}
 
 const TURN_SECONDS = 10;
 let turnClockTimer = null;
@@ -151,6 +281,8 @@ function render() {
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
+  $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
+  $("#emote-bar").classList.remove("hidden"); // emotes valem também no solo (offline)
   renderAutoBar();
   renderPot();
   renderSeats();
