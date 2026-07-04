@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
 
@@ -36,6 +37,21 @@ function activePlayers(room) {
 
 function playerById(room, id) {
   return room.players.find((player) => player.id === id);
+}
+
+function sendSession(socket, room, player) {
+  socket.data.roomCode = room.code;
+  socket.data.playerId = player.id;
+  player.socketId = socket.id;
+  player.connected = true;
+  socket.emit("session", { code: room.code, playerId: player.id, resumeToken: player.resumeToken });
+}
+
+function transferHost(room) {
+  const host = playerById(room, room.hostId);
+  if (host?.connected) return;
+  const replacement = room.players.find((player) => !player.isBot && player.connected);
+  if (replacement) room.hostId = replacement.id;
 }
 
 function orderedFrom(room, startId) {
@@ -86,9 +102,9 @@ function publicState(room, viewerId) {
 
 function broadcast(room) {
   for (const player of room.players) {
-    if (!player.isBot) io.to(player.id).emit("state", publicState(room, player.id));
+    if (!player.isBot && player.connected && player.socketId) io.to(player.socketId).emit("state", publicState(room, player.id));
   }
-  scheduleBot(room);
+  scheduleAutomaticTurn(room);
 }
 
 function newRoom(code, host) {
@@ -107,12 +123,14 @@ function newRoom(code, host) {
     table: [],
     history: [],
     botDifficulty: "normal",
+    autoTurnId: null,
+    cleanupTimer: null,
     message: "Esperando a turma chegar.",
   };
 }
 
 function createPlayer(socket, name) {
-  return { id: socket.id, name, lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, hand: [] };
+  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, hand: [] };
 }
 
 function createBot(code, index) {
@@ -172,21 +190,23 @@ function chooseBotCard(room, bot) {
   return cards.at(-1);
 }
 
-function scheduleBot(room) {
-  const bot = playerById(room, room.turnId);
-  if (!bot?.isBot || room.botTimer) return;
+function scheduleAutomaticTurn(room) {
+  const player = playerById(room, room.turnId);
+  if (!player || (!player.isBot && player.connected) || room.botTimer) return;
+  room.autoTurnId = player.id;
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
-    if (room.turnId !== bot.id || bot.eliminated) return;
+    room.autoTurnId = null;
+    if (room.turnId !== player.id || player.eliminated || (!player.isBot && player.connected)) return;
     if (room.phase === "bidding") {
-      submitBid(room, bot.id, chooseBotBid(room, bot));
+      submitBid(room, player.id, chooseBotBid(room, player));
       return;
     }
     if (room.phase === "playing") {
-      const card = chooseBotCard(room, bot);
-      submitPlay(room, bot.id, card?.id);
+      const card = chooseBotCard(room, player);
+      submitPlay(room, player.id, card?.id);
     }
-  }, 700);
+  }, player.isBot ? 700 : 8000);
 }
 
 function startRound(room) {
@@ -302,17 +322,40 @@ function endGame(room) {
 }
 
 io.on("connection", (socket) => {
+  socket.on("resume-session", ({ code, playerId, resumeToken } = {}) => {
+    const room = rooms.get(cleanCode(code));
+    const player = room && playerById(room, String(playerId || ""));
+    if (!room || !player || player.isBot || player.resumeToken !== resumeToken) {
+      socket.emit("session-expired");
+      return;
+    }
+    if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+    if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+    player.disconnectTimer = null;
+    room.cleanupTimer = null;
+    if (room.autoTurnId === player.id && room.botTimer) {
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.autoTurnId = null;
+    }
+    sendSession(socket, room, player);
+    transferHost(room);
+    notice(socket, "Você voltou para a mesa.");
+    broadcast(room);
+  });
+
   socket.on("solo-game", ({ name, botCount, botDifficulty } = {}) => {
     name = cleanName(name);
     if (!name) return notice(socket, "Digite seu nome.");
     botCount = Math.min(7, Math.max(1, Number.isInteger(Number(botCount)) ? Number(botCount) : 3));
     botDifficulty = ["easy", "normal", "hard"].includes(botDifficulty) ? botDifficulty : "normal";
     const code = roomCode();
-    const room = newRoom(code, createPlayer(socket, name));
+    const player = createPlayer(socket, name);
+    const room = newRoom(code, player);
     room.botDifficulty = botDifficulty;
     room.players.push(...Array.from({ length: botCount }, (_, index) => createBot(code, index)));
     rooms.set(code, room);
-    socket.data.roomCode = code;
+    sendSession(socket, room, player);
     startGame(room);
   });
 
@@ -320,9 +363,10 @@ io.on("connection", (socket) => {
     name = cleanName(name);
     if (!name) return notice(socket, "Digite seu nome.");
     const code = roomCode();
-    const room = newRoom(code, createPlayer(socket, name));
+    const player = createPlayer(socket, name);
+    const room = newRoom(code, player);
     rooms.set(code, room);
-    socket.data.roomCode = code;
+    sendSession(socket, room, player);
     broadcast(room);
   });
 
@@ -335,53 +379,66 @@ io.on("connection", (socket) => {
     if (room.phase !== "lobby") return notice(socket, "Essa partida já começou.");
     if (room.players.length >= 8) return notice(socket, "A sala já está cheia.");
     if (room.players.some((player) => player.name.toLowerCase() === name.toLowerCase())) return notice(socket, "Esse nome já está na mesa.");
-    room.players.push(createPlayer(socket, name));
-    socket.data.roomCode = code;
+    const player = createPlayer(socket, name);
+    room.players.push(player);
+    sendSession(socket, room, player);
     broadcast(room);
   });
 
   socket.on("start-game", () => {
     const room = rooms.get(socket.data.roomCode);
-    if (!room || socket.id !== room.hostId) return;
+    if (!room || socket.data.playerId !== room.hostId) return;
+    if (room.phase !== "lobby") return notice(socket, "Essa partida já começou.");
+    room.players = room.players.filter((player) => player.isBot || player.connected);
     if (room.players.length < 2) return notice(socket, "Chame pelo menos mais uma pessoa.");
     startGame(room);
   });
 
   socket.on("bid", (rawBid) => {
     const room = rooms.get(socket.data.roomCode);
-    const error = submitBid(room, socket.id, rawBid);
+    const error = submitBid(room, socket.data.playerId, rawBid);
     if (error) notice(socket, error);
   });
 
   socket.on("play-card", (cardId) => {
     const room = rooms.get(socket.data.roomCode);
-    const error = submitPlay(room, socket.id, cardId);
+    const error = submitPlay(room, socket.data.playerId, cardId);
     if (error) notice(socket, error);
   });
 
   socket.on("next-round", () => {
     const room = rooms.get(socket.data.roomCode);
-    if (!room || room.phase !== "round_end" || socket.id !== room.hostId) return;
+    if (!room || room.phase !== "round_end" || socket.data.playerId !== room.hostId) return;
     nextRound(room);
   });
 
   socket.on("restart", () => {
     const room = rooms.get(socket.data.roomCode);
-    if (!room || room.phase !== "game_over" || socket.id !== room.hostId) return;
+    if (!room || room.phase !== "game_over" || socket.data.playerId !== room.hostId) return;
     startGame(room);
   });
 
   socket.on("disconnect", () => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-    const player = playerById(room, socket.id);
-    if (player) player.connected = false;
+    const player = playerById(room, socket.data.playerId);
+    if (!player || player.socketId !== socket.id) return;
+    player.connected = false;
+    player.socketId = null;
+    transferHost(room);
     if (room.phase === "lobby") {
-      room.players = room.players.filter((item) => item.id !== socket.id);
-      if (room.hostId === socket.id) room.hostId = room.players[0]?.id;
+      player.disconnectTimer = setTimeout(() => {
+        if (player.connected || room.phase !== "lobby") return;
+        room.players = room.players.filter((item) => item.id !== player.id);
+        transferHost(room);
+        if (!room.players.length) rooms.delete(room.code);
+        else broadcast(room);
+      }, 30000);
     }
-    if (!room.players.length) rooms.delete(room.code);
-    else broadcast(room);
+    if (!room.players.some((item) => !item.isBot && item.connected)) {
+      room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+    }
+    broadcast(room);
   });
 });
 

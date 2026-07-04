@@ -42,10 +42,12 @@ button { cursor:pointer; }
 .player-row { display:grid; grid-template-columns:2rem 1fr auto; align-items:center; gap:.55rem; padding:.62rem .5rem; border-bottom:1px solid #35342f; font-size:.82rem; }
 .player-row.active { background:#292822; border-left:3px solid var(--acid); }
 .player-row.out { opacity:.35; text-decoration:line-through; }
+.player-row.disconnected { opacity:.55; }
 .avatar { width:1.8rem; height:1.8rem; display:grid; place-items:center; background:var(--blue); color:var(--ink); font-weight:900; transform:rotate(-3deg); }
 .hearts { color:var(--red); letter-spacing:-.15em; white-space:nowrap; }
 .bid-chip { font-size:.64rem; color:#aaa69a; }
 .bot-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:var(--acid); color:var(--ink); font-size:.5rem; letter-spacing:.08em; vertical-align:middle; }
+.offline-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:#6d6a62; color:white; font-size:.45rem; letter-spacing:.06em; vertical-align:middle; }
 .felt-wrap { max-width:760px; width:100%; margin:auto; }
 .felt { min-height:410px; border-radius:50%; background:#234b3a; border:8px solid #33291e; box-shadow:inset 0 0 0 2px #547363,0 18px 35px #0007; position:relative; display:grid; place-items:center; }
 .felt::after { content:"SE FODE"; color:#ffffff0b; font:6rem "Archivo Black"; transform:rotate(-9deg); position:absolute; white-space:nowrap; }

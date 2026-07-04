@@ -4,6 +4,7 @@ Jogo de cartas multiplayer em tempo real inspirado no “Fodinha”. Crie uma sa
 
 Também há um modo solo com escolha de **1 a 7 bots**, ideal para aprender as regras e testar uma partida completa.
 Os bots podem jogar nos níveis **fácil**, **normal** ou **difícil**.
+Partidas online recuperam automaticamente o jogador após uma queda ou recarga da página; se ele não voltar, o jogo assume seu turno para não travar a mesa.
 
 ## Rodar localmente
 

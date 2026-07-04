@@ -1,6 +1,8 @@
-const socket = io();
+const socket = io({ autoConnect: false });
+const SESSION_KEY = "fode-session";
 let state = null;
 let animatedRound = 0;
+let connectedBefore = false;
 const $ = (selector) => document.querySelector(selector);
 const home = $("#home");
 const game = $("#game");
@@ -39,6 +41,24 @@ $("#rules-open").onclick = () => $("#rules").showModal();
 $("#rules-close").onclick = () => $("#rules").close();
 $("#copy-code").onclick = async () => { await navigator.clipboard.writeText(state.code); showToast("Código copiado!"); };
 
+socket.on("connect", () => {
+  const saved = localStorage.getItem(SESSION_KEY);
+  if (saved) {
+    try { socket.emit("resume-session", JSON.parse(saved)); }
+    catch { localStorage.removeItem(SESSION_KEY); }
+  }
+  if (connectedBefore) showToast("Conexão recuperada.");
+  connectedBefore = true;
+});
+socket.on("disconnect", () => { if (state) showToast("Conexão perdida. Tentando voltar…"); });
+socket.on("session", (session) => localStorage.setItem(SESSION_KEY, JSON.stringify(session)));
+socket.on("session-expired", () => {
+  localStorage.removeItem(SESSION_KEY);
+  state = null;
+  game.classList.add("hidden");
+  home.classList.remove("hidden");
+  showToast("A sala anterior não existe mais.");
+});
 socket.on("notice", showToast);
 socket.on("state", (next) => {
   state = next;
@@ -46,6 +66,7 @@ socket.on("state", (next) => {
   game.classList.remove("hidden");
   render();
 });
+socket.connect();
 
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
@@ -65,9 +86,9 @@ function render() {
 
 function renderPlayers() {
   $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player, index) => `
-    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""}">
+    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "disconnected" : ""}">
       <div class="avatar">${escapeHtml(player.name[0].toUpperCase())}</div>
-      <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
+      <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}${!player.connected ? '<span class="offline-chip">RECONECTANDO</span>' : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
       <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
     </div>`).join("");
 }
