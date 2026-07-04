@@ -52,16 +52,22 @@
       <header class="game-top">
         <a class="mini-brand" href="/">SE FODE</a>
         <div class="room-code">SALA <button id="copy-code"></button></div>
-        <div id="round-label" class="round-label"></div>
+        <div class="top-right">
+          <div id="round-label" class="round-label"></div>
+          <button id="leave" class="leave-btn">SAIR</button>
+        </div>
       </header>
+      <div id="auto-bar" class="auto-bar hidden"></div>
       <div id="status" class="status"></div>
+      <div id="manilhas" class="manilhas-fixas"></div>
       <div class="game-layout">
-        <aside id="scoreboard" class="scoreboard"></aside>
-        <section class="felt-wrap">
-          <div class="felt">
-            <div id="manilhas" class="manilhas-fixas"></div>
-            <div id="table" class="table"></div>
-            <div id="empty-table" class="empty-table">A MESA ESTÁ<br />ESPERANDO</div>
+        <section class="table-stage">
+          <div id="poker" class="poker">
+            <div class="felt">
+              <div id="pot" class="pot hidden"></div>
+              <div id="empty-table" class="empty-table">A MESA ESTÁ<br />ESPERANDO</div>
+            </div>
+            <div id="seats" class="seats"></div>
           </div>
         </section>
         <aside id="action-panel" class="action-panel"></aside>
@@ -75,12 +81,12 @@
     <div class="kicker">MANUAL DE SOBREVIVÊNCIA</div>
     <h2>COMO NÃO<br />SE FODER</h2>
     <ol>
-      <li><b>Aposte.</b> Diga quantas vazas você acha que vai ganhar.</li>
+      <li><b>Aposte.</b> Diga quantas rodadas você acha que vai ganhar.</li>
       <li><b>Jogue.</b> A maior carta leva. As manilhas mineiras são fixas.</li>
       <li><b>Mele.</b> Cartas de mesma força se anulam; ganha a maior que sobrar.</li>
       <li><b>Crave.</b> Você perde uma vida por cada ponto de diferença entre aposta e resultado.</li>
     </ol>
-    <p class="fine">Manilhas, da mais forte para a mais fraca: 4♣, 7♥, A♠ e 7♦. Na rodada de uma carta, a sua fica na testa: todos veem, menos você. Em toda rodada, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>
+    <p class="fine">Uma <b>mão</b> tem várias <b>rodadas</b> — uma para cada carta. Manilhas, da mais forte para a mais fraca: 4♣, 7♥, A♠ e 7♦. Na mão de uma carta, a sua fica na testa: todos veem, menos você. Em toda mão, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>
   </dialog>
   <div id="deal-animation" class="deal-animation" aria-hidden="true"></div>
   <div id="toast" role="status"></div>

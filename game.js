@@ -44,14 +44,52 @@ export function suggestedBid(hand, difficulty, playerCount) {
   return Math.min(hand.length, Math.round(expected));
 }
 
-// Cartas de força idêntica melam. Entre as que sobram, ganha a mais forte.
+// Cartas de força idêntica melam AOS PARES, na ordem em que foram jogadas.
+// Grupo com quantidade par: todas melam. Ímpar: a última jogada sobrevive.
+// Ex.: 3 cartas iguais → as 2 primeiras melam e a 3ª continua valendo.
+// Entre as cartas que sobram, ganha a mais forte.
+export function trickOutcome(plays) {
+  const withStrength = plays.map((play, index) => ({ ...play, index, strength: cardStrength(play.card) }));
+  const groups = new Map();
+  for (const play of withStrength) {
+    const group = groups.get(play.strength) || [];
+    group.push(play);
+    groups.set(play.strength, group);
+  }
+  const melada = [];
+  const survivors = [];
+  for (const group of groups.values()) {
+    const ordered = group.sort((a, b) => a.index - b.index);
+    const canceled = ordered.length - (ordered.length % 2);
+    for (let i = 0; i < canceled; i += 1) melada.push(ordered[i].card.id);
+    if (ordered.length % 2 === 1) survivors.push(ordered.at(-1));
+  }
+  const best = survivors.length ? survivors.reduce((top, play) => (play.strength > top.strength ? play : top)) : null;
+  return {
+    winner: best ? { playerId: best.playerId, card: best.card, strength: best.strength } : null,
+    melada,
+  };
+}
+
 export function trickWinner(plays) {
-  const withStrength = plays.map((play) => ({ ...play, strength: cardStrength(play.card) }));
-  const counts = new Map();
-  for (const play of withStrength) counts.set(play.strength, (counts.get(play.strength) || 0) + 1);
-  const valid = withStrength.filter((play) => counts.get(play.strength) === 1);
-  if (!valid.length) return null;
-  return valid.reduce((best, play) => (play.strength > best.strength ? play : best));
+  return trickOutcome(plays).winner;
+}
+
+// Distribui uma rodada considerando o "bolo" acumulado por rodadas que melaram inteiras.
+// - Rodada com vencedor: ele leva 1 + bolo; o bolo zera; vira a referência de desempate.
+// - Rodada melada: acumula 1 no bolo e a próxima vale mais.
+// - Se a mão acabar (lastTrick) ainda melada, o bolo vai para quem venceu a última
+//   rodada antes da melada (lastWinnerId). Sem ninguém antes, o bolo é descartado.
+export function resolveTrickScore({ pot = 0, lastWinnerId = null }, winnerId, lastTrick) {
+  if (winnerId) {
+    const took = 1 + pot;
+    return { credit: { playerId: winnerId, amount: took }, pot: 0, lastWinnerId: winnerId, took, potWinnerId: null, potAmount: 0 };
+  }
+  const accumulated = pot + 1;
+  if (lastTrick && lastWinnerId) {
+    return { credit: { playerId: lastWinnerId, amount: accumulated }, pot: 0, lastWinnerId, took: 0, potWinnerId: lastWinnerId, potAmount: accumulated };
+  }
+  return { credit: null, pot: lastTrick ? 0 : accumulated, lastWinnerId, took: 0, potWinnerId: null, potAmount: 0 };
 }
 
 export function nextHandSize(current, direction, activePlayers) {

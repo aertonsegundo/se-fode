@@ -32,6 +32,24 @@ function join(kind) {
   });
 }
 
+const roomUrl = (code) => `${location.origin}/?sala=${code}`;
+
+function leaveRoom() {
+  socket.emit("leave-room");
+  localStorage.removeItem(SESSION_KEY);
+  state = null;
+  stopTurnClock();
+  game.classList.add("hidden");
+  home.classList.remove("hidden");
+  history.replaceState(null, "", location.pathname);
+}
+
+function confirmLeave() {
+  const mid = state && !["lobby", "game_over"].includes(state.phase);
+  if (mid && !confirm("Sair da partida? Um bot assume seu lugar.")) return;
+  leaveRoom();
+}
+
 $("#name").value = localStorage.getItem("fode-name") || "";
 $("#solo").onclick = () => join("solo-game");
 $("#create").onclick = () => join("create-room");
@@ -40,6 +58,15 @@ $("#code").addEventListener("input", (event) => { event.target.value = event.tar
 $("#rules-open").onclick = () => $("#rules").showModal();
 $("#rules-close").onclick = () => $("#rules").close();
 $("#copy-code").onclick = async () => { await navigator.clipboard.writeText(state.code); showToast("Código copiado!"); };
+$("#leave").onclick = confirmLeave;
+$(".mini-brand").addEventListener("click", (event) => { if (state) { event.preventDefault(); confirmLeave(); } });
+
+// Link compartilhado: ?sala=CODIGO já preenche o campo de código.
+const sharedCode = (new URLSearchParams(location.search).get("sala") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+if (sharedCode) {
+  $("#code").value = sharedCode;
+  setTimeout(() => $("#name").focus(), 0);
+}
 
 socket.on("connect", () => {
   const saved = localStorage.getItem(SESSION_KEY);
@@ -68,39 +95,126 @@ socket.on("state", (next) => {
 });
 socket.connect();
 
+const TURN_SECONDS = 10;
+let turnClockTimer = null;
+let turnClockKey = "";
+let turnClockStart = 0;
+
+function stopTurnClock() {
+  if (turnClockTimer) { clearInterval(turnClockTimer); turnClockTimer = null; }
+}
+
+function tickTurnClock() {
+  const bar = $("#turn-bar");
+  if (!bar) return stopTurnClock();
+  const remaining = Math.max(0, TURN_SECONDS - (Date.now() - turnClockStart) / 1000);
+  bar.style.width = `${(remaining / TURN_SECONDS) * 100}%`;
+  bar.classList.toggle("low", remaining <= 3);
+  const secs = $("#turn-secs");
+  if (secs) secs.textContent = Math.ceil(remaining);
+  if (remaining <= 0.05) stopTurnClock();
+}
+
+// Só há relógio em partidas online, na minha vez e sem modo automático.
+function turnClockActive() {
+  return !state.solo && !me()?.auto && state.turnId === state.me?.id
+    && (state.phase === "bidding" || state.phase === "playing");
+}
+
+function maybeStartTurnClock() {
+  const key = `${state.phase}-${state.round}-${state.trick}-${state.turnId}`;
+  if (!turnClockActive()) { turnClockKey = key; return stopTurnClock(); }
+  if (key !== turnClockKey) { turnClockKey = key; turnClockStart = Date.now(); }
+  stopTurnClock();
+  tickTurnClock();
+  turnClockTimer = setInterval(tickTurnClock, 150);
+}
+
+function renderPot() {
+  const el = $("#pot");
+  const show = state.pot > 0 && ["playing", "trick_reveal"].includes(state.phase);
+  el.classList.toggle("hidden", !show);
+  if (show) el.innerHTML = `🔥 ACUMULOU · A RODADA VALE ×${state.pot + 1}`;
+}
+
+function renderAutoBar() {
+  const bar = $("#auto-bar");
+  const active = me()?.auto && state.phase !== "lobby" && state.phase !== "game_over";
+  bar.classList.toggle("hidden", !active);
+  bar.innerHTML = active ? '<span>🤖 Modo automático ligado — um bot está jogando por você.</span><button id="take-control">ASSUMIR CONTROLE</button>' : "";
+  $("#take-control")?.addEventListener("click", () => socket.emit("toggle-auto", false));
+}
+
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
   $("#copy-code").textContent = state.code;
-  $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `RODADA ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
+  $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
-  renderPlayers();
-  renderTable();
+  renderAutoBar();
+  renderPot();
+  renderSeats();
   renderAction();
   renderHand();
+  maybeStartTurnClock();
   if (shouldAnimateDeal) {
     animatedRound = state.round;
     requestAnimationFrame(animateDeal);
   }
 }
 
-function renderPlayers() {
-  $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player, index) => `
-    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "disconnected" : ""}">
-      <div class="avatar">${escapeHtml(player.name[0].toUpperCase())}</div>
-      <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}${!player.connected ? '<span class="offline-chip">RECONECTANDO</span>' : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
-      <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
-    </div>`).join("");
-}
-
-function renderTable() {
+function renderSeats() {
   $("#manilhas").innerHTML = `<span>MANILHAS FIXAS</span><b>4♣</b> › <b class="red-text">7♥</b> › <b>A♠</b> › <b class="red-text">7♦</b>`;
-  $("#table").innerHTML = state.table.map((play, index) => {
-    const player = state.players.find((item) => item.id === play.playerId);
-    const angle = (index / Math.max(state.players.length, 1)) * Math.PI * 2;
-    return `<div class="played" style="--r:${index * 13 - 15}deg;--x:${Math.cos(angle) * 72}px;--y:${Math.sin(angle) * 55}px"><small>${escapeHtml(player?.name)}</small>${cardHtml(play.card)}</div>`;
+  const players = state.players;
+  const total = Math.max(players.length, 1);
+  const meIndex = Math.max(0, players.findIndex((player) => player.id === state.me?.id));
+  // "Eu" fico embaixo; os demais preenchem a mesa no sentido horário (mesma direção do jogo).
+  const ordered = [...players.slice(meIndex), ...players.slice(0, meIndex)];
+  const forehead = state.handSize === 1 && state.phase !== "lobby";
+
+  $("#seats").innerHTML = ordered.map((player, k) => {
+    const angle = Math.PI / 2 + (k / total) * Math.PI * 2;
+    const cos = Math.cos(angle).toFixed(4);
+    const sin = Math.sin(angle).toFixed(4);
+    const isMe = player.id === state.me?.id;
+    const isTurn = state.turnId === player.id;
+    const isDealer = state.dealerId === player.id;
+    const wonTrick = state.phase === "trick_reveal" && state.trickResult?.winnerId === player.id;
+    const fodeu = state.phase === "round_end" && player.roundLoss > 0;
+    const play = state.table.find((item) => item.playerId === player.id);
+    const foreheadCard = forehead && !isMe ? player.foreheadCard : null;
+    const melada = play && (state.melada || []).includes(play.card.id);
+
+    const cardZone = play
+      ? `<div class="seat-card ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
+      : foreheadCard
+        ? `<div class="seat-card"><span class="forehead-tag">TESTA</span>${cardHtml(foreheadCard)}</div>`
+        : "";
+
+    const meta = player.bid == null
+      ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
+      : `aposta ${player.bid} · fez ${player.wins}`;
+
+    return `
+      <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
+      <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""}" style="--cos:${cos};--sin:${sin}">
+        <div class="turn-flag">VEZ</div>
+        <div class="seat-body">
+          <div class="avatar">${escapeHtml((player.name[0] || "?").toUpperCase())}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
+          <div class="seat-info">
+            <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
+            <div class="seat-meta">${meta}</div>
+            <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
+          </div>
+        </div>
+        ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
+        ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
+        ${!player.connected ? '<div class="seat-tag off">RECONECTANDO</div>' : ""}
+        ${player.auto && !player.isBot && player.connected && (state.phase === "bidding" || state.phase === "playing") ? '<div class="seat-tag auto">🤖 AUTO</div>' : ""}
+      </div>`;
   }).join("");
-  $("#empty-table").classList.toggle("hidden", state.table.length > 0 || state.phase === "lobby");
+
+  $("#empty-table").classList.toggle("hidden", state.phase === "lobby" || state.table.length > 0 || forehead);
 }
 
 function animateDeal() {
@@ -115,7 +229,7 @@ function animateDeal() {
   for (let card = 0; card < state.handSize; card += 1) {
     for (const player of players) {
       const index = state.players.findIndex((item) => item.id === player.id);
-      const target = player.id === state.me.id ? $("#hand") : $(`[data-player-index="${index}"]`);
+      const target = player.id === state.me.id ? $("#hand") : $(`[data-seat="${player.id}"]`);
       const rect = target?.getBoundingClientRect();
       if (!rect) continue;
       const element = document.createElement("i");
@@ -133,32 +247,74 @@ function animateDeal() {
   setTimeout(() => { layer.innerHTML = ""; }, sequence * 110 + 850);
 }
 
+function turnClockHtml() {
+  if (state.solo) return "";
+  return `<div class="turn-timer"><i id="turn-bar"></i></div><small class="turn-hint">Modo automático em <b id="turn-secs">${TURN_SECONDS}</b>s se você não jogar</small>`;
+}
+
 function renderAction() {
   const panel = $("#action-panel");
   if (state.phase === "lobby") {
-    panel.innerHTML = `<div class="panel-title">SALA DE ESPERA</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3><p>Compartilhe o código <b>${state.code}</b> com seus amigos.</p>${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}`;
+    const url = roomUrl(state.code);
+    const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
+    panel.innerHTML = `<div class="panel-title">SALA DE ESPERA</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
+      <p>Convide a galera pelo link ou pelo código <b>${state.code}</b>.</p>
+      <div class="share">
+        <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />
+        <div class="share-actions">
+          <button id="copy-link" class="ghost">COPIAR LINK</button>
+          <a id="wa-share" class="wa" href="https://wa.me/?text=${waText}" target="_blank" rel="noopener">WHATSAPP</a>
+        </div>
+      </div>
+      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
+    $("#share-url").onclick = (event) => event.target.select();
+    $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast("Link copiado!"); };
     return;
   }
   if (state.phase === "bidding" && state.turnId === state.me.id) {
     const isLast = state.bidOrder.at(-1) === state.me.id;
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
   if (state.phase === "playing" && state.turnId === state.me.id) {
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${state.handSize === 1 ? "JOGUE NO ESCURO" : "ESCOLHA UMA CARTA"}</h3><p>${state.handSize === 1 ? "Todo mundo sabe o que vem. Menos você." : "Clique numa carta da sua mão."}</p>${state.handSize === 1 ? '<button id="blind-play">JOGAR MINHA CARTA</button>' : ""}`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${state.handSize === 1 ? "JOGUE NO ESCURO" : "ESCOLHA UMA CARTA"}</h3><p>${state.handSize === 1 ? "Todo mundo sabe o que vem. Menos você." : "Clique numa carta da sua mão."}</p>${state.handSize === 1 ? '<button id="blind-play">JOGAR MINHA CARTA</button>' : ""}${turnClockHtml()}`;
     $("#blind-play")?.addEventListener("click", () => socket.emit("play-card", null));
     return;
   }
+  if (state.phase === "trick_reveal") {
+    const result = state.trickResult || {};
+    let title, text;
+    if (result.potWinnerName) {
+      title = `${escapeHtml(result.potWinnerName.toUpperCase())} FICA COM AS RODADAS`;
+      text = `Melou na última rodada — leva ${result.potAmount} rodada${result.potAmount > 1 ? "s" : ""} acumulada${result.potAmount > 1 ? "s" : ""} por ter vencido antes da melada.`;
+    } else if (result.melou) {
+      title = "MELOU GERAL";
+      text = result.lastTrick ? "Melou tudo na última rodada." : `Ninguém levou — a próxima rodada vale por ${result.pot + 1}. Quem abriu a rodada reabre.`;
+    } else if (result.took > 1) {
+      title = `${escapeHtml((result.winnerName || "").toUpperCase())} LEVOU ×${result.took}`;
+      text = `Levou ${result.took} rodadas acumuladas de uma vez!`;
+    } else {
+      title = `${escapeHtml(result.winnerName || "")} LEVOU`;
+      text = result.lastTrick ? "Última carta da mão na mesa. Confere antes de fechar as contas." : "Todas as cartas na mesa. Já vem a próxima rodada.";
+    }
+    panel.innerHTML = `<div class="panel-title">RODADA ${result.trick ?? ""}</div><h3>${title}</h3><p>${text}</p>`;
+    return;
+  }
   if (state.phase === "round_end") {
-    panel.innerHTML = `<div class="panel-title">FIM DA RODADA</div><h3>FAÇAM AS CONTAS</h3>${isHost() ? '<button id="next">PRÓXIMA RODADA</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
+    const losers = state.roundLosers || [];
+    const list = losers.length
+      ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
+      : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
+    panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${isHost() ? '<button id="next">PRÓXIMA MÃO</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
     return;
   }
   if (state.phase === "game_over") {
-    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}`;
+    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
+    $("#leave2")?.addEventListener("click", leaveRoom);
     return;
   }
   const current = state.players.find((player) => player.id === state.turnId);
@@ -169,8 +325,7 @@ function renderHand() {
   const hand = $("#hand");
   if (state.phase === "lobby" || state.phase === "game_over") { hand.innerHTML = ""; return; }
   if (state.handSize === 1) {
-    const visible = state.players.filter((player) => player.foreheadCard);
-    hand.innerHTML = `<div class="foreheads">${visible.map((player) => `<div class="forehead">${cardHtml(player.foreheadCard)}<span>NA TESTA DE ${escapeHtml(player.name.toUpperCase())}</span></div>`).join("")}<div class="forehead"><div class="card" style="background:#27251f;color:#d8ff45;display:grid;place-items:center;font-size:2rem">?</div><span>SUA CARTA</span></div></div>`;
+    hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div><span>SUA CARTA — TODO MUNDO VÊ, MENOS VOCÊ</span></div></div>`;
     return;
   }
   hand.innerHTML = state.me.hand.map((card) => cardHtml(card)).join("");

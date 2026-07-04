@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -74,15 +74,22 @@ function publicState(room, viewerId) {
     trick: room.trick,
     manilhas: FIXED_MANILHAS,
     message: room.message,
+    trickResult: room.trickResult,
+    roundLosers: room.roundLosers,
+    melada: trickOutcome(room.table).melada,
+    pot: room.pot,
     botDifficulty: room.botDifficulty,
+    solo: room.solo,
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
       lives: player.lives,
       bid: player.bid,
       wins: player.wins,
+      roundLoss: player.roundLoss ?? null,
       eliminated: player.eliminated,
       connected: player.connected,
+      auto: Boolean(player.auto),
       isBot: Boolean(player.isBot),
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
@@ -122,19 +129,25 @@ function newRoom(code, host) {
     trick: 0,
     table: [],
     history: [],
+    trickResult: null,
+    roundLosers: [],
+    pot: 0,
+    lastWinnerId: null,
     botDifficulty: "normal",
+    solo: false,
     autoTurnId: null,
     cleanupTimer: null,
+    revealTimer: null,
     message: "Esperando a turma chegar.",
   };
 }
 
 function createPlayer(socket, name) {
-  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, hand: [] };
+  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, auto: false, hand: [] };
 }
 
 function createBot(code, index) {
-  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, isBot: true, hand: [] };
+  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, isBot: true, hand: [] };
 }
 
 function validBids(room, playerId) {
@@ -190,23 +203,45 @@ function chooseBotCard(room, bot) {
   return cards.at(-1);
 }
 
+const HUMAN_TURN_MS = 10000; // tempo do jogador online antes do modo automático assumir
+
+function playAutomatically(room, player) {
+  if (room.turnId !== player.id || player.eliminated) return;
+  if (room.phase === "bidding") return submitBid(room, player.id, chooseBotBid(room, player));
+  if (room.phase === "playing") submitPlay(room, player.id, chooseBotCard(room, player)?.id);
+}
+
 function scheduleAutomaticTurn(room) {
+  // Descarta um timer preso de um turno que já passou.
+  if (room.botTimer && room.autoTurnId !== room.turnId) {
+    clearTimeout(room.botTimer);
+    room.botTimer = null;
+    room.autoTurnId = null;
+  }
+  if (room.botTimer) return; // já agendado para o turno atual
+  if (room.phase !== "bidding" && room.phase !== "playing") return;
   const player = playerById(room, room.turnId);
-  if (!player || (!player.isBot && player.connected) || room.botTimer) return;
+  if (!player || player.eliminated) return;
+
+  const humanInControl = !player.isBot && player.connected && !player.auto;
+  // No solo, o jogador humano joga sem limite de tempo.
+  if (humanInControl && room.solo) return;
+
+  const delay = player.isBot ? 700 : humanInControl ? HUMAN_TURN_MS : player.auto ? 900 : 8000;
   room.autoTurnId = player.id;
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
     room.autoTurnId = null;
-    if (room.turnId !== player.id || player.eliminated || (!player.isBot && player.connected)) return;
-    if (room.phase === "bidding") {
-      submitBid(room, player.id, chooseBotBid(room, player));
-      return;
+    if (room.turnId !== player.id || player.eliminated) return;
+    // Se o humano voltou ao controle nesse meio-tempo, não joga por ele.
+    if (!player.isBot && player.connected && !player.auto && !humanInControl) return;
+    // Estourou o tempo de um humano online: liga o modo automático até ele reassumir.
+    if (humanInControl) {
+      player.auto = true;
+      if (player.socketId) io.to(player.socketId).emit("notice", "Tempo esgotado — modo automático ligado. Toque em \"assumir controle\" para voltar.");
     }
-    if (room.phase === "playing") {
-      const card = chooseBotCard(room, player);
-      submitPlay(room, player.id, card?.id);
-    }
-  }, player.isBot ? 700 : 8000);
+    playAutomatically(room, player);
+  }, delay);
 }
 
 function startRound(room) {
@@ -215,11 +250,16 @@ function startRound(room) {
   room.round += 1;
   room.trick = 1;
   room.table = [];
+  room.trickResult = null;
+  room.roundLosers = [];
+  room.pot = 0;
+  room.lastWinnerId = null;
   const deck = shuffle(makeDeck());
   for (const player of room.players) {
     player.hand = [];
     player.bid = null;
     player.wins = 0;
+    player.roundLoss = null;
   }
   for (let card = 0; card < room.handSize; card += 1) {
     for (const player of active) player.hand.push(deck.pop());
@@ -231,12 +271,12 @@ function startRound(room) {
   room.phase = "bidding";
   room.message = room.handSize === 1
     ? "Carta na testa: você vê todas, menos a sua. Aposte 0 ou 1."
-    : `Hora das apostas: quantas vazas você leva com ${room.handSize} cartas?`;
+    : `Hora das apostas: quantas rodadas você leva com ${room.handSize} cartas?`;
   broadcast(room);
 }
 
 function startGame(room) {
-  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, hand: [], bid: null, wins: 0 }));
+  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
   room.handSize = 1;
   room.direction = 1;
   room.round = 0;
@@ -257,6 +297,8 @@ function advanceBid(room) {
   broadcast(room);
 }
 
+const TRICK_REVEAL_MS = 2400;
+
 function advancePlay(room) {
   const order = orderedFrom(room, room.bidOrder[0]);
   if (room.table.length < order.length) {
@@ -264,36 +306,91 @@ function advancePlay(room) {
     room.turnId = order[(current + 1) % order.length].id;
     return broadcast(room);
   }
+  // A última carta da rodada acabou de entrar: revela a mesa completa antes de resolver.
+  revealTrick(room);
+}
 
+function revealTrick(room) {
   const winner = trickWinner(room.table);
-  if (winner) playerById(room, winner.playerId).wins += 1;
-  room.history.push({
-    type: "trick",
-    text: winner ? `${playerById(room, winner.playerId).name} levou a vaza ${room.trick}.` : `A vaza ${room.trick} melou inteira.`,
-  });
+  const lastTrick = activePlayers(room)[0].hand.length === 0;
+  const outcome = resolveTrickScore({ pot: room.pot, lastWinnerId: room.lastWinnerId }, winner?.playerId || null, lastTrick);
+  if (outcome.credit) playerById(room, outcome.credit.playerId).wins += outcome.credit.amount;
+  room.pot = outcome.pot;
+  room.lastWinnerId = outcome.lastWinnerId;
+  const took = outcome.took;
+  const potAmount = outcome.potAmount;
+  const potWinnerName = outcome.potWinnerId ? playerById(room, outcome.potWinnerId).name : null;
+  const name = winner ? playerById(room, winner.playerId).name : null;
+  const text = winner
+    ? (took > 1 ? `${name} levou ${took} rodadas acumuladas.` : `${name} levou a rodada ${room.trick}.`)
+    : potWinnerName
+      ? `Melou tudo — as ${potAmount} rodadas acumuladas vão para ${potWinnerName}.`
+      : `A rodada ${room.trick} melou inteira.`;
+  room.history.push({ type: "trick", text });
+  room.turnId = null; // congela a mesa: nenhum bot joga durante a revelação
+  room.phase = "trick_reveal";
+  room.trickResult = {
+    trick: room.trick,
+    winnerId: winner?.playerId || null,
+    winnerName: name,
+    melou: !winner,
+    took,
+    pot: room.pot,
+    potWinnerName,
+    potAmount,
+    lastTrick,
+  };
+  room.message = winner
+    ? (took > 1 ? `${name} levou ${took} rodadas de uma vez!` : text)
+    : potWinnerName
+      ? `Melou na última — ${potWinnerName} fica com ${potAmount} rodada${potAmount > 1 ? "s" : ""} acumulada${potAmount > 1 ? "s" : ""}.`
+      : `Melou tudo! A próxima rodada vale por ${room.pot + 1}.`;
+  broadcast(room);
+  if (room.revealTimer) clearTimeout(room.revealTimer);
+  room.revealTimer = setTimeout(() => {
+    room.revealTimer = null;
+    resolveTrick(room, winner, lastTrick);
+  }, TRICK_REVEAL_MS);
+}
 
-  if (activePlayers(room)[0].hand.length === 0) return scoreRound(room);
+function resolveTrick(room, winner, lastTrick) {
+  if (room.phase !== "trick_reveal") return;
+  room.trickResult = null;
+  if (lastTrick) {
+    room.pot = 0; // resíduo (mão inteira melada, sem vencedor anterior) é descartado
+    return scoreRound(room);
+  }
+  room.phase = "playing";
   room.trick += 1;
   room.table = [];
+  // Rodada melada: reabre com o MESMO jogador que começou a rodada (o líder original da melada).
   room.turnId = winner?.playerId || room.bidOrder[0];
   room.bidOrder = orderedFrom(room, room.turnId).map((player) => player.id);
-  room.message = winner ? `${playerById(room, winner.playerId).name} abre a próxima.` : "Melou tudo. O primeiro da vaza abre de novo.";
+  room.message = winner
+    ? `${playerById(room, winner.playerId).name} abre a próxima.`
+    : `Melou! O mesmo jogador reabre — a rodada agora vale por ${room.pot + 1}.`;
   broadcast(room);
 }
 
 function scoreRound(room) {
   const results = [];
+  const losers = [];
   for (const player of activePlayers(room)) {
     const lost = Math.abs(player.bid - player.wins);
     player.lives -= lost;
+    player.roundLoss = lost;
     if (player.lives <= 0) player.eliminated = true;
+    if (lost > 0) losers.push({ id: player.id, name: player.name, lost, eliminated: player.eliminated });
     results.push(`${player.name}: apostou ${player.bid}, fez ${player.wins}${lost ? ` e perdeu ${lost} vida${lost > 1 ? "s" : ""}` : " — cravou"}`);
   }
+  room.roundLosers = losers;
   room.history.push({ type: "round", text: results.join(" • ") });
   room.phase = "round_end";
   room.turnId = null;
   room.table = [];
-  room.message = results.join(" · ");
+  room.message = losers.length
+    ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
+    : "Ninguém se fodeu dessa vez — todo mundo cravou.";
   if (activePlayers(room).length <= 1) return endGame(room);
   broadcast(room);
 }
@@ -353,6 +450,7 @@ io.on("connection", (socket) => {
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
     room.botDifficulty = botDifficulty;
+    room.solo = true;
     room.players.push(...Array.from({ length: botCount }, (_, index) => createBot(code, index)));
     rooms.set(code, room);
     sendSession(socket, room, player);
@@ -416,6 +514,54 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.phase !== "game_over" || socket.data.playerId !== room.hostId) return;
     startGame(room);
+  });
+
+  socket.on("toggle-auto", (value) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player) return;
+    player.auto = Boolean(value);
+    // Reassumiu o controle: cancela a jogada automática pendente e devolve o tempo dele.
+    if (!player.auto && room.autoTurnId === player.id && room.botTimer) {
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.autoTurnId = null;
+    }
+    broadcast(room);
+  });
+
+  socket.on("leave-room", () => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    socket.data.roomCode = null;
+    socket.data.playerId = null;
+    if (!room || !player) return;
+    if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
+    player.connected = false;
+    player.socketId = null;
+    player.resumeToken = null; // saiu de propósito: não reconecta mais nesta sala
+    if (room.phase === "lobby" || room.phase === "game_over") {
+      room.players = room.players.filter((item) => item.id !== player.id);
+    } else {
+      player.auto = true; // saiu no meio: um bot assume a vaga rapidamente
+    }
+    transferHost(room);
+    if (room.autoTurnId === player.id && room.botTimer) {
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.autoTurnId = null;
+    }
+    if (!room.players.some((item) => !item.isBot)) {
+      if (room.botTimer) clearTimeout(room.botTimer);
+      if (room.revealTimer) clearTimeout(room.revealTimer);
+      if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+      rooms.delete(room.code);
+      return;
+    }
+    if (!room.players.some((item) => !item.isBot && item.connected)) {
+      room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+    }
+    broadcast(room);
   });
 
   socket.on("disconnect", () => {
