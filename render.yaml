@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: se-fode-online
+    runtime: node
+    region: virginia
+    plan: free
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit

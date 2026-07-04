@@ -13,6 +13,10 @@ npm start
 
 Abra `http://localhost:3000`. Para jogar entre aparelhos na mesma rede, abra o endereço IP do computador na porta 3000. Para jogar pela internet, publique o servidor Node em um serviço com suporte a WebSockets.
 
+## Hospedar no Render
+
+O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service na região da Virgínia, com health check em `/health` e deploy automático a cada atualização da branch `main`.
+
 ## Regras adotadas
 
 - Baralho de truco com 40 cartas; ordem `4 5 6 7 Q J K A 2 3`.
