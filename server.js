@@ -208,7 +208,7 @@ function chooseBotCard(room, bot) {
   return cards.at(-1);
 }
 
-const HUMAN_TURN_MS = 10000; // tempo do jogador online antes do modo automático assumir
+const HUMAN_TURN_MS = 20000; // tempo do jogador online antes do modo automático assumir
 
 function playAutomatically(room, player) {
   if (room.turnId !== player.id || player.eliminated) return;
