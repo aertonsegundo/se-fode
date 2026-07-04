@@ -3,7 +3,7 @@
 :root { --ink:#171713; --paper:#f1eddf; --red:#ff3b30; --acid:#d8ff45; --blue:#7aa7ff; }
 * { box-sizing:border-box; }
 body { margin:0; min-height:100vh; background:var(--ink); color:var(--paper); font-family:"DM Sans",sans-serif; }
-button,input { font:inherit; }
+button,input,select { font:inherit; }
 button { cursor:pointer; }
 .noise { position:fixed; inset:0; pointer-events:none; opacity:.08; z-index:10; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E"); }
 .hidden { display:none!important; }
@@ -17,6 +17,9 @@ button { cursor:pointer; }
 .entry-card label { display:block; font-size:.68rem; font-weight:700; letter-spacing:.16em; margin-bottom:.5rem; }
 .entry-card input { width:100%; border:2px solid var(--ink); background:transparent; padding:1rem; font-size:1rem; outline:none; border-radius:0; }
 .entry-card input:focus { box-shadow:4px 4px 0 var(--blue); }
+.solo-options { display:grid; grid-template-columns:1fr auto; align-items:center; gap:1rem; margin-top:.9rem; }
+.solo-options label { margin:0; }
+.solo-options select { border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:.55rem 2rem .55rem .65rem; font-weight:800; border-radius:0; }
 .entry-card button { border:2px solid var(--ink); padding:1rem; font-weight:800; background:var(--acid); }
 .entry-card .primary { width:100%; margin-top:.8rem; background:var(--ink); color:white; display:flex; justify-content:space-between; }
 .entry-card .primary b { color:var(--acid); }
@@ -95,6 +98,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .home { grid-template-columns:1fr; padding:3rem 1.3rem 6rem; gap:3rem; }
   .brand h1 { font-size:25vw; }
   .entry-card { box-shadow:7px 7px 0 var(--red); }
+  .solo-options { grid-template-columns:1fr; gap:.4rem; }
+  .solo-options select { width:100%; }
   .rules-link { left:1.3rem; }
   .game { padding:1rem; }
   .game-layout { grid-template-columns:1fr; }

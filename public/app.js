@@ -22,7 +22,7 @@ function showToast(text) {
 function join(kind) {
   const name = $("#name").value.trim();
   localStorage.setItem("fode-name", name);
-  socket.emit(kind, { name, code: $("#code").value });
+  socket.emit(kind, { name, code: $("#code").value, botCount: Number($("#bot-count").value) });
 }
 
 $("#name").value = localStorage.getItem("fode-name") || "";

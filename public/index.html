@@ -19,6 +19,18 @@
       <form class="entry-card" onsubmit="return false">
         <label for="name">SEU NOME</label>
         <input id="name" maxlength="18" autocomplete="name" placeholder="Ex: Pimenta" />
+        <div class="solo-options">
+          <label for="bot-count">QUANTOS BOTS NA MESA?</label>
+          <select id="bot-count" aria-label="Quantidade de bots">
+            <option value="1">1 bot</option>
+            <option value="2">2 bots</option>
+            <option value="3" selected>3 bots</option>
+            <option value="4">4 bots</option>
+            <option value="5">5 bots</option>
+            <option value="6">6 bots</option>
+            <option value="7">7 bots</option>
+          </select>
+        </div>
         <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
         <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
         <div class="or"><span>OU ENTRE NUMA</span></div>

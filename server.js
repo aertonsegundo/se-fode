@@ -11,6 +11,7 @@ const io = new Server(server);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
+const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
 
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
@@ -112,8 +113,8 @@ function createPlayer(socket, name) {
   return { id: socket.id, name, lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, hand: [] };
 }
 
-function createBot(code) {
-  return { id: `bot-${code}`, name: "Bot Fodão", lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, isBot: true, hand: [] };
+function createBot(code, index) {
+  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, isBot: true, hand: [] };
 }
 
 function validBids(room, playerId) {
@@ -279,12 +280,13 @@ function endGame(room) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("solo-game", ({ name } = {}) => {
+  socket.on("solo-game", ({ name, botCount } = {}) => {
     name = cleanName(name);
     if (!name) return notice(socket, "Digite seu nome.");
+    botCount = Math.min(7, Math.max(1, Number.isInteger(Number(botCount)) ? Number(botCount) : 3));
     const code = roomCode();
     const room = newRoom(code, createPlayer(socket, name));
-    room.players.push(createBot(code));
+    room.players.push(...Array.from({ length: botCount }, (_, index) => createBot(code, index)));
     rooms.set(code, room);
     socket.data.roomCode = code;
     startGame(room);
