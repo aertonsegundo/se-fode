@@ -155,6 +155,32 @@ $("#chat-form").addEventListener("submit", (event) => {
   input.value = "";
 });
 
+// ===== Emotes =====
+let emoteCooldown = 0;
+$("#emote-bar").querySelectorAll("[data-emote]").forEach((button) => {
+  button.onclick = () => {
+    const now = performance.now();
+    if (now - emoteCooldown < 400) return; // evita spam
+    emoteCooldown = now;
+    socket.emit("emote", button.dataset.emote);
+  };
+});
+
+socket.on("emote", (payload) => spawnEmote(payload));
+
+function spawnEmote({ emoji, name } = {}) {
+  if (!emoji) return;
+  const layer = $("#emote-layer");
+  const fly = document.createElement("div");
+  fly.className = "emote-fly";
+  fly.style.left = `${8 + Math.random() * 78}%`;
+  fly.style.setProperty("--drift", `${Math.random() * 90 - 45}px`);
+  fly.style.setProperty("--rot", `${Math.random() * 34 - 17}deg`);
+  fly.innerHTML = `<span class="emote-emoji">${emoji}</span><span class="emote-who">${escapeHtml(name || "")}</span>`;
+  layer.appendChild(fly);
+  fly.addEventListener("animationend", () => fly.remove());
+}
+
 const TURN_SECONDS = 10;
 let turnClockTimer = null;
 let turnClockKey = "";
@@ -212,6 +238,7 @@ function render() {
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
   $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
+  $("#emote-bar").classList.toggle("hidden", Boolean(state.solo));
   renderAutoBar();
   renderPot();
   renderSeats();

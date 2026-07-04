@@ -251,3 +251,21 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .chat-form input:focus { border-color:var(--acid); }
 .chat-form button { border:0; background:var(--acid); color:var(--ink); font-weight:900; padding:0 .9rem; border-radius:8px; font-size:1rem; cursor:pointer; }
 @media (max-width:850px) { .chat-toggle { left:.9rem; bottom:.9rem; } .chat { left:.9rem; bottom:5rem; } }
+
+/* ===== Emotes ===== */
+.emote-bar { position:fixed; left:5.2rem; bottom:1.5rem; z-index:28; display:flex; gap:.3rem; background:#1c1b17dd; border:1px solid #45433c; border-radius:2rem; padding:.28rem .4rem; box-shadow:0 6px 16px #0007; }
+.emote-bar button { border:0; background:none; font-size:1.35rem; line-height:1; width:2.2rem; height:2.2rem; border-radius:50%; cursor:pointer; transition:transform .12s, background .12s; }
+.emote-bar button:hover { transform:scale(1.25); background:#ffffff14; }
+.emote-bar button:active { transform:scale(.9); }
+.emote-layer { position:fixed; inset:0; z-index:29; pointer-events:none; overflow:hidden; }
+.emote-fly { position:absolute; bottom:9%; display:flex; flex-direction:column; align-items:center; animation:emote-fly 2.6s cubic-bezier(.25,.6,.3,1) forwards; will-change:transform,opacity; }
+.emote-emoji { font-size:3.2rem; filter:drop-shadow(0 4px 8px #0009); }
+.emote-who { margin-top:.15rem; font-size:.6rem; font-weight:800; color:var(--paper); background:#000000aa; padding:.06rem .35rem; border-radius:5px; white-space:nowrap; }
+@keyframes emote-fly {
+  0% { opacity:0; transform:translateY(24px) scale(.4); }
+  14% { opacity:1; transform:translateY(0) scale(1.15) rotate(var(--rot)); }
+  45% { transform:translate(var(--drift), -34vh) rotate(calc(var(--rot) * -1)) scale(1); }
+  100% { opacity:0; transform:translate(var(--drift), -74vh) rotate(var(--rot)) scale(.85); }
+}
+@media (prefers-reduced-motion:reduce) { .emote-fly { animation-duration:1.4s; } }
+@media (max-width:850px) { .emote-bar { left:auto; right:.9rem; bottom:.9rem; } }
