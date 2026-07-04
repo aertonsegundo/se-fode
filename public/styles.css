@@ -253,8 +253,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 @media (max-width:850px) { .chat-toggle { left:.9rem; bottom:.9rem; } .chat { left:.9rem; bottom:5rem; } }
 
 /* ===== Emotes ===== */
-.emote-bar { position:fixed; left:5.2rem; bottom:1.5rem; z-index:28; display:flex; gap:.3rem; background:#1c1b17dd; border:1px solid #45433c; border-radius:2rem; padding:.28rem .4rem; box-shadow:0 6px 16px #0007; }
-.emote-bar button { border:0; background:none; font-size:1.35rem; line-height:1; width:2.2rem; height:2.2rem; border-radius:50%; cursor:pointer; transition:transform .12s, background .12s; }
+.emote-bar { position:fixed; left:5.2rem; bottom:1.5rem; z-index:28; display:flex; gap:.25rem; background:#1c1b17dd; border:1px solid #45433c; border-radius:2rem; padding:.28rem .4rem; box-shadow:0 6px 16px #0007; max-width:calc(100vw - 6.6rem); }
+.emote-bar button { border:0; background:none; font-size:1.3rem; line-height:1; width:2.1rem; height:2.1rem; border-radius:50%; cursor:pointer; transition:transform .12s, background .12s; }
 .emote-bar button:hover { transform:scale(1.25); background:#ffffff14; }
 .emote-bar button:active { transform:scale(.9); }
 .emote-layer { position:fixed; inset:0; z-index:29; pointer-events:none; overflow:hidden; }
@@ -268,4 +268,4 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   100% { opacity:0; transform:translate(var(--drift), -74vh) rotate(var(--rot)) scale(.85); }
 }
 @media (prefers-reduced-motion:reduce) { .emote-fly { animation-duration:1.4s; } }
-@media (max-width:850px) { .emote-bar { left:auto; right:.9rem; bottom:.9rem; } }
+@media (max-width:850px) { .emote-bar { left:.9rem; right:.9rem; bottom:4.6rem; max-width:none; justify-content:center; } .emote-bar button { width:1.95rem; height:1.95rem; font-size:1.2rem; } }

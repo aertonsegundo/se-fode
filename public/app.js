@@ -238,7 +238,7 @@ function render() {
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
   $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
-  $("#emote-bar").classList.toggle("hidden", Boolean(state.solo));
+  $("#emote-bar").classList.remove("hidden"); // emotes valem também no solo (offline)
   renderAutoBar();
   renderPot();
   renderSeats();
