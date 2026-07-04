@@ -537,7 +537,7 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     const player = room && playerById(room, socket.data.playerId);
     if (!room || !player || !EMOTES[key]) return;
-    const payload = { playerId: player.id, name: player.name, emoji: EMOTES[key] };
+    const payload = { playerId: player.id, name: player.name, key, emoji: EMOTES[key] };
     for (const member of room.players) {
       if (!member.isBot && member.connected && member.socketId) io.to(member.socketId).emit("emote", payload);
     }
