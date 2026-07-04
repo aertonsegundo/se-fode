@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#171713" />
+  <title>Se Fode — jogo de cartas</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <main id="app">
+    <section id="home" class="home">
+      <header class="brand">
+        <div class="kicker">UM JOGO PARA AMIGOS</div>
+        <h1>SE<br />FO<span>DE</span></h1>
+        <p>Aposte. Blefe. Mele o jogo.<br />Tente não se foder.</p>
+      </header>
+      <form class="entry-card" onsubmit="return false">
+        <label for="name">SEU NOME</label>
+        <input id="name" maxlength="18" autocomplete="name" placeholder="Ex: Pimenta" />
+        <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
+        <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
+        <div class="or"><span>OU ENTRE NUMA</span></div>
+        <div class="join-row">
+          <input id="code" maxlength="5" placeholder="CÓDIGO" aria-label="Código da sala" />
+          <button id="join">ENTRAR</button>
+        </div>
+      </form>
+      <button id="rules-open" class="rules-link">COMO JOGA? <span>↗</span></button>
+    </section>
+
+    <section id="game" class="game hidden">
+      <header class="game-top">
+        <a class="mini-brand" href="/">SE FODE</a>
+        <div class="room-code">SALA <button id="copy-code"></button></div>
+        <div id="round-label" class="round-label"></div>
+      </header>
+      <div id="status" class="status"></div>
+      <div class="game-layout">
+        <aside id="scoreboard" class="scoreboard"></aside>
+        <section class="felt-wrap">
+          <div class="felt">
+            <div id="vira" class="vira"></div>
+            <div id="table" class="table"></div>
+            <div id="empty-table" class="empty-table">A MESA ESTÁ<br />ESPERANDO</div>
+          </div>
+        </section>
+        <aside id="action-panel" class="action-panel"></aside>
+      </div>
+      <section id="hand" class="hand"></section>
+    </section>
+  </main>
+
+  <dialog id="rules">
+    <button id="rules-close" class="close">×</button>
+    <div class="kicker">MANUAL DE SOBREVIVÊNCIA</div>
+    <h2>COMO NÃO<br />SE FODER</h2>
+    <ol>
+      <li><b>Aposte.</b> Diga quantas vazas você acha que vai ganhar.</li>
+      <li><b>Jogue.</b> A maior carta leva. A manilha é a carta seguinte ao vira.</li>
+      <li><b>Mele.</b> Cartas de mesma força se anulam; ganha a maior que sobrar.</li>
+      <li><b>Crave.</b> Você perde uma vida por cada ponto de diferença entre aposta e resultado.</li>
+    </ol>
+    <p class="fine">Na rodada de uma carta, a sua fica na testa: todos veem, menos você. O último a apostar não pode fazer a soma das apostas bater com o número de cartas (exceto nessa rodada).</p>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
