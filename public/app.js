@@ -465,8 +465,8 @@ function renderHand() {
     hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div><span>SUA CARTA — TODO MUNDO VÊ, MENOS VOCÊ</span></div></div>`;
     return;
   }
-  // Mão organizada por força: mais forte à esquerda, mais fraca à direita.
-  const sorted = [...state.me.hand].sort((a, b) => cardStrength(b) - cardStrength(a));
+  // Mão organizada por força: mais fraca à esquerda, mais forte à direita.
+  const sorted = [...state.me.hand].sort((a, b) => cardStrength(a) - cardStrength(b));
   hand.innerHTML = sorted.map((card) => cardHtml(card)).join("");
   hand.querySelectorAll(".card").forEach((element, index) => {
     element.onclick = () => {
