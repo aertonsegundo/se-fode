@@ -258,9 +258,9 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .emote-bar button:hover { transform:scale(1.25); background:#ffffff14; }
 .emote-bar button:active { transform:scale(.9); }
 .emote-layer { position:fixed; inset:0; z-index:29; pointer-events:none; overflow:hidden; }
-.emote-fly { position:absolute; bottom:9%; display:flex; flex-direction:column; align-items:center; animation:emote-fly 2.6s cubic-bezier(.25,.6,.3,1) forwards; will-change:transform,opacity; }
-.emote-emoji { font-size:3.2rem; filter:drop-shadow(0 4px 8px #0009); }
-img.emote-emoji { width:3.4rem; height:3.4rem; object-fit:contain; }
+.emote-fly { position:absolute; bottom:9%; display:flex; flex-direction:column; align-items:center; animation:emote-fly 4.8s cubic-bezier(.25,.6,.3,1) forwards; will-change:transform,opacity; }
+.emote-emoji { font-size:5.8rem; filter:drop-shadow(0 6px 12px #000a); }
+img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .emote-bar button img.emote-btn-media { width:1.7rem; height:1.7rem; object-fit:contain; display:block; }
 .emote-bar button span.emote-btn-media { font-size:1.3rem; line-height:1; }
 .emote-who { margin-top:.15rem; font-size:.6rem; font-weight:800; color:var(--paper); background:#000000aa; padding:.06rem .35rem; border-radius:5px; white-space:nowrap; }
