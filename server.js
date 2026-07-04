@@ -77,6 +77,7 @@ function publicState(room, viewerId) {
     trickResult: room.trickResult,
     roundLosers: room.roundLosers,
     botDifficulty: room.botDifficulty,
+    solo: room.solo,
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
@@ -86,6 +87,7 @@ function publicState(room, viewerId) {
       roundLoss: player.roundLoss ?? null,
       eliminated: player.eliminated,
       connected: player.connected,
+      auto: Boolean(player.auto),
       isBot: Boolean(player.isBot),
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
@@ -128,6 +130,7 @@ function newRoom(code, host) {
     trickResult: null,
     roundLosers: [],
     botDifficulty: "normal",
+    solo: false,
     autoTurnId: null,
     cleanupTimer: null,
     revealTimer: null,
@@ -136,7 +139,7 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, hand: [] };
+  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, auto: false, hand: [] };
 }
 
 function createBot(code, index) {
@@ -196,23 +199,45 @@ function chooseBotCard(room, bot) {
   return cards.at(-1);
 }
 
+const HUMAN_TURN_MS = 10000; // tempo do jogador online antes do modo automático assumir
+
+function playAutomatically(room, player) {
+  if (room.turnId !== player.id || player.eliminated) return;
+  if (room.phase === "bidding") return submitBid(room, player.id, chooseBotBid(room, player));
+  if (room.phase === "playing") submitPlay(room, player.id, chooseBotCard(room, player)?.id);
+}
+
 function scheduleAutomaticTurn(room) {
+  // Descarta um timer preso de um turno que já passou.
+  if (room.botTimer && room.autoTurnId !== room.turnId) {
+    clearTimeout(room.botTimer);
+    room.botTimer = null;
+    room.autoTurnId = null;
+  }
+  if (room.botTimer) return; // já agendado para o turno atual
+  if (room.phase !== "bidding" && room.phase !== "playing") return;
   const player = playerById(room, room.turnId);
-  if (!player || (!player.isBot && player.connected) || room.botTimer) return;
+  if (!player || player.eliminated) return;
+
+  const humanInControl = !player.isBot && player.connected && !player.auto;
+  // No solo, o jogador humano joga sem limite de tempo.
+  if (humanInControl && room.solo) return;
+
+  const delay = player.isBot ? 700 : humanInControl ? HUMAN_TURN_MS : player.auto ? 900 : 8000;
   room.autoTurnId = player.id;
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
     room.autoTurnId = null;
-    if (room.turnId !== player.id || player.eliminated || (!player.isBot && player.connected)) return;
-    if (room.phase === "bidding") {
-      submitBid(room, player.id, chooseBotBid(room, player));
-      return;
+    if (room.turnId !== player.id || player.eliminated) return;
+    // Se o humano voltou ao controle nesse meio-tempo, não joga por ele.
+    if (!player.isBot && player.connected && !player.auto && !humanInControl) return;
+    // Estourou o tempo de um humano online: liga o modo automático até ele reassumir.
+    if (humanInControl) {
+      player.auto = true;
+      if (player.socketId) io.to(player.socketId).emit("notice", "Tempo esgotado — modo automático ligado. Toque em \"assumir controle\" para voltar.");
     }
-    if (room.phase === "playing") {
-      const card = chooseBotCard(room, player);
-      submitPlay(room, player.id, card?.id);
-    }
-  }, player.isBot ? 700 : 8000);
+    playAutomatically(room, player);
+  }, delay);
 }
 
 function startRound(room) {
@@ -245,7 +270,7 @@ function startRound(room) {
 }
 
 function startGame(room) {
-  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, hand: [], bid: null, wins: 0 }));
+  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
   room.handSize = 1;
   room.direction = 1;
   room.round = 0;
@@ -396,6 +421,7 @@ io.on("connection", (socket) => {
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
     room.botDifficulty = botDifficulty;
+    room.solo = true;
     room.players.push(...Array.from({ length: botCount }, (_, index) => createBot(code, index)));
     rooms.set(code, room);
     sendSession(socket, room, player);
@@ -459,6 +485,54 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.phase !== "game_over" || socket.data.playerId !== room.hostId) return;
     startGame(room);
+  });
+
+  socket.on("toggle-auto", (value) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player) return;
+    player.auto = Boolean(value);
+    // Reassumiu o controle: cancela a jogada automática pendente e devolve o tempo dele.
+    if (!player.auto && room.autoTurnId === player.id && room.botTimer) {
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.autoTurnId = null;
+    }
+    broadcast(room);
+  });
+
+  socket.on("leave-room", () => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    socket.data.roomCode = null;
+    socket.data.playerId = null;
+    if (!room || !player) return;
+    if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
+    player.connected = false;
+    player.socketId = null;
+    player.resumeToken = null; // saiu de propósito: não reconecta mais nesta sala
+    if (room.phase === "lobby" || room.phase === "game_over") {
+      room.players = room.players.filter((item) => item.id !== player.id);
+    } else {
+      player.auto = true; // saiu no meio: um bot assume a vaga rapidamente
+    }
+    transferHost(room);
+    if (room.autoTurnId === player.id && room.botTimer) {
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.autoTurnId = null;
+    }
+    if (!room.players.some((item) => !item.isBot)) {
+      if (room.botTimer) clearTimeout(room.botTimer);
+      if (room.revealTimer) clearTimeout(room.revealTimer);
+      if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+      rooms.delete(room.code);
+      return;
+    }
+    if (!room.players.some((item) => !item.isBot && item.connected)) {
+      room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+    }
+    broadcast(room);
   });
 
   socket.on("disconnect", () => {

@@ -201,3 +201,26 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .game[data-phase="round_end"] .table-stage,
   .game[data-phase="game_over"] .table-stage { order:1; }
 }
+
+/* ===== Sair, compartilhar sala, modo automático e relógio de turno ===== */
+.top-right { display:flex; align-items:center; gap:.8rem; justify-self:end; }
+.leave-btn { border:1px solid #6d3a35; background:transparent; color:#ff8a80; font-weight:800; font-size:.62rem; letter-spacing:.1em; padding:.4rem .75rem; border-radius:6px; }
+.leave-btn:hover { background:var(--red); color:#fff; border-color:var(--red); }
+
+.share { margin:.3rem 0 .9rem; }
+.share input { width:100%; border:1px solid #4a483f; background:#1b1a16; color:#d4d0c4; padding:.55rem .6rem; font-size:.72rem; border-radius:6px; }
+.share-actions { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:.5rem; }
+.share-actions .ghost, .share-actions .wa { text-align:center; padding:.62rem .5rem; font-weight:800; font-size:.72rem; border-radius:6px; text-decoration:none; box-shadow:none; margin:0; }
+.ghost { background:transparent; border:1px solid var(--acid); color:var(--acid); }
+.ghost:hover { background:var(--acid); color:var(--ink); }
+.wa { background:#25d366; color:#0b3b1e; }
+.wa:hover { background:#1fbe5a; }
+
+.auto-bar { display:flex; align-items:center; justify-content:center; gap:.8rem; flex-wrap:wrap; background:#2c2a12; border:1px solid #d8ff4544; color:var(--acid); padding:.5rem .8rem; font-size:.8rem; font-weight:700; margin-top:.6rem; border-radius:8px; }
+.auto-bar button { border:0; background:var(--acid); color:var(--ink); font-weight:900; font-size:.7rem; letter-spacing:.05em; padding:.4rem .8rem; border-radius:6px; }
+.seat-tag.auto { background:#3b3a16; color:var(--acid); border:1px solid #d8ff4455; }
+
+.turn-timer { height:8px; background:#3a3931; border-radius:5px; overflow:hidden; margin-top:.9rem; }
+.turn-timer i { display:block; height:100%; width:100%; background:var(--acid); border-radius:5px; transition:width .15s linear; }
+.turn-timer i.low { background:var(--red); }
+.turn-hint { display:block; color:#aaa69a; font-size:.68rem; margin-top:.35rem; }

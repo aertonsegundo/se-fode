@@ -32,6 +32,24 @@ function join(kind) {
   });
 }
 
+const roomUrl = (code) => `${location.origin}/?sala=${code}`;
+
+function leaveRoom() {
+  socket.emit("leave-room");
+  localStorage.removeItem(SESSION_KEY);
+  state = null;
+  stopTurnClock();
+  game.classList.add("hidden");
+  home.classList.remove("hidden");
+  history.replaceState(null, "", location.pathname);
+}
+
+function confirmLeave() {
+  const mid = state && !["lobby", "game_over"].includes(state.phase);
+  if (mid && !confirm("Sair da partida? Um bot assume seu lugar.")) return;
+  leaveRoom();
+}
+
 $("#name").value = localStorage.getItem("fode-name") || "";
 $("#solo").onclick = () => join("solo-game");
 $("#create").onclick = () => join("create-room");
@@ -40,6 +58,15 @@ $("#code").addEventListener("input", (event) => { event.target.value = event.tar
 $("#rules-open").onclick = () => $("#rules").showModal();
 $("#rules-close").onclick = () => $("#rules").close();
 $("#copy-code").onclick = async () => { await navigator.clipboard.writeText(state.code); showToast("Código copiado!"); };
+$("#leave").onclick = confirmLeave;
+$(".mini-brand").addEventListener("click", (event) => { if (state) { event.preventDefault(); confirmLeave(); } });
+
+// Link compartilhado: ?sala=CODIGO já preenche o campo de código.
+const sharedCode = (new URLSearchParams(location.search).get("sala") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+if (sharedCode) {
+  $("#code").value = sharedCode;
+  setTimeout(() => $("#name").focus(), 0);
+}
 
 socket.on("connect", () => {
   const saved = localStorage.getItem(SESSION_KEY);
@@ -68,15 +95,60 @@ socket.on("state", (next) => {
 });
 socket.connect();
 
+const TURN_SECONDS = 10;
+let turnClockTimer = null;
+let turnClockKey = "";
+let turnClockStart = 0;
+
+function stopTurnClock() {
+  if (turnClockTimer) { clearInterval(turnClockTimer); turnClockTimer = null; }
+}
+
+function tickTurnClock() {
+  const bar = $("#turn-bar");
+  if (!bar) return stopTurnClock();
+  const remaining = Math.max(0, TURN_SECONDS - (Date.now() - turnClockStart) / 1000);
+  bar.style.width = `${(remaining / TURN_SECONDS) * 100}%`;
+  bar.classList.toggle("low", remaining <= 3);
+  const secs = $("#turn-secs");
+  if (secs) secs.textContent = Math.ceil(remaining);
+  if (remaining <= 0.05) stopTurnClock();
+}
+
+// Só há relógio em partidas online, na minha vez e sem modo automático.
+function turnClockActive() {
+  return !state.solo && !me()?.auto && state.turnId === state.me?.id
+    && (state.phase === "bidding" || state.phase === "playing");
+}
+
+function maybeStartTurnClock() {
+  const key = `${state.phase}-${state.round}-${state.trick}-${state.turnId}`;
+  if (!turnClockActive()) { turnClockKey = key; return stopTurnClock(); }
+  if (key !== turnClockKey) { turnClockKey = key; turnClockStart = Date.now(); }
+  stopTurnClock();
+  tickTurnClock();
+  turnClockTimer = setInterval(tickTurnClock, 150);
+}
+
+function renderAutoBar() {
+  const bar = $("#auto-bar");
+  const active = me()?.auto && state.phase !== "lobby" && state.phase !== "game_over";
+  bar.classList.toggle("hidden", !active);
+  bar.innerHTML = active ? '<span>🤖 Modo automático ligado — um bot está jogando por você.</span><button id="take-control">ASSUMIR CONTROLE</button>' : "";
+  $("#take-control")?.addEventListener("click", () => socket.emit("toggle-auto", false));
+}
+
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `RODADA ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
+  renderAutoBar();
   renderSeats();
   renderAction();
   renderHand();
+  maybeStartTurnClock();
   if (shouldAnimateDeal) {
     animatedRound = state.round;
     requestAnimationFrame(animateDeal);
@@ -129,6 +201,7 @@ function renderSeats() {
         ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
         ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
         ${!player.connected ? '<div class="seat-tag off">RECONECTANDO</div>' : ""}
+        ${player.auto && !player.isBot && player.connected && (state.phase === "bidding" || state.phase === "playing") ? '<div class="seat-tag auto">🤖 AUTO</div>' : ""}
       </div>`;
   }).join("");
 
@@ -165,21 +238,39 @@ function animateDeal() {
   setTimeout(() => { layer.innerHTML = ""; }, sequence * 110 + 850);
 }
 
+function turnClockHtml() {
+  if (state.solo) return "";
+  return `<div class="turn-timer"><i id="turn-bar"></i></div><small class="turn-hint">Modo automático em <b id="turn-secs">${TURN_SECONDS}</b>s se você não jogar</small>`;
+}
+
 function renderAction() {
   const panel = $("#action-panel");
   if (state.phase === "lobby") {
-    panel.innerHTML = `<div class="panel-title">SALA DE ESPERA</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3><p>Compartilhe o código <b>${state.code}</b> com seus amigos.</p>${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}`;
+    const url = roomUrl(state.code);
+    const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
+    panel.innerHTML = `<div class="panel-title">SALA DE ESPERA</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
+      <p>Convide a galera pelo link ou pelo código <b>${state.code}</b>.</p>
+      <div class="share">
+        <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />
+        <div class="share-actions">
+          <button id="copy-link" class="ghost">COPIAR LINK</button>
+          <a id="wa-share" class="wa" href="https://wa.me/?text=${waText}" target="_blank" rel="noopener">WHATSAPP</a>
+        </div>
+      </div>
+      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
+    $("#share-url").onclick = (event) => event.target.select();
+    $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast("Link copiado!"); };
     return;
   }
   if (state.phase === "bidding" && state.turnId === state.me.id) {
     const isLast = state.bidOrder.at(-1) === state.me.id;
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
   if (state.phase === "playing" && state.turnId === state.me.id) {
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${state.handSize === 1 ? "JOGUE NO ESCURO" : "ESCOLHA UMA CARTA"}</h3><p>${state.handSize === 1 ? "Todo mundo sabe o que vem. Menos você." : "Clique numa carta da sua mão."}</p>${state.handSize === 1 ? '<button id="blind-play">JOGAR MINHA CARTA</button>' : ""}`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${state.handSize === 1 ? "JOGUE NO ESCURO" : "ESCOLHA UMA CARTA"}</h3><p>${state.handSize === 1 ? "Todo mundo sabe o que vem. Menos você." : "Clique numa carta da sua mão."}</p>${state.handSize === 1 ? '<button id="blind-play">JOGAR MINHA CARTA</button>' : ""}${turnClockHtml()}`;
     $("#blind-play")?.addEventListener("click", () => socket.emit("play-card", null));
     return;
   }
@@ -198,8 +289,9 @@ function renderAction() {
     return;
   }
   if (state.phase === "game_over") {
-    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}`;
+    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
+    $("#leave2")?.addEventListener("click", leaveRoom);
     return;
   }
   const current = state.players.find((player) => player.id === state.turnId);
