@@ -85,20 +85,26 @@ function render() {
 }
 
 function renderPlayers() {
-  $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player, index) => `
-    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "disconnected" : ""}">
+  $("#scoreboard").innerHTML = `<div class="panel-title">NA MESA — ${state.players.length}/8</div>` + state.players.map((player, index) => {
+    const wonTrick = state.phase === "trick_reveal" && state.trickResult?.winnerId === player.id;
+    const fodeu = state.phase === "round_end" && player.roundLoss > 0;
+    return `
+    <div data-player-index="${index}" class="player-row ${state.turnId === player.id ? "active" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "disconnected" : ""} ${wonTrick ? "won-trick" : ""} ${fodeu ? "fodeu" : ""}">
       <div class="avatar">${escapeHtml(player.name[0].toUpperCase())}</div>
-      <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}${!player.connected ? '<span class="offline-chip">RECONECTANDO</span>' : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
+      <div><b>${escapeHtml(player.name)}${player.id === state.me.id ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}${!player.connected ? '<span class="offline-chip">RECONECTANDO</span>' : ""}${wonTrick ? '<span class="won-chip">LEVOU</span>' : ""}${fodeu ? `<span class="fodeu-chip">SE FODEU −${player.roundLoss}</span>` : ""}</b><br><span class="bid-chip">${player.bid == null ? "—" : `apostou ${player.bid} · levou ${player.wins}`}</span></div>
       <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function renderTable() {
   $("#manilhas").innerHTML = `<span>MANILHAS FIXAS</span><b>4♣</b> › <b class="red-text">7♥</b> › <b>A♠</b> › <b class="red-text">7♦</b>`;
+  const winnerId = state.phase === "trick_reveal" ? state.trickResult?.winnerId : null;
   $("#table").innerHTML = state.table.map((play, index) => {
     const player = state.players.find((item) => item.id === play.playerId);
     const angle = (index / Math.max(state.players.length, 1)) * Math.PI * 2;
-    return `<div class="played" style="--r:${index * 13 - 15}deg;--x:${Math.cos(angle) * 72}px;--y:${Math.sin(angle) * 55}px"><small>${escapeHtml(player?.name)}</small>${cardHtml(play.card)}</div>`;
+    const won = winnerId && play.playerId === winnerId ? "winning" : "";
+    return `<div class="played ${won}" style="--r:${index * 13 - 15}deg;--x:${Math.cos(angle) * 72}px;--y:${Math.sin(angle) * 55}px"><small>${escapeHtml(player?.name)}</small>${cardHtml(play.card)}</div>`;
   }).join("");
   $("#empty-table").classList.toggle("hidden", state.table.length > 0 || state.phase === "lobby");
 }
@@ -151,8 +157,17 @@ function renderAction() {
     $("#blind-play")?.addEventListener("click", () => socket.emit("play-card", null));
     return;
   }
+  if (state.phase === "trick_reveal") {
+    const result = state.trickResult || {};
+    panel.innerHTML = `<div class="panel-title">VAZA ${result.trick ?? ""}</div><h3>${result.melou ? "MELOU GERAL" : `${escapeHtml(result.winnerName || "")} LEVOU`}</h3><p>${result.lastTrick ? "Última carta da rodada na mesa. Confere antes de fechar as contas." : "Todas as cartas na mesa. Já vem a próxima vaza."}</p>`;
+    return;
+  }
   if (state.phase === "round_end") {
-    panel.innerHTML = `<div class="panel-title">FIM DA RODADA</div><h3>FAÇAM AS CONTAS</h3>${isHost() ? '<button id="next">PRÓXIMA RODADA</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
+    const losers = state.roundLosers || [];
+    const list = losers.length
+      ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
+      : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
+    panel.innerHTML = `<div class="panel-title">FIM DA RODADA</div><h3>QUEM SE FODEU</h3>${list}${isHost() ? '<button id="next">PRÓXIMA RODADA</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
     return;
   }

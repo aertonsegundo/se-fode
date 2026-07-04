@@ -48,6 +48,11 @@ button { cursor:pointer; }
 .bid-chip { font-size:.64rem; color:#aaa69a; }
 .bot-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:var(--acid); color:var(--ink); font-size:.5rem; letter-spacing:.08em; vertical-align:middle; }
 .offline-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:#6d6a62; color:white; font-size:.45rem; letter-spacing:.06em; vertical-align:middle; }
+.won-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:var(--acid); color:var(--ink); font-size:.5rem; font-weight:800; letter-spacing:.08em; vertical-align:middle; }
+.fodeu-chip { display:inline-block; margin-left:.35rem; padding:.08rem .3rem; background:var(--red); color:white; font-size:.5rem; font-weight:800; letter-spacing:.06em; vertical-align:middle; }
+.player-row.won-trick { background:#2b3320; border-left:3px solid var(--acid); }
+.player-row.fodeu { background:#3a2320; border-left:3px solid var(--red); }
+.player-row.fodeu.out { opacity:.55; }
 .felt-wrap { max-width:760px; width:100%; margin:auto; }
 .felt { min-height:410px; border-radius:50%; background:#234b3a; border:8px solid #33291e; box-shadow:inset 0 0 0 2px #547363,0 18px 35px #0007; position:relative; display:grid; place-items:center; }
 .felt::after { content:"SE FODE"; color:#ffffff0b; font:6rem "Archivo Black"; transform:rotate(-9deg); position:absolute; white-space:nowrap; }
@@ -58,6 +63,11 @@ button { cursor:pointer; }
 .table { width:68%; min-height:230px; position:relative; z-index:3; }
 .played { position:absolute; left:calc(50% - 38px); top:calc(50% - 55px); transform:rotate(var(--r)) translate(var(--x),var(--y)); text-align:center; }
 .played small { background:#171713dd; padding:.12rem .35rem; font-size:.58rem; position:relative; z-index:2; }
+.played.winning { z-index:5; animation:trick-win .5s ease; }
+.played.winning .card { box-shadow:0 0 0 3px var(--acid),6px 8px 0 #1118; }
+.played.winning small { background:var(--acid); color:var(--ink); font-weight:800; }
+@keyframes trick-win { 0% { transform:rotate(var(--r)) translate(var(--x),var(--y)) scale(1); } 40% { transform:rotate(var(--r)) translate(var(--x),var(--y)) scale(1.14); } 100% { transform:rotate(var(--r)) translate(var(--x),var(--y)) scale(1.06); } }
+@media (prefers-reduced-motion:reduce) { .played.winning { animation:none; } }
 .empty-table { color:#ffffff55; font:1rem/1.2 "Archivo Black"; letter-spacing:.08em; text-align:center; z-index:2; }
 .card { width:76px; height:110px; background:#faf7ed; color:#171713; border-radius:6px; border:1px solid #d4cfc0; box-shadow:3px 4px 0 #1115; display:flex; flex-direction:column; justify-content:space-between; padding:.42rem; font:1.25rem "Archivo Black"; text-align:left; position:relative; }
 .card.red { color:#e52e29; }
@@ -77,6 +87,13 @@ button { cursor:pointer; }
 .action-panel p { color:#aaa69a; font-size:.78rem; line-height:1.45; }
 .action-panel button { border:0; background:var(--acid); color:var(--ink); padding:.85rem 1rem; font-weight:900; margin-top:.4rem; box-shadow:4px 4px 0 var(--red); }
 .action-panel button:disabled { opacity:.3; cursor:not-allowed; box-shadow:none; }
+.fodeu-list { display:flex; flex-direction:column; gap:.4rem; margin:.3rem 0 .8rem; }
+.fodeu-item { display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; padding:.5rem .65rem; background:#3a2320; border-left:3px solid var(--red); }
+.fodeu-item b { font-size:.9rem; }
+.fodeu-item span { font-size:.66rem; color:#ffb3ad; font-weight:700; letter-spacing:.04em; }
+.fodeu-item.eliminated { opacity:.75; }
+.fodeu-item.eliminated span { color:var(--red); }
+.fodeu-none { color:var(--acid)!important; font-weight:700; }
 .bids { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; }
 .bids button { margin:0; box-shadow:none; padding:.7rem .2rem; }
 .hand { min-height:150px; padding-top:1.5rem; display:flex; justify-content:center; align-items:flex-end; }

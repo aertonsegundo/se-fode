@@ -74,6 +74,8 @@ function publicState(room, viewerId) {
     trick: room.trick,
     manilhas: FIXED_MANILHAS,
     message: room.message,
+    trickResult: room.trickResult,
+    roundLosers: room.roundLosers,
     botDifficulty: room.botDifficulty,
     players: room.players.map((player) => ({
       id: player.id,
@@ -81,6 +83,7 @@ function publicState(room, viewerId) {
       lives: player.lives,
       bid: player.bid,
       wins: player.wins,
+      roundLoss: player.roundLoss ?? null,
       eliminated: player.eliminated,
       connected: player.connected,
       isBot: Boolean(player.isBot),
@@ -122,19 +125,22 @@ function newRoom(code, host) {
     trick: 0,
     table: [],
     history: [],
+    trickResult: null,
+    roundLosers: [],
     botDifficulty: "normal",
     autoTurnId: null,
     cleanupTimer: null,
+    revealTimer: null,
     message: "Esperando a turma chegar.",
   };
 }
 
 function createPlayer(socket, name) {
-  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, hand: [] };
+  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, hand: [] };
 }
 
 function createBot(code, index) {
-  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, eliminated: false, connected: true, isBot: true, hand: [] };
+  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, isBot: true, hand: [] };
 }
 
 function validBids(room, playerId) {
@@ -215,11 +221,14 @@ function startRound(room) {
   room.round += 1;
   room.trick = 1;
   room.table = [];
+  room.trickResult = null;
+  room.roundLosers = [];
   const deck = shuffle(makeDeck());
   for (const player of room.players) {
     player.hand = [];
     player.bid = null;
     player.wins = 0;
+    player.roundLoss = null;
   }
   for (let card = 0; card < room.handSize; card += 1) {
     for (const player of active) player.hand.push(deck.pop());
@@ -257,6 +266,8 @@ function advanceBid(room) {
   broadcast(room);
 }
 
+const TRICK_REVEAL_MS = 2400;
+
 function advancePlay(room) {
   const order = orderedFrom(room, room.bidOrder[0]);
   if (room.table.length < order.length) {
@@ -264,15 +275,41 @@ function advancePlay(room) {
     room.turnId = order[(current + 1) % order.length].id;
     return broadcast(room);
   }
+  // A última carta da vaza acabou de entrar: revela a mesa completa antes de resolver.
+  revealTrick(room);
+}
 
+function revealTrick(room) {
   const winner = trickWinner(room.table);
   if (winner) playerById(room, winner.playerId).wins += 1;
-  room.history.push({
-    type: "trick",
-    text: winner ? `${playerById(room, winner.playerId).name} levou a vaza ${room.trick}.` : `A vaza ${room.trick} melou inteira.`,
-  });
+  const lastTrick = activePlayers(room)[0].hand.length === 0;
+  const text = winner
+    ? `${playerById(room, winner.playerId).name} levou a vaza ${room.trick}.`
+    : `A vaza ${room.trick} melou inteira.`;
+  room.history.push({ type: "trick", text });
+  room.turnId = null; // congela a mesa: nenhum bot joga durante a revelação
+  room.phase = "trick_reveal";
+  room.trickResult = {
+    trick: room.trick,
+    winnerId: winner?.playerId || null,
+    winnerName: winner ? playerById(room, winner.playerId).name : null,
+    melou: !winner,
+    lastTrick,
+  };
+  room.message = lastTrick ? `${text} Última carta da rodada — confere aí.` : text;
+  broadcast(room);
+  if (room.revealTimer) clearTimeout(room.revealTimer);
+  room.revealTimer = setTimeout(() => {
+    room.revealTimer = null;
+    resolveTrick(room, winner, lastTrick);
+  }, TRICK_REVEAL_MS);
+}
 
-  if (activePlayers(room)[0].hand.length === 0) return scoreRound(room);
+function resolveTrick(room, winner, lastTrick) {
+  if (room.phase !== "trick_reveal") return;
+  room.trickResult = null;
+  if (lastTrick) return scoreRound(room);
+  room.phase = "playing";
   room.trick += 1;
   room.table = [];
   room.turnId = winner?.playerId || room.bidOrder[0];
@@ -283,17 +320,23 @@ function advancePlay(room) {
 
 function scoreRound(room) {
   const results = [];
+  const losers = [];
   for (const player of activePlayers(room)) {
     const lost = Math.abs(player.bid - player.wins);
     player.lives -= lost;
+    player.roundLoss = lost;
     if (player.lives <= 0) player.eliminated = true;
+    if (lost > 0) losers.push({ id: player.id, name: player.name, lost, eliminated: player.eliminated });
     results.push(`${player.name}: apostou ${player.bid}, fez ${player.wins}${lost ? ` e perdeu ${lost} vida${lost > 1 ? "s" : ""}` : " — cravou"}`);
   }
+  room.roundLosers = losers;
   room.history.push({ type: "round", text: results.join(" • ") });
   room.phase = "round_end";
   room.turnId = null;
   room.table = [];
-  room.message = results.join(" · ");
+  room.message = losers.length
+    ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
+    : "Ninguém se fodeu dessa vez — todo mundo cravou.";
   if (activePlayers(room).length <= 1) return endGame(room);
   broadcast(room);
 }
