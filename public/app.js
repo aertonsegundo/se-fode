@@ -21,6 +21,7 @@ const cardStrength = (card) => {
 const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? "red" : ""} ${state?.manilhas?.includes(card.id) ? "manilha" : ""} ${extra}"><span>${card.rank}${card.suit}</span><span class="big-suit">${card.suit}</span><span style="transform:rotate(180deg)">${card.rank}${card.suit}</span></div>` : "";
 const me = () => state?.players.find((player) => player.id === state.me?.id);
 const isHost = () => state?.hostId === state.me?.id;
+const iAmSpectator = () => Boolean(state?.me?.spectator);
 
 function showToast(text) {
   toast.textContent = text;
@@ -280,6 +281,24 @@ function renderAutoBar() {
   $("#take-control")?.addEventListener("click", () => socket.emit("toggle-auto", false));
 }
 
+function renderSpectatorBar() {
+  const bar = $("#spectator-bar");
+  const watching = iAmSpectator();
+  bar.classList.toggle("hidden", !watching);
+  bar.innerHTML = watching
+    ? "<span>👁️ Você está assistindo — entra na mesa quando a próxima partida começar.</span>"
+    : "";
+}
+
+function renderWatchers() {
+  const el = $("#watchers");
+  const list = (state.spectators || []).filter((watcher) => watcher.id !== state.me?.id);
+  el.classList.toggle("hidden", list.length === 0);
+  el.innerHTML = list.length
+    ? `👁️ ${list.length} assistindo: ${list.map((watcher) => escapeHtml(watcher.name)).join(", ")}`
+    : "";
+}
+
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
@@ -289,6 +308,8 @@ function render() {
   $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
   $("#emote-bar").classList.remove("hidden"); // emotes valem também no solo (offline)
   renderAutoBar();
+  renderSpectatorBar();
+  renderWatchers();
   renderPot();
   renderSeats();
   renderAction();
@@ -460,7 +481,7 @@ function renderAction() {
 
 function renderHand() {
   const hand = $("#hand");
-  if (state.phase === "lobby" || state.phase === "game_over") { hand.innerHTML = ""; return; }
+  if (iAmSpectator() || state.phase === "lobby" || state.phase === "game_over") { hand.innerHTML = ""; return; }
   if (state.handSize === 1) {
     hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div><span>SUA CARTA — TODO MUNDO VÊ, MENOS VOCÊ</span></div></div>`;
     return;

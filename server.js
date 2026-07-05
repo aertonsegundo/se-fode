@@ -34,7 +34,12 @@ function notice(socket, text) {
 }
 
 function activePlayers(room) {
-  return room.players.filter((player) => !player.eliminated);
+  return room.players.filter((player) => !player.eliminated && !player.spectator);
+}
+
+function seatedPlayers(room) {
+  // Quem ocupa cadeira na mesa (jogadores da partida, inclusive eliminados) — exclui só espectadores.
+  return room.players.filter((player) => !player.spectator);
 }
 
 function playerById(room, id) {
@@ -53,7 +58,8 @@ function sendSession(socket, room, player) {
 function transferHost(room) {
   const host = playerById(room, room.hostId);
   if (host?.connected) return;
-  const replacement = room.players.find((player) => !player.isBot && player.connected);
+  const replacement = room.players.find((player) => !player.isBot && player.connected && !player.spectator)
+    || room.players.find((player) => !player.isBot && player.connected);
   if (replacement) room.hostId = replacement.id;
 }
 
@@ -83,7 +89,7 @@ function publicState(room, viewerId) {
     pot: room.pot,
     botDifficulty: room.botDifficulty,
     solo: room.solo,
-    players: room.players.map((player) => ({
+    players: seatedPlayers(room).map((player) => ({
       id: player.id,
       name: player.name,
       lives: player.lives,
@@ -97,11 +103,17 @@ function publicState(room, viewerId) {
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
     })),
+    spectators: room.players.filter((player) => player.spectator).map((player) => ({
+      id: player.id,
+      name: player.name,
+      connected: player.connected,
+    })),
     me: viewer ? {
       id: viewer.id,
       name: viewer.name,
       hand: forehead ? [] : viewer.hand,
       hasForeheadCard: forehead && viewer.hand.length === 1,
+      spectator: Boolean(viewer.spectator),
     } : null,
     table: room.table,
     bidOrder: room.bidOrder,
@@ -281,7 +293,8 @@ function startRound(room) {
 }
 
 function startGame(room) {
-  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
+  // Espectadores que estavam esperando entram como jogadores de verdade nesta partida.
+  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, spectator: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
   room.handSize = 1;
   room.direction = 1;
   room.round = 0;
@@ -409,7 +422,7 @@ function nextRound(room) {
   let nextDealer = null;
   for (let offset = 1; offset <= room.players.length; offset += 1) {
     const candidate = room.players[(oldDealer + offset) % room.players.length];
-    if (!candidate.eliminated) { nextDealer = candidate; break; }
+    if (!candidate.eliminated && !candidate.spectator) { nextDealer = candidate; break; }
   }
   room.dealerId = nextDealer?.id || active[0].id;
   if (room.resetHand) {
@@ -489,12 +502,17 @@ io.on("connection", (socket) => {
     const room = rooms.get(code);
     if (!name) return notice(socket, "Digite seu nome.");
     if (!room) return notice(socket, "Sala não encontrada.");
-    if (room.phase !== "lobby") return notice(socket, "Essa partida já começou.");
     if (room.players.length >= 8) return notice(socket, "A sala já está cheia.");
     if (room.players.some((player) => player.name.toLowerCase() === name.toLowerCase())) return notice(socket, "Esse nome já está na mesa.");
     const player = createPlayer(socket, name);
+    // Partida rolando: entra como espectador e vira jogador na próxima partida.
+    // No lobby ou no fim de jogo, entra direto para a próxima partida.
+    const midGame = room.phase !== "lobby" && room.phase !== "game_over";
+    player.spectator = midGame;
     room.players.push(player);
     sendSession(socket, room, player);
+    transferHost(room);
+    notice(socket, midGame ? "Partida em andamento — você entrou como espectador e joga na próxima." : "Você entrou na sala.");
     broadcast(room);
   });
 
@@ -579,7 +597,8 @@ io.on("connection", (socket) => {
     player.connected = false;
     player.socketId = null;
     player.resumeToken = null; // saiu de propósito: não reconecta mais nesta sala
-    if (room.phase === "lobby" || room.phase === "game_over") {
+    if (room.phase === "lobby" || room.phase === "game_over" || player.spectator) {
+      // Espectador (ou saída fora de partida) apenas some — não estava jogando.
       room.players = room.players.filter((item) => item.id !== player.id);
     } else {
       player.auto = true; // saiu no meio: um bot assume a vaga rapidamente
@@ -611,9 +630,10 @@ io.on("connection", (socket) => {
     player.connected = false;
     player.socketId = null;
     transferHost(room);
-    if (room.phase === "lobby") {
+    if (room.phase === "lobby" || player.spectator) {
       player.disconnectTimer = setTimeout(() => {
-        if (player.connected || room.phase !== "lobby") return;
+        // Se reconectou, ou virou jogador ativo numa nova partida, mantém.
+        if (player.connected || (room.phase !== "lobby" && !player.spectator)) return;
         room.players = room.players.filter((item) => item.id !== player.id);
         transferHost(room);
         if (!room.players.length) rooms.delete(room.code);

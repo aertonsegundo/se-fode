@@ -225,6 +225,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .auto-bar { display:flex; align-items:center; justify-content:center; gap:.8rem; flex-wrap:wrap; background:#2c2a12; border:1px solid #d8ff4544; color:var(--acid); padding:.5rem .8rem; font-size:.8rem; font-weight:700; margin-top:.6rem; border-radius:8px; }
 .auto-bar button { border:0; background:var(--acid); color:var(--ink); font-weight:900; font-size:.7rem; letter-spacing:.05em; padding:.4rem .8rem; border-radius:6px; }
 .seat-tag.auto { background:#3b3a16; color:var(--acid); border:1px solid #d8ff4455; }
+.spectator-bar { display:flex; align-items:center; justify-content:center; text-align:center; gap:.8rem; flex-wrap:wrap; background:#122630; border:1px solid #5fd0ff44; color:#8fe0ff; padding:.5rem .8rem; font-size:.8rem; font-weight:700; margin-top:.6rem; border-radius:8px; }
+.watchers { text-align:center; padding:.1rem .5rem .3rem; color:#7fb8c9; font-size:.72rem; font-weight:700; letter-spacing:.02em; }
 
 .turn-timer { height:8px; background:#3a3931; border-radius:5px; overflow:hidden; margin-top:.9rem; }
 .turn-timer i { display:block; height:100%; width:100%; background:var(--acid); border-radius:5px; transition:width .15s linear; }
