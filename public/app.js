@@ -367,7 +367,7 @@ function renderSeats() {
         </div>
         ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
         ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
-        ${!player.connected ? '<div class="seat-tag off">RECONECTANDO</div>' : ""}
+        ${!player.connected ? (player.auto ? '<div class="seat-tag off">🤖 BOT NO LUGAR</div>' : '<div class="seat-tag off">RECONECTANDO</div>') : ""}
         ${player.auto && !player.isBot && player.connected && (state.phase === "bidding" || state.phase === "playing") ? '<div class="seat-tag auto">🤖 AUTO</div>' : ""}
       </div>`;
   }).join("");
@@ -470,7 +470,15 @@ function renderAction() {
     return;
   }
   if (state.phase === "game_over") {
-    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    // Bots e jogadores ausentes (que caíram ou saíram) que o dono pode tirar antes de recomeçar.
+    const removable = isHost()
+      ? state.players.filter((player) => player.id !== state.me?.id && (player.isBot || !player.connected || player.auto))
+      : [];
+    const kickHtml = removable.length
+      ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : "ausente"}</small></button>`).join("")}</div>`
+      : "";
+    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${kickHtml}${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);
     return;

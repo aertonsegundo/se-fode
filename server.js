@@ -221,6 +221,7 @@ function chooseBotCard(room, bot) {
 }
 
 const HUMAN_TURN_MS = 20000; // tempo do jogador online antes do modo automático assumir
+const RECONNECT_GRACE_MS = 15000; // tempo pra reconectar antes de um bot assumir a vaga de vez
 
 function playAutomatically(room, player) {
   if (room.turnId !== player.id || player.eliminated) return;
@@ -463,6 +464,7 @@ io.on("connection", (socket) => {
       room.botTimer = null;
       room.autoTurnId = null;
     }
+    player.auto = false; // voltou para a mesa: reassume o controle do bot
     sendSession(socket, room, player);
     transferHost(room);
     notice(socket, "Você voltou para a mesa.");
@@ -570,7 +572,29 @@ io.on("connection", (socket) => {
   socket.on("restart", () => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.phase !== "game_over" || socket.data.playerId !== room.hostId) return;
+    if (seatedPlayers(room).length < 2) return notice(socket, "Chame pelo menos mais uma pessoa pra recomeçar.");
     startGame(room);
+  });
+
+  // O dono da sala pode tirar da mesa bots e jogadores ausentes (que caíram ou saíram)
+  // ao fim da partida — antes disso não era possível e eles voltavam sozinhos no restart.
+  socket.on("remove-player", (targetId) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || socket.data.playerId !== room.hostId) return;
+    if (room.phase !== "game_over" && room.phase !== "lobby") return notice(socket, "Só dá pra tirar bots fora da partida.");
+    const target = playerById(room, String(targetId || ""));
+    if (!target || target.id === room.hostId) return;
+    if (!target.isBot && target.connected && !target.auto) return notice(socket, "Esse jogador ainda está na ativa.");
+    if (target.disconnectTimer) { clearTimeout(target.disconnectTimer); target.disconnectTimer = null; }
+    if (room.autoTurnId === target.id && room.botTimer) {
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.autoTurnId = null;
+    }
+    target.resumeToken = null; // removido de propósito: não reconecta mais nesta sala
+    room.players = room.players.filter((item) => item.id !== target.id);
+    transferHost(room);
+    broadcast(room);
   });
 
   socket.on("toggle-auto", (value) => {
@@ -630,8 +654,10 @@ io.on("connection", (socket) => {
     player.connected = false;
     player.socketId = null;
     transferHost(room);
+    if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
     if (room.phase === "lobby" || player.spectator) {
       player.disconnectTimer = setTimeout(() => {
+        player.disconnectTimer = null;
         // Se reconectou, ou virou jogador ativo numa nova partida, mantém.
         if (player.connected || (room.phase !== "lobby" && !player.spectator)) return;
         room.players = room.players.filter((item) => item.id !== player.id);
@@ -639,6 +665,15 @@ io.on("connection", (socket) => {
         if (!room.players.length) rooms.delete(room.code);
         else broadcast(room);
       }, 30000);
+    } else if (room.phase !== "game_over") {
+      // Caiu no meio da partida: dá um tempo pra reconectar; se não voltar, um bot assume
+      // a vaga de vez (deixa de ficar "reconectando" pendurado para sempre).
+      player.disconnectTimer = setTimeout(() => {
+        player.disconnectTimer = null;
+        if (player.connected || player.eliminated) return;
+        player.auto = true;
+        broadcast(room);
+      }, RECONNECT_GRACE_MS);
     }
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
