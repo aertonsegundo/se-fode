@@ -231,6 +231,18 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .kick-btn { display:flex; align-items:center; gap:.4rem; background:#3a1717; border:1px solid #ff6b6b55; color:#ff9d9d; font-weight:800; font-size:.78rem; padding:.45rem .7rem; border-radius:7px; text-align:left; }
 .kick-btn small { opacity:.7; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
 .kick-btn:hover { background:#4a1c1c; }
+.ranking { margin:.8rem 0; padding:.7rem .6rem; background:#1c1b12; border:1px solid #d8ff4522; border-radius:9px; }
+.rank-title { font-size:.7rem; font-weight:900; letter-spacing:.08em; color:var(--acid); margin-bottom:.5rem; }
+.rank-row { display:flex; align-items:center; gap:.5rem; padding:.28rem .3rem; border-radius:6px; font-size:.85rem; }
+.rank-row.mine { background:#2c2a12; }
+.rank-pos { width:1.6rem; text-align:center; font-weight:800; font-size:.82rem; }
+.rank-name { flex:1; font-weight:700; color:#ece7d6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rank-row.mine .rank-name { color:var(--acid); }
+.rank-wins { font-weight:900; color:#d4d0c4; font-size:.8rem; }
+.champion { display:flex; flex-direction:column; gap:.35rem; align-items:center; text-align:center; margin:.7rem 0; padding:.8rem; background:linear-gradient(135deg,#3a3410,#26240f); border:1px solid #ffd54a55; border-radius:11px; animation:champ-pop .45s ease; }
+.champion-name { font-size:1.15rem; font-weight:900; color:#ffe27a; letter-spacing:.02em; }
+.champion-streak { font-size:.82rem; font-weight:800; color:#ff9d6b; }
+@keyframes champ-pop { from { transform:scale(.85); opacity:0; } to { transform:scale(1); opacity:1; } }
 .watchers { text-align:center; padding:.1rem .5rem .3rem; color:#7fb8c9; font-size:.72rem; font-weight:700; letter-spacing:.02em; }
 
 .turn-timer { height:8px; background:#3a3931; border-radius:5px; overflow:hidden; margin-top:.9rem; }

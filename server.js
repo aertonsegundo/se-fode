@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
-const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡" };
+const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡", fepe: "🍾", victin: "😐" };
 
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
@@ -72,7 +72,17 @@ function orderedFrom(room, startId) {
 function publicState(room, viewerId) {
   const viewer = playerById(room, viewerId);
   const forehead = room.handSize === 1;
+  const ranking = rankingFrom(room.results);
+  const lastResult = room.phase === "game_over" && room.lastWinnerName
+    ? {
+        name: room.lastWinnerName,
+        streak: winStreak(room.results, room.lastWinnerName),
+        wins: ranking.find((entry) => entry.name === room.lastWinnerName)?.wins || 1,
+      }
+    : null;
   return {
+    ranking,
+    lastResult,
     code: room.code,
     phase: room.phase,
     hostId: room.hostId,
@@ -152,6 +162,8 @@ function newRoom(code, host) {
     resetHand: false,
     botDifficulty: "normal",
     solo: false,
+    results: [], // nomes dos vencedores, em ordem (partidas sem vencedor não entram)
+    lastWinnerName: null, // vencedor da última partida terminada (null se ninguém venceu)
     autoTurnId: null,
     cleanupTimer: null,
     revealTimer: null,
@@ -300,6 +312,7 @@ function startGame(room) {
   room.direction = 1;
   room.round = 0;
   room.resetHand = false;
+  room.lastWinnerName = null;
   room.history = [];
   room.dealerId = room.players[Math.floor(Math.random() * room.players.length)].id;
   startRound(room);
@@ -443,7 +456,21 @@ function endGame(room) {
   room.phase = "game_over";
   room.turnId = null;
   const winner = activePlayers(room)[0];
-  room.message = winner ? `${winner.name} sobreviveu. O resto se fodeu.` : "Todo mundo se fodeu. Impressionante.";
+  if (winner) {
+    // Só partidas COM vencedor entram no ranking da sala.
+    room.results.push(winner.name);
+    room.lastWinnerName = winner.name;
+    const streak = winStreak(room.results, winner.name);
+    const flair = streak >= 3
+      ? ` 👑 ${streak} PARTIDAS SEGUIDAS!`
+      : streak === 2
+        ? " 🔥 Duas seguidas!"
+        : "";
+    room.message = `${winner.name} sobreviveu. O resto se fodeu.${flair}`;
+  } else {
+    room.lastWinnerName = null; // ninguém venceu: não conta pro ranking
+    room.message = "Todo mundo se fodeu. Impressionante.";
+  }
   broadcast(room);
 }
 

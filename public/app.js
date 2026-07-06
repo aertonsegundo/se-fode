@@ -174,6 +174,8 @@ const EMOTE_LIST = [
   { key: "sorriso", emoji: "😁", title: "Sorrisão" },
   { key: "risada", emoji: "🤣", title: "Risada" },
   { key: "ideia", emoji: "💡", title: "Ideia" },
+  { key: "fepe", emoji: "🍾", title: "Fepe" },
+  { key: "victin", emoji: "😐", title: "Victin" },
 ];
 const EMOTE_EMOJI = Object.fromEntries(EMOTE_LIST.map((e) => [e.key, e.emoji]));
 let emoteCooldown = 0;
@@ -281,6 +283,42 @@ function renderAutoBar() {
   $("#take-control")?.addEventListener("click", () => socket.emit("toggle-auto", false));
 }
 
+function rankingHtml() {
+  const ranking = state.ranking || [];
+  if (!ranking.length) return "";
+  const rows = ranking.slice(0, 6).map((entry, index) => {
+    const medal = ["🥇", "🥈", "🥉"][index] || `${index + 1}º`;
+    const mine = entry.name === state.me?.name;
+    return `<div class="rank-row ${mine ? "mine" : ""}"><span class="rank-pos">${medal}</span><span class="rank-name">${escapeHtml(entry.name)}</span><span class="rank-wins">${entry.wins}🏆</span></div>`;
+  }).join("");
+  return `<div class="ranking"><div class="rank-title">🏆 RANKING DA SALA</div>${rows}</div>`;
+}
+
+let celebratedKey = null;
+function maybeCelebrate() {
+  const result = state.lastResult;
+  if (state.phase !== "game_over" || !result) { if (state.phase !== "game_over") celebratedKey = null; return; }
+  const key = `${result.name}:${result.wins}`;
+  if (key === celebratedKey) return;
+  celebratedKey = key;
+  showToast(result.streak >= 2 ? `🔥 ${result.name} venceu as últimas ${result.streak} partidas!` : `🏆 ${result.name} venceu!`);
+  const layer = $("#emote-layer");
+  const faces = ["🏆", "🎉", "👑", "✨", "🔥"];
+  for (let i = 0; i < 12; i += 1) {
+    const fly = document.createElement("div");
+    fly.className = "emote-fly";
+    fly.style.left = `${6 + Math.random() * 82}%`;
+    fly.style.setProperty("--drift", `${Math.random() * 90 - 45}px`);
+    fly.style.setProperty("--rot", `${Math.random() * 34 - 17}deg`);
+    const span = document.createElement("span");
+    span.className = "emote-emoji";
+    span.textContent = faces[i % faces.length];
+    fly.appendChild(span);
+    layer.appendChild(fly);
+    fly.addEventListener("animationend", () => fly.remove());
+  }
+}
+
 function renderSpectatorBar() {
   const bar = $("#spectator-bar");
   const watching = iAmSpectator();
@@ -315,6 +353,7 @@ function render() {
   renderAction();
   renderHand();
   maybeStartTurnClock();
+  maybeCelebrate();
   if (shouldAnimateDeal) {
     animatedRound = state.round;
     requestAnimationFrame(animateDeal);
@@ -424,7 +463,8 @@ function renderAction() {
           <a id="wa-share" class="wa" href="https://wa.me/?text=${waText}" target="_blank" rel="noopener">WHATSAPP</a>
         </div>
       </div>
-      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}`;
+      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}
+      ${rankingHtml()}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
     $("#share-url").onclick = (event) => event.target.select();
     $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast("Link copiado!"); };
@@ -477,7 +517,11 @@ function renderAction() {
     const kickHtml = removable.length
       ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : "ausente"}</small></button>`).join("")}</div>`
       : "";
-    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${kickHtml}${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    const lr = state.lastResult;
+    const championHtml = lr
+      ? `<div class="champion"><span class="champion-name">🏆 ${escapeHtml(lr.name)}</span>${lr.streak >= 2 ? `<span class="champion-streak">🔥 venceu as últimas ${lr.streak} partidas</span>` : lr.wins >= 3 ? `<span class="champion-streak">👑 ${lr.wins} vitórias na sala</span>` : ""}</div>`
+      : "";
+    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${rankingHtml()}${kickHtml}${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);

@@ -19,6 +19,8 @@ Nomes de arquivo esperados (exatamente estes):
   sorriso.png    -> 😁  (sorrisão)
   risada.png     -> 🤣  (risada)
   ideia.png      -> 💡  (ideia / lâmpada)
+  fepe.png       -> 🍾  (Fepe)
+  victin.png     -> 😐  (Victin)
 
 Depois de salvar os arquivos, recarregue a página (Cmd+Shift+R). As
 imagens passam a subir na tela no lugar dos emojis, automaticamente.

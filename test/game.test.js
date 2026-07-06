@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -92,6 +92,22 @@ test("o último apostador nunca pode fechar a soma no número de rodadas", () =>
   assert.deepEqual(validBidOptions(1, [1], true), [1]);
   assert.deepEqual(validBidOptions(3, [1, 0], true), [0, 1, 3]);
   assert.deepEqual(validBidOptions(1, [], false), [0, 1]);
+});
+
+test("ranking conta vitórias por nome, da maior para a menor", () => {
+  const results = ["Ana", "Bia", "Ana", "Ana", "Bia"];
+  assert.deepEqual(rankingFrom(results), [
+    { name: "Ana", wins: 3 },
+    { name: "Bia", wins: 2 },
+  ]);
+  assert.deepEqual(rankingFrom([]), []);
+});
+
+test("streak conta só as vitórias seguidas mais recentes do mesmo nome", () => {
+  assert.equal(winStreak(["Ana", "Ana", "Ana"], "Ana"), 3);
+  assert.equal(winStreak(["Bia", "Ana", "Ana"], "Ana"), 2);
+  assert.equal(winStreak(["Ana", "Ana", "Bia"], "Ana"), 0); // Bia venceu a última
+  assert.equal(winStreak([], "Ana"), 0);
 });
 
 test("bots espertos reconhecem o Zap como vitória", () => {

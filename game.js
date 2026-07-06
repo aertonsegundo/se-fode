@@ -109,3 +109,19 @@ export function validBidOptions(handSize, previousBids, isLast) {
   const total = previousBids.reduce((sum, bid) => sum + bid, 0);
   return options.filter((bid) => total + bid !== handSize);
 }
+
+// Quantas partidas seguidas (contando a mais recente) o mesmo nome venceu.
+export function winStreak(results, name) {
+  let streak = 0;
+  for (let i = results.length - 1; i >= 0 && results[i] === name; i -= 1) streak += 1;
+  return streak;
+}
+
+// Ranking da sala: nomes ordenados por número de vitórias (desempate alfabético).
+export function rankingFrom(results) {
+  const wins = {};
+  for (const name of results) wins[name] = (wins[name] || 0) + 1;
+  return Object.entries(wins)
+    .map(([name, count]) => ({ name, wins: count }))
+    .sort((a, b) => b.wins - a.wins || a.name.localeCompare(b.name));
+}
