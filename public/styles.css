@@ -45,7 +45,6 @@ button { cursor:pointer; }
 .player-row.disconnected { opacity:.55; }
 .avatar { width:1.8rem; height:1.8rem; display:grid; place-items:center; background:var(--blue); color:var(--ink); font-weight:900; transform:rotate(-3deg); }
 .hearts { color:var(--red); letter-spacing:-.15em; white-space:nowrap; }
-.hearts-compact { display:none; letter-spacing:0; }
 .bid-chip { font-size:.64rem; color:#aaa69a; }
 .bot-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:var(--acid); color:var(--ink); font-size:.5rem; letter-spacing:.08em; vertical-align:middle; }
 .offline-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:#6d6a62; color:white; font-size:.45rem; letter-spacing:.06em; vertical-align:middle; }
@@ -66,7 +65,8 @@ button { cursor:pointer; }
 .card { width:76px; height:110px; background:#faf7ed; color:#171713; border-radius:6px; border:1px solid #d4cfc0; box-shadow:3px 4px 0 #1115; display:flex; flex-direction:column; justify-content:space-between; padding:.42rem; font:1.25rem "Archivo Black"; text-align:left; position:relative; }
 .card.red { color:#e52e29; }
 .card .big-suit { font-size:2rem; align-self:center; line-height:1; }
-.card.manilha::after { content:"MANILHA"; position:absolute; right:-18px; top:44px; background:var(--acid); color:#171713; font:8px "DM Sans"; font-weight:900; padding:3px 5px; transform:rotate(90deg); }
+.card.manilha::after { content:"MANILHA"; position:absolute; top:50%; left:100%; transform:translate(-50%,-50%) rotate(90deg); background:var(--acid); color:#171713; font:8px/1 "DM Sans"; font-weight:900; padding:3px 5px; border-radius:3px; white-space:nowrap; letter-spacing:.03em; }
+.seat-card .card.manilha::after { font-size:5.5px; padding:2px 3px; letter-spacing:.01em; border-radius:2px; }
 .deal-animation { position:fixed; inset:0; pointer-events:none; z-index:25; overflow:hidden; }
 .deal-card { position:fixed; width:36px; height:52px; border:2px solid #f1eddf; border-radius:4px; opacity:0; background:repeating-linear-gradient(45deg,#d8ff45 0 4px,#171713 4px 8px); box-shadow:3px 4px 8px #0008; animation:deal-card .72s cubic-bezier(.2,.75,.25,1) var(--delay) forwards; }
 @keyframes deal-card {
@@ -88,6 +88,7 @@ button { cursor:pointer; }
 .fodeu-item.eliminated { opacity:.75; }
 .fodeu-item.eliminated span { color:var(--red); }
 .fodeu-none { color:var(--acid)!important; font-weight:700; }
+.bid-hand { display:none; }
 .bids { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; }
 .bids button { margin:0; box-shadow:none; padding:.7rem .2rem; }
 .hand { min-height:150px; padding-top:1.5rem; display:flex; justify-content:center; align-items:flex-end; }
@@ -134,8 +135,13 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .game[data-phase="round_end"] .felt-wrap,
   .game[data-phase="game_over"] .felt-wrap { order:2; }
   .round-label { display:none; }
-  .game-top { grid-template-columns:1fr auto; }
-  .room-code { justify-self:end; }
+  .game { padding:.65rem 1rem 1rem; }
+  /* Barra superior compacta: marca | código da sala | SAIR na mesma linha. */
+  .game-top { grid-template-columns:1fr auto auto; gap:.55rem; padding-bottom:.5rem; }
+  .mini-brand { font-size:1.3rem; }
+  .room-code { justify-self:end; font-size:.6rem; }
+  .top-right { gap:.5rem; }
+  .leave-btn { padding:.32rem .6rem; font-size:.58rem; }
   .card { width:65px; height:94px; }
 }
 
@@ -189,36 +195,74 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .melada-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%) rotate(-6deg); background:var(--red); color:#fff; font:.52rem "Archivo Black"; letter-spacing:.05em; padding:.1rem .38rem; border-radius:3px; z-index:3; white-space:nowrap; box-shadow:0 2px 5px #0007; }
 .forehead-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%); background:#171713; color:var(--acid); font-size:.5rem; font-weight:800; letter-spacing:.08em; padding:.08rem .3rem; border-radius:3px; z-index:2; white-space:nowrap; }
 @keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
-.mystery-card { background:#27251f; color:var(--acid); display:grid; place-items:center; font:2rem "Archivo Black"; }
+.mystery-card { background:#27251f; color:var(--acid); display:grid; place-items:center; place-content:center; font:2rem "Archivo Black"; }
 @media (prefers-reduced-motion:reduce) { .seat.turn .turn-flag,.seat-card.winning .card { animation:none; } }
 
 @media (max-width:850px) {
   .game-layout { grid-template-columns:1fr; gap:1rem; }
   .table-stage { order:1; }
   .action-panel { order:2; }
-  .poker { max-width:400px; aspect-ratio:6/6; --seat-rx:34%; --seat-ry:47%; --card-rx:19%; --card-ry:27%; }
-  .seat { width:108px; min-height:58px; padding:.38rem .45rem; border-radius:11px; }
-  .seat-tag { font-size:.46rem; line-height:1.1; padding:.12rem .22rem; }
-  .seat-body { grid-template-columns:1.55rem minmax(0,1fr); gap:.38rem; }
-  .seat .avatar { width:1.55rem; height:1.55rem; font-size:.72rem; }
-  .seat-info b { font-size:.66rem; max-width:100%; }
-  .seat-meta { font-size:.55rem; line-height:1.18; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .seat .hearts { font-size:.72rem; letter-spacing:0; line-height:1; max-width:100%; overflow:hidden; }
-  .seat .hearts-full { display:none; }
-  .seat .hearts-compact { display:inline; font-weight:900; }
-  .seat-card .card { width:46px; height:66px; font-size:.78rem; }
+  .poker { max-width:440px; aspect-ratio:5/6; --seat-rx:37%; --seat-ry:45%; --card-rx:20%; --card-ry:25%; }
+  .seat { width:98px; padding:.4rem .45rem; border-radius:11px; }
+  /* No mobile, encosta as manilhas à esquerda e empilha rótulo/símbolos: assim
+     saem de baixo do assento do jogador do topo (que fica no centro). */
+  .manilhas-fixas { text-align:left; margin:0 0 .15rem .1rem; line-height:1.35; }
+  .manilhas-fixas span { display:block; margin:0 0 .05rem; }
+  .seat-tag { font-size:.52rem; }
+  .seat-body { grid-template-columns:1.7rem 1fr; gap:.4rem; }
+  .seat .avatar { width:1.7rem; height:1.7rem; font-size:.8rem; }
+  .seat-info b { font-size:.72rem; }
+  .seat-meta { font-size:.62rem; }
+  .seat .hearts { font-size:.62rem; letter-spacing:-.05em; }
+  .seat-card .card { width:44px; height:64px; font-size:.76rem; }
+  /* "QUEM SE FODEU" (fim da mão) e "FIM DE JOGO" viram um modal centralizado sobre
+     a tela: flutuam acima da mesa, com fundo escurecido, sem empurrar os componentes. */
+  .game[data-phase="round_end"]::after,
+  .game[data-phase="game_over"]::after {
+    content:""; position:fixed; inset:0; background:#000b; z-index:30; animation:fade-in .2s ease;
+  }
   .game[data-phase="round_end"] .action-panel,
-  .game[data-phase="game_over"] .action-panel { order:0; padding:1rem; background:#24231f; border:1px solid #45433c; }
-  .game[data-phase="round_end"] .table-stage,
-  .game[data-phase="game_over"] .table-stage { order:1; }
-}
+  .game[data-phase="game_over"] .action-panel {
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:31;
+    width:min(400px, calc(100vw - 2rem)); max-height:calc(100dvh - 2rem); overflow-y:auto;
+    margin:0; padding:1.4rem 1.3rem; background:#24231f; border:1px solid #45433c;
+    border-radius:16px; box-shadow:0 20px 60px #000d; text-align:center;
+    animation:modal-pop .22s ease;
+  }
+  .game[data-phase="round_end"] .action-panel button,
+  .game[data-phase="game_over"] .action-panel button { width:100%; }
 
-@media (max-width:430px) {
-  .poker { --seat-rx:33%; --seat-ry:46%; }
-  .seat { width:102px; padding:.34rem .4rem; }
-  .seat-info b { font-size:.62rem; }
-  .seat-meta { font-size:.52rem; }
-  .seat .hearts { font-size:.64rem; }
+  /* Minha vez de apostar (ou jogar no escuro): painel vira um bottom-sheet fixo,
+     sobre a mesa, para não obrigar a rolar a tela até o fim. */
+  .game[data-acting="1"] .action-panel {
+    position:fixed; left:0; right:0; bottom:0; z-index:29; margin:0; order:0;
+    padding:1rem 1.1rem calc(1.15rem + env(safe-area-inset-bottom, 0px));
+    background:#1b1a16; border-top:2px solid var(--acid); border-radius:18px 18px 0 0;
+    box-shadow:0 -12px 34px #000b; text-align:center; animation:sheet-up .22s ease;
+  }
+  .game[data-acting="1"] .action-panel .panel-title { margin-bottom:.35rem; }
+  .game[data-acting="1"] .action-panel h3 { font-size:1.75rem; margin:.1rem 0 .45rem; }
+  .game[data-acting="1"] .action-panel p { font-size:.82rem; }
+  .game[data-acting="1"] .bids { grid-template-columns:repeat(4,1fr); gap:.45rem; margin-top:.6rem; }
+  .game[data-acting="1"] .bids button { padding:.95rem .2rem; font-size:1.15rem; }
+  .game[data-acting="1"] .bid-hand { display:flex; justify-content:center; align-items:flex-end; margin:.1rem 0 .2rem; }
+  .game[data-acting="1"] .bid-hand .card { width:52px; height:74px; font-size:.85rem; padding:.32rem; margin-left:-12px; box-shadow:2px 3px 0 #1115; }
+  .game[data-acting="1"] .bid-hand .card:first-child { margin-left:0; }
+  .game[data-acting="1"] .bid-hand .card .big-suit { font-size:1.3rem; }
+  /* Enquanto o sheet está aberto, tira as figurinhas e o chat da frente. */
+  .game[data-acting="1"] #emote-bar,
+  .game[data-acting="1"] #emote-toggle,
+  .game[data-acting="1"] .chat-toggle { display:none !important; }
+}
+@keyframes sheet-up { from { transform:translateY(100%); } to { transform:translateY(0); } }
+@keyframes modal-pop { from { transform:translate(-50%,-50%) scale(.9); opacity:0; } to { transform:translate(-50%,-50%) scale(1); opacity:1; } }
+@keyframes fade-in { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion:reduce) {
+  .game[data-acting="1"] .action-panel,
+  .game[data-phase="round_end"] .action-panel,
+  .game[data-phase="game_over"] .action-panel,
+  .game[data-phase="round_end"]::after,
+  .game[data-phase="game_over"]::after { animation:none; }
 }
 
 /* ===== Sair, compartilhar sala, modo automático e relógio de turno ===== */
@@ -263,11 +307,16 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .turn-timer i.low { background:var(--red); }
 .turn-hint { display:block; color:#aaa69a; font-size:.68rem; margin-top:.35rem; }
 
-/* ===== Chat da sala ===== */
-.chat-toggle { position:fixed; left:1.2rem; bottom:1.2rem; z-index:28; width:3.2rem; height:3.2rem; border:0; border-radius:50%; background:var(--acid); color:var(--ink); font-size:1.4rem; box-shadow:0 6px 16px #0007; display:grid; place-items:center; }
-.chat-toggle.active { background:#2a2820; box-shadow:0 0 0 2px var(--acid); }
+/* ===== Botões flutuantes (figurinhas em cima, chat embaixo), no canto esquerdo ===== */
+.fab { position:fixed; left:1.1rem; z-index:28; width:3.2rem; height:3.2rem; border:0; border-radius:50%; background:var(--acid); color:var(--ink); font-size:1.4rem; box-shadow:0 6px 16px #0007; display:grid; place-items:center; transition:transform .12s; }
+.fab:active { transform:scale(.92); }
+.fab.active { background:#2a2820; color:var(--paper); box-shadow:0 0 0 2px var(--acid); }
+.emote-toggle { bottom:4.7rem; }
+.chat-toggle { bottom:1.1rem; }
 .chat-badge { position:absolute; top:-3px; right:-3px; min-width:1.15rem; height:1.15rem; padding:0 .25rem; border-radius:1rem; background:var(--red); color:#fff; font-size:.62rem; font-weight:800; display:grid; place-items:center; }
-.chat { position:fixed; left:1.2rem; bottom:5.4rem; z-index:28; width:min(320px, calc(100vw - 2.4rem)); height:min(420px, 60vh); display:flex; flex-direction:column; background:#1c1b17; border:1px solid #45433c; border-radius:12px; box-shadow:0 16px 40px #000a; overflow:hidden; }
+
+/* ===== Chat da sala ===== */
+.chat { position:fixed; left:1.1rem; bottom:8.4rem; z-index:29; width:min(320px, calc(100vw - 2.2rem)); height:min(420px, 55vh); display:flex; flex-direction:column; background:#1c1b17; border:1px solid #45433c; border-radius:12px; box-shadow:0 16px 40px #000a; overflow:hidden; }
 .chat-head { display:flex; align-items:center; justify-content:space-between; padding:.6rem .85rem; background:#24231f; border-bottom:1px solid #3a3931; font-size:.68rem; letter-spacing:.12em; }
 .chat-head button { border:0; background:none; color:#aaa69a; font-size:1.4rem; line-height:1; cursor:pointer; }
 .chat-log { flex:1; overflow-y:auto; padding:.7rem; display:flex; flex-direction:column; gap:.5rem; }
@@ -282,11 +331,11 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .chat-form input { flex:1; min-width:0; border:1px solid #4a483f; background:#141310; color:var(--paper); padding:.5rem .6rem; border-radius:8px; font-size:.85rem; outline:none; }
 .chat-form input:focus { border-color:var(--acid); }
 .chat-form button { border:0; background:var(--acid); color:var(--ink); font-weight:900; padding:0 .9rem; border-radius:8px; font-size:1rem; cursor:pointer; }
-@media (max-width:850px) { .chat-toggle { left:.9rem; bottom:.9rem; } .chat { left:.9rem; bottom:5rem; } }
+@media (max-width:850px) { .fab { left:.9rem; } .emote-toggle { bottom:4.4rem; } .chat-toggle { bottom:.9rem; } .chat { left:.9rem; bottom:8rem; width:min(320px, calc(100vw - 1.8rem)); } }
 
 /* ===== Emotes ===== */
-.emote-toggle { display:none; }
-.emote-bar { position:fixed; left:5.2rem; bottom:1.5rem; z-index:28; display:flex; gap:.25rem; background:#1c1b17dd; border:1px solid #45433c; border-radius:2rem; padding:.28rem .4rem; box-shadow:0 6px 16px #0007; max-width:calc(100vw - 6.6rem); }
+/* A barra abre à direita do ícone flutuante das figurinhas (que fica na borda esquerda). */
+.emote-bar { position:fixed; left:5rem; bottom:4.7rem; z-index:28; display:flex; flex-wrap:wrap; justify-content:flex-start; gap:.25rem; background:#1c1b17f2; border:1px solid #45433c; border-radius:1.4rem; padding:.3rem .4rem; box-shadow:0 8px 22px #0009; max-width:min(24rem, calc(100vw - 6.6rem)); }
 .emote-bar button { border:0; background:none; font-size:1.3rem; line-height:1; width:2.1rem; height:2.1rem; border-radius:50%; cursor:pointer; transition:transform .12s, background .12s; }
 .emote-bar button:hover { transform:scale(1.25); background:#ffffff14; }
 .emote-bar button:active { transform:scale(.9); }
@@ -304,48 +353,4 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
   100% { opacity:0; transform:translate(var(--drift), -74vh) rotate(var(--rot)) scale(.85); }
 }
 @media (prefers-reduced-motion:reduce) { .emote-fly { animation-duration:1.4s; } }
-@media (max-width:850px), (pointer:coarse) {
-  .emote-toggle {
-    position:fixed;
-    right:.85rem;
-    bottom:calc(.9rem + env(safe-area-inset-bottom, 0px));
-    z-index:29;
-    width:3.1rem;
-    height:3.1rem;
-    display:grid;
-    place-items:center;
-    border:0;
-    border-radius:50%;
-    background:var(--acid);
-    color:var(--ink);
-    font-size:1.35rem;
-    box-shadow:0 6px 16px #0008;
-  }
-  body.emotes-open .emote-toggle { background:#27251f; box-shadow:0 0 0 2px var(--acid),0 6px 16px #0008; }
-  .emote-bar {
-    display:none;
-    left:auto;
-    right:.75rem;
-    bottom:calc(4.45rem + env(safe-area-inset-bottom, 0px));
-    max-width:none;
-    max-height:min(46vh, 19rem);
-    flex-direction:column;
-    justify-content:flex-start;
-    overflow-y:auto;
-    overscroll-behavior:contain;
-    gap:.12rem;
-    padding:.24rem;
-    border-radius:1.6rem;
-    background:#1c1b17f2;
-    scrollbar-width:none;
-  }
-  body.emotes-open .emote-bar:not(.hidden) { display:flex!important; }
-  .emote-bar::-webkit-scrollbar { display:none; }
-  .emote-bar button { width:2rem; height:2rem; font-size:1.08rem; flex:0 0 auto; }
-  .emote-bar button img.emote-btn-media { width:1.45rem; height:1.45rem; }
-  .emote-bar button span.emote-btn-media { font-size:1.08rem; }
-  .emote-fly { bottom:22%; }
-  .emote-emoji { font-size:3.7rem; }
-  img.emote-emoji { width:3.9rem; height:3.9rem; }
-  .emote-who { font-size:.52rem; }
-}
+@media (max-width:850px) { .emote-bar { left:4.2rem; bottom:4.4rem; max-width:calc(100vw - 5.4rem); } .emote-bar button { width:1.95rem; height:1.95rem; font-size:1.2rem; } }

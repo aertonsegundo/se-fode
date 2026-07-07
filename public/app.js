@@ -127,11 +127,20 @@ function setChatOpen(open) {
   $("#chat").classList.toggle("hidden", !open);
   $("#chat-toggle").classList.toggle("active", open);
   if (open) {
+    setEmoteOpen(false); // abre um de cada vez
     chatUnread = 0;
     chatBadge.classList.add("hidden");
     chatLog.scrollTop = chatLog.scrollHeight;
     $("#chat-input").focus();
   }
+}
+
+let emoteOpen = false;
+function setEmoteOpen(open) {
+  emoteOpen = open;
+  $("#emote-bar").classList.toggle("hidden", !open);
+  $("#emote-toggle").classList.toggle("active", open);
+  if (open) setChatOpen(false); // abre um de cada vez
 }
 
 socket.on("chat-history", (list) => {
@@ -152,6 +161,7 @@ socket.on("chat", (message) => {
 
 $("#chat-toggle").onclick = () => setChatOpen(!chatOpen);
 $("#chat-close").onclick = () => setChatOpen(false);
+$("#emote-toggle").onclick = () => setEmoteOpen(!emoteOpen);
 $("#chat-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const input = $("#chat-input");
@@ -207,18 +217,11 @@ function buildEmoteBar() {
       if (now - emoteCooldown < 400) return; // evita spam
       emoteCooldown = now;
       socket.emit("emote", key);
-      if (window.matchMedia("(max-width: 850px), (pointer: coarse)").matches) {
-        document.body.classList.remove("emotes-open");
-      }
     };
     bar.appendChild(button);
   }
 }
 buildEmoteBar();
-
-$("#emote-toggle").onclick = () => {
-  document.body.classList.toggle("emotes-open");
-};
 
 socket.on("emote", (payload) => spawnEmote(payload));
 
@@ -347,12 +350,16 @@ function renderWatchers() {
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
+  // Minha vez de decidir sem cartas para clicar (aposta, ou jogar carta única no escuro):
+  // o painel vira um modal/bottom-sheet no mobile em vez de ficar lá embaixo.
+  const actingNow = state.turnId === state.me?.id
+    && (state.phase === "bidding" || (state.phase === "playing" && state.handSize === 1));
+  game.dataset.acting = actingNow ? "1" : "";
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
   $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
-  $("#emote-bar").classList.remove("hidden"); // emotes valem também no solo (offline)
-  $("#emote-toggle").classList.remove("hidden");
+  $("#emote-toggle").classList.remove("hidden"); // figurinhas valem também no solo (offline)
   renderAutoBar();
   renderSpectatorBar();
   renderWatchers();
@@ -399,9 +406,6 @@ function renderSeats() {
     const meta = player.bid == null
       ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
       : `aposta ${player.bid} · fez ${player.wins}`;
-    const lives = player.lives > 0
-      ? `<span class="hearts-full">${"♥".repeat(player.lives)}</span><span class="hearts-compact">♥×${player.lives}</span>`
-      : "×";
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
@@ -412,7 +416,7 @@ function renderSeats() {
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
-            <div class="hearts" title="${player.lives} vidas">${lives}</div>
+            <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
           </div>
         </div>
         ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
@@ -483,7 +487,12 @@ function renderAction() {
   }
   if (state.phase === "bidding" && state.turnId === state.me.id) {
     const isLast = state.bidOrder.at(-1) === state.me.id;
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p><div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
+    // Quando o painel vira sheet no mobile, ele cobre a mão — então mostramos as
+    // cartas aqui dentro para o jogador apostar vendo o que tem (só faz sentido com 2+).
+    const handPreview = state.handSize > 1
+      ? `<div class="bid-hand">${[...state.me.hand].sort((a, b) => cardStrength(a) - cardStrength(b)).map((card) => cardHtml(card)).join("")}</div>`
+      : "";
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p>${handPreview}<div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
@@ -522,7 +531,8 @@ function renderAction() {
   }
   if (state.phase === "game_over") {
     // Bots e jogadores ausentes (que caíram ou saíram) que o dono pode tirar antes de recomeçar.
-    const removable = isHost()
+    // No modo solo (offline) não faz sentido tirar bots — só vale em salas online.
+    const removable = (isHost() && !state.solo)
       ? state.players.filter((player) => player.id !== state.me?.id && (player.isBot || !player.connected || player.auto))
       : [];
     const kickHtml = removable.length
@@ -546,7 +556,7 @@ function renderHand() {
   const hand = $("#hand");
   if (iAmSpectator() || state.phase === "lobby" || state.phase === "game_over") { hand.innerHTML = ""; return; }
   if (state.handSize === 1) {
-    hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div><span>SUA CARTA — TODO MUNDO VÊ, MENOS VOCÊ</span></div></div>`;
+    hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div></div></div>`;
     return;
   }
   // Mão organizada por força: mais fraca à esquerda, mais forte à direita.
