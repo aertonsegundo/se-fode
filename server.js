@@ -15,7 +15,14 @@ const STARTING_LIVES = 5;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
 const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡", fepe: "🍾", victin: "😐", chico: "🤠", muriloejp: "👬", rtn: "🫡" };
 
-app.use(express.static(path.join(__dirname, "public")));
+// Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
+// deploy nunca fica preso numa versao antiga em cache no cliente.
+app.use(express.static(path.join(__dirname, "public"), {
+  etag: true,
+  setHeaders: (res, filePath) => {
+    if (/\.(html|css|js)$/.test(filePath)) res.setHeader("Cache-Control", "no-cache");
+  },
+}));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 
 const cleanName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);

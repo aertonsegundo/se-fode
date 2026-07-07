@@ -2,12 +2,12 @@
 
 :root { --ink:#171713; --paper:#f1eddf; --red:#ff3b30; --acid:#d8ff45; --blue:#7aa7ff; }
 * { box-sizing:border-box; }
-body { margin:0; min-height:100vh; background:var(--ink); color:var(--paper); font-family:"DM Sans",sans-serif; }
+body { margin:0; min-height:100vh; min-height:100dvh; background:var(--ink); color:var(--paper); font-family:"DM Sans",sans-serif; }
 button,input,select { font:inherit; }
 button { cursor:pointer; }
 .noise { position:fixed; inset:0; pointer-events:none; opacity:.08; z-index:10; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E"); }
 .hidden { display:none!important; }
-.home { min-height:100vh; display:grid; grid-template-columns:1.3fr .7fr; gap:8vw; align-items:center; padding:6vw 8vw; position:relative; overflow:hidden; }
+.home { min-height:100vh; min-height:100dvh; display:grid; grid-template-columns:1.3fr .7fr; gap:8vw; align-items:center; padding:6vw 8vw; position:relative; overflow:hidden; }
 .home::after { content:"♣"; position:absolute; right:-7vw; bottom:-22vw; font:60vw/1 "Archivo Black"; color:#211f1b; z-index:-1; transform:rotate(12deg); }
 .kicker { font-size:.72rem; font-weight:700; letter-spacing:.22em; color:var(--acid); }
 .brand h1 { font:clamp(6rem,14vw,12rem)/.73 "Archivo Black"; letter-spacing:-.1em; margin:.18em 0 .2em -.08em; transform:skew(-5deg); }
@@ -29,7 +29,7 @@ button { cursor:pointer; }
 .or { text-align:center; margin:1.25rem 0; border-top:1px solid #bcb7aa; height:1px; }
 .or span { background:var(--paper); position:relative; top:-.65em; padding:0 .8rem; font-size:.6rem; letter-spacing:.1em; }
 .rules-link { position:absolute; left:8vw; bottom:2rem; border:0; border-bottom:1px solid; color:var(--paper); background:none; padding:.4rem 0; font-weight:700; font-size:.72rem; letter-spacing:.12em; }
-.game { min-height:100vh; padding:1.2rem 2rem 2rem; }
+.game { min-height:100vh; min-height:100dvh; padding:1.2rem 2rem 2rem; }
 .game-top { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; border-bottom:1px solid #48463f; padding-bottom:.8rem; }
 .mini-brand { color:var(--paper); font:1.8rem "Archivo Black"; text-decoration:none; letter-spacing:-.08em; }
 .room-code { font-size:.65rem; letter-spacing:.15em; color:#aaa69a; }
@@ -136,6 +136,7 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .game[data-phase="game_over"] .felt-wrap { order:2; }
   .round-label { display:none; }
   .game { padding:.65rem 1rem 1rem; }
+  .status { min-height:0; padding:.6rem .5rem .4rem; font-size:.82rem; }
   /* Barra superior compacta: marca | código da sala | SAIR na mesma linha. */
   .game-top { grid-template-columns:1fr auto auto; gap:.55rem; padding-bottom:.5rem; }
   .mini-brand { font-size:1.3rem; }
@@ -213,8 +214,9 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .seat .avatar { width:1.7rem; height:1.7rem; font-size:.8rem; }
   .seat-info b { font-size:.72rem; }
   .seat-meta { font-size:.62rem; }
-  .seat .hearts { font-size:.62rem; letter-spacing:-.05em; }
-  .seat-card .card { width:44px; height:64px; font-size:.76rem; }
+  .seat .hearts { font-size:.55rem; letter-spacing:-.06em; }
+  .seat-card .card { width:44px; height:64px; font-size:.72rem; padding:.28rem; }
+  .seat-card .card .big-suit { font-size:1.15rem; }
   /* "QUEM SE FODEU" (fim da mão) e "FIM DE JOGO" viram um modal centralizado sobre
      a tela: flutuam acima da mesa, com fundo escurecido, sem empurrar os componentes. */
   .game[data-phase="round_end"]::after,
