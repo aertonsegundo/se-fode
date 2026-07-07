@@ -186,6 +186,9 @@ const EMOTE_LIST = [
   { key: "ideia", emoji: "💡", title: "Ideia" },
   { key: "fepe", emoji: "🍾", title: "Fepe" },
   { key: "victin", emoji: "😐", title: "Victin" },
+  { key: "chico", emoji: "🤠", title: "Chico" },
+  { key: "muriloejp", emoji: "👬", title: "Murilo e JP" },
+  { key: "rtn", emoji: "🫡", title: "RTN" },
 ];
 const EMOTE_EMOJI = Object.fromEntries(EMOTE_LIST.map((e) => [e.key, e.emoji]));
 let emoteCooldown = 0;
