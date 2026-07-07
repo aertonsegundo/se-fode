@@ -207,11 +207,18 @@ function buildEmoteBar() {
       if (now - emoteCooldown < 400) return; // evita spam
       emoteCooldown = now;
       socket.emit("emote", key);
+      if (window.matchMedia("(max-width: 850px), (pointer: coarse)").matches) {
+        document.body.classList.remove("emotes-open");
+      }
     };
     bar.appendChild(button);
   }
 }
 buildEmoteBar();
+
+$("#emote-toggle").onclick = () => {
+  document.body.classList.toggle("emotes-open");
+};
 
 socket.on("emote", (payload) => spawnEmote(payload));
 
@@ -345,6 +352,7 @@ function render() {
   $("#status").textContent = state.message;
   $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
   $("#emote-bar").classList.remove("hidden"); // emotes valem também no solo (offline)
+  $("#emote-toggle").classList.remove("hidden");
   renderAutoBar();
   renderSpectatorBar();
   renderWatchers();
@@ -391,6 +399,9 @@ function renderSeats() {
     const meta = player.bid == null
       ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
       : `aposta ${player.bid} · fez ${player.wins}`;
+    const lives = player.lives > 0
+      ? `<span class="hearts-full">${"♥".repeat(player.lives)}</span><span class="hearts-compact">♥×${player.lives}</span>`
+      : "×";
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
@@ -401,7 +412,7 @@ function renderSeats() {
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
-            <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
+            <div class="hearts" title="${player.lives} vidas">${lives}</div>
           </div>
         </div>
         ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
