@@ -125,3 +125,27 @@ export function rankingFrom(results) {
     .map(([name, count]) => ({ name, wins: count }))
     .sort((a, b) => b.wins - a.wins || a.name.localeCompare(b.name));
 }
+
+// Classificação de UMA partida: quem sobrevive fica em primeiro; entre os
+// eliminados, quem caiu por último fica acima. Empates na mesma mão usam as
+// vidas restantes como desempate, para a tabela continuar legível.
+export function finalStandingsFrom(players) {
+  const seated = players.filter((player) => !player.spectator);
+  const survivors = seated
+    .filter((player) => !player.eliminated)
+    .sort((a, b) => b.lives - a.lives || a.name.localeCompare(b.name, "pt-BR"));
+  const eliminated = seated
+    .filter((player) => player.eliminated)
+    .sort((a, b) => (b.eliminatedAtRound ?? -1) - (a.eliminatedAtRound ?? -1)
+      || b.lives - a.lives
+      || a.name.localeCompare(b.name, "pt-BR"));
+
+  return [...survivors, ...eliminated].map((player, index) => ({
+    position: index + 1,
+    id: player.id,
+    name: player.name,
+    lives: Math.max(0, player.lives),
+    survived: !player.eliminated,
+    eliminatedAtRound: player.eliminatedAtRound ?? null,
+  }));
+}

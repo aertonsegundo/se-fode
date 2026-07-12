@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -101,6 +101,21 @@ test("ranking conta vitórias por nome, da maior para a menor", () => {
     { name: "Bia", wins: 2 },
   ]);
   assert.deepEqual(rankingFrom([]), []);
+});
+
+test("classificação final põe sobrevivente primeiro e o último eliminado acima", () => {
+  const standings = finalStandingsFrom([
+    { id: "ana", name: "Ana", lives: 3, eliminated: false },
+    { id: "bia", name: "Bia", lives: 0, eliminated: true, eliminatedAtRound: 2 },
+    { id: "caio", name: "Caio", lives: 0, eliminated: true, eliminatedAtRound: 5 },
+    { id: "duda", name: "Duda", lives: -1, eliminated: true, eliminatedAtRound: 3 },
+  ]);
+  assert.deepEqual(standings.map(({ name, position, survived, eliminatedAtRound }) => ({ name, position, survived, eliminatedAtRound })), [
+    { name: "Ana", position: 1, survived: true, eliminatedAtRound: null },
+    { name: "Caio", position: 2, survived: false, eliminatedAtRound: 5 },
+    { name: "Duda", position: 3, survived: false, eliminatedAtRound: 3 },
+    { name: "Bia", position: 4, survived: false, eliminatedAtRound: 2 },
+  ]);
 });
 
 test("streak conta só as vitórias seguidas mais recentes do mesmo nome", () => {

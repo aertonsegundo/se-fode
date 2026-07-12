@@ -307,6 +307,20 @@ function rankingHtml() {
   return `<div class="ranking"><div class="rank-title">🏆 RANKING DA SALA</div>${rows}</div>`;
 }
 
+function matchStandingsHtml() {
+  const standings = state.matchStandings || [];
+  if (!standings.length) return "";
+  const rows = standings.map((entry) => {
+    const position = entry.survived && entry.position === 1 ? "🥇" : `${entry.position}º`;
+    const detail = entry.survived
+      ? `SOBREVIVEU · ${entry.lives} vida${entry.lives === 1 ? "" : "s"}`
+      : `ELIMINADO NA MÃO ${entry.eliminatedAtRound}`;
+    const mine = entry.id === state.me?.id;
+    return `<div class="match-rank-row ${entry.survived ? "survivor" : ""} ${mine ? "mine" : ""}"><span class="match-rank-pos">${position}</span><span class="match-rank-name">${escapeHtml(entry.name)}</span><span class="match-rank-detail">${detail}</span></div>`;
+  }).join("");
+  return `<section class="match-ranking"><div class="match-rank-title">CLASSIFICAÇÃO DA PARTIDA</div>${rows}</section>`;
+}
+
 let celebratedKey = null;
 function maybeCelebrate() {
   const result = state.lastResult;
@@ -545,7 +559,7 @@ function renderAction() {
     const championHtml = lr
       ? `<div class="champion"><span class="champion-name">🏆 ${escapeHtml(lr.name)}</span>${lr.streak >= 2 ? `<span class="champion-streak">🔥 venceu as últimas ${lr.streak} partidas</span>` : lr.wins >= 3 ? `<span class="champion-streak">👑 ${lr.wins} vitórias na sala</span>` : ""}</div>`
       : "";
-    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${rankingHtml()}${kickHtml}${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchStandingsHtml()}${rankingHtml()}${kickHtml}${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);

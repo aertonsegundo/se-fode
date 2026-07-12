@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -89,6 +89,7 @@ function publicState(room, viewerId) {
     : null;
   return {
     ranking,
+    matchStandings: room.phase === "game_over" ? finalStandingsFrom(seatedPlayers(room)) : [],
     lastResult,
     code: room.code,
     phase: room.phase,
@@ -179,11 +180,11 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, auto: false, hand: [] };
+  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, hand: [] };
 }
 
 function createBot(code, index) {
-  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, connected: true, isBot: true, hand: [] };
+  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, isBot: true, hand: [] };
 }
 
 function validBids(room, playerId) {
@@ -314,7 +315,7 @@ function startRound(room) {
 
 function startGame(room) {
   // Espectadores que estavam esperando entram como jogadores de verdade nesta partida.
-  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, spectator: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
+  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, eliminatedAtRound: null, spectator: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
   room.handSize = 1;
   room.direction = 1;
   room.round = 0;
@@ -419,7 +420,10 @@ function scoreRound(room) {
     const lost = Math.abs(player.bid - player.wins);
     player.lives -= lost;
     player.roundLoss = lost;
-    if (player.lives <= 0) player.eliminated = true;
+    if (player.lives <= 0) {
+      player.eliminated = true;
+      player.eliminatedAtRound = room.round;
+    }
     if (lost > 0) losers.push({ id: player.id, name: player.name, lost, eliminated: player.eliminated });
     results.push(`${player.name}: apostou ${player.bid}, fez ${player.wins}${lost ? ` e perdeu ${lost} vida${lost > 1 ? "s" : ""}` : " — cravou"}`);
   }

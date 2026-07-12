@@ -303,6 +303,15 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .rank-name { flex:1; font-weight:700; color:#ece7d6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rank-row.mine .rank-name { color:var(--acid); }
 .rank-wins { font-weight:900; color:#d4d0c4; font-size:.8rem; }
+.match-ranking { margin:.8rem 0; border:1px solid #ff3b3055; border-radius:9px; overflow:hidden; }
+.match-rank-title { padding:.6rem .7rem; background:#3a2320; color:#ffb3ad; font-size:.68rem; font-weight:900; letter-spacing:.1em; }
+.match-rank-row { display:grid; grid-template-columns:2rem minmax(0,1fr) auto; align-items:center; gap:.45rem; padding:.48rem .55rem; border-top:1px solid #3a3931; font-size:.77rem; }
+.match-rank-row.survivor { background:#2c2a12; }
+.match-rank-row.mine { box-shadow:inset 3px 0 var(--acid); }
+.match-rank-pos { text-align:center; font-weight:900; }
+.match-rank-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:800; color:#ece7d6; }
+.match-rank-detail { color:#aaa69a; font-size:.59rem; font-weight:800; letter-spacing:.035em; text-align:right; }
+.match-rank-row.survivor .match-rank-detail { color:var(--acid); }
 .champion { display:flex; flex-direction:column; gap:.35rem; align-items:center; text-align:center; margin:.7rem 0; padding:.8rem; background:linear-gradient(135deg,#3a3410,#26240f); border:1px solid #ffd54a55; border-radius:11px; animation:champ-pop .45s ease; }
 .champion-name { font-size:1.15rem; font-weight:900; color:#ffe27a; letter-spacing:.02em; }
 .champion-streak { font-size:.82rem; font-weight:800; color:#ff9d6b; }
