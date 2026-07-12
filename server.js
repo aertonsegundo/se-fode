@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
 
 const app = express();
 const server = createServer(app);
@@ -49,6 +49,27 @@ function seatedPlayers(room) {
   return room.players.filter((player) => !player.spectator);
 }
 
+function tournamentStandings(room) {
+  if (!room.tournament) return [];
+  return tournamentStandingsFrom(room.tournament.playerIds
+    .map((id) => {
+      const player = playerById(room, id);
+      const score = room.tournament.scores[id];
+      return player && score ? { id, name: player.name, ...score } : null;
+    })
+    .filter(Boolean));
+}
+
+function tournamentState(room) {
+  if (!room.tournament) return null;
+  return {
+    totalGames: room.tournament.totalGames,
+    completedGames: room.tournament.completedGames,
+    finished: room.tournament.finished,
+    standings: tournamentStandings(room),
+  };
+}
+
 function playerById(room, id) {
   return room.players.find((player) => player.id === id);
 }
@@ -90,6 +111,7 @@ function publicState(room, viewerId) {
   return {
     ranking,
     matchStandings: room.phase === "game_over" ? finalStandingsFrom(seatedPlayers(room)) : [],
+    tournament: tournamentState(room),
     lastResult,
     code: room.code,
     phase: room.phase,
@@ -172,6 +194,7 @@ function newRoom(code, host) {
     solo: false,
     results: [], // nomes dos vencedores, em ordem (partidas sem vencedor não entram)
     lastWinnerName: null, // vencedor da última partida terminada (null se ninguém venceu)
+    tournament: null,
     autoTurnId: null,
     cleanupTimer: null,
     revealTimer: null,
@@ -314,15 +337,32 @@ function startRound(room) {
 }
 
 function startGame(room) {
+  if (room.tournament && room.tournament.playerIds.length === 0) {
+    const entrants = seatedPlayers(room);
+    room.tournament.playerIds = entrants.map((player) => player.id);
+    room.tournament.scores = Object.fromEntries(entrants.map((player) => [player.id, { points: 0, wins: 0, lastPosition: null }]));
+  }
+  const tournamentPlayers = room.tournament ? new Set(room.tournament.playerIds) : null;
   // Espectadores que estavam esperando entram como jogadores de verdade nesta partida.
-  room.players.forEach((player) => Object.assign(player, { lives: STARTING_LIVES, eliminated: false, eliminatedAtRound: null, spectator: false, hand: [], bid: null, wins: 0, roundLoss: null, auto: false }));
+  room.players.forEach((player) => Object.assign(player, {
+    lives: STARTING_LIVES,
+    eliminated: false,
+    eliminatedAtRound: null,
+    spectator: tournamentPlayers ? !tournamentPlayers.has(player.id) : false,
+    hand: [],
+    bid: null,
+    wins: 0,
+    roundLoss: null,
+    auto: false,
+  }));
   room.handSize = 1;
   room.direction = 1;
   room.round = 0;
   room.resetHand = false;
   room.lastWinnerName = null;
   room.history = [];
-  room.dealerId = room.players[Math.floor(Math.random() * room.players.length)].id;
+  const dealerPool = activePlayers(room);
+  room.dealerId = dealerPool[Math.floor(Math.random() * dealerPool.length)].id;
   startRound(room);
 }
 
@@ -482,6 +522,23 @@ function endGame(room) {
     room.lastWinnerName = null; // ninguém venceu: não conta pro ranking
     room.message = "Todo mundo se fodeu. Impressionante.";
   }
+  if (room.tournament) {
+    const matchStandings = finalStandingsFrom(seatedPlayers(room));
+    const playersInMatch = matchStandings.length;
+    for (const entry of matchStandings) {
+      const score = room.tournament.scores[entry.id];
+      if (!score) continue;
+      score.points += tournamentPoints(entry.position, playersInMatch);
+      score.wins += entry.survived ? 1 : 0;
+      score.lastPosition = entry.position;
+    }
+    room.tournament.completedGames += 1;
+    room.tournament.finished = room.tournament.completedGames >= room.tournament.totalGames;
+    const leader = tournamentStandings(room)[0];
+    room.message = room.tournament.finished
+      ? `${leader?.name || "Alguém"} venceu o Torneio Relâmpago!`
+      : `Partida ${room.tournament.completedGames}/${room.tournament.totalGames} encerrada. ${leader?.name || "—"} lidera o torneio.`;
+  }
   broadcast(room);
 }
 
@@ -536,6 +593,20 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
+  socket.on("create-tournament", ({ name, tournamentGames } = {}) => {
+    name = cleanName(name);
+    if (!name) return notice(socket, "Digite seu nome.");
+    const totalGames = [3, 5].includes(Number(tournamentGames)) ? Number(tournamentGames) : 3;
+    const code = roomCode();
+    const player = createPlayer(socket, name);
+    const room = newRoom(code, player);
+    room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {} };
+    room.message = `Torneio Relâmpago de ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
+    rooms.set(code, room);
+    sendSession(socket, room, player);
+    broadcast(room);
+  });
+
   socket.on("join-room", ({ name, code } = {}) => {
     name = cleanName(name);
     code = cleanCode(code);
@@ -547,7 +618,7 @@ io.on("connection", (socket) => {
     const player = createPlayer(socket, name);
     // Partida rolando: entra como espectador e vira jogador na próxima partida.
     // No lobby ou no fim de jogo, entra direto para a próxima partida.
-    const midGame = room.phase !== "lobby" && room.phase !== "game_over";
+    const midGame = (room.phase !== "lobby" && room.phase !== "game_over") || Boolean(room.tournament && room.phase !== "lobby");
     player.spectator = midGame;
     room.players.push(player);
     sendSession(socket, room, player);
@@ -607,10 +678,24 @@ io.on("connection", (socket) => {
     nextRound(room);
   });
 
+  socket.on("next-tournament-game", () => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || !room.tournament || room.phase !== "game_over" || socket.data.playerId !== room.hostId) return;
+    if (room.tournament.finished) return notice(socket, "O torneio já terminou.");
+    startGame(room);
+  });
+
   socket.on("restart", () => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.phase !== "game_over" || socket.data.playerId !== room.hostId) return;
     if (seatedPlayers(room).length < 2) return notice(socket, "Chame pelo menos mais uma pessoa pra recomeçar.");
+    if (room.tournament) {
+      if (!room.tournament.finished) return notice(socket, "Use Próxima Partida para continuar o torneio.");
+      room.tournament.completedGames = 0;
+      room.tournament.finished = false;
+      room.tournament.scores = Object.fromEntries(room.tournament.playerIds
+        .map((id) => [id, { points: 0, wins: 0, lastPosition: null }]));
+    }
     startGame(room);
   });
 
@@ -619,6 +704,7 @@ io.on("connection", (socket) => {
   socket.on("remove-player", (targetId) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || socket.data.playerId !== room.hostId) return;
+    if (room.tournament && room.phase !== "lobby") return notice(socket, "A escalação do torneio fica fechada até ele terminar.");
     if (room.phase !== "game_over" && room.phase !== "lobby") return notice(socket, "Só dá pra tirar bots fora da partida.");
     const target = playerById(room, String(targetId || ""));
     if (!target || target.id === room.hostId) return;

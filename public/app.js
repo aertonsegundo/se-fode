@@ -38,6 +38,7 @@ function join(kind) {
     code: $("#code").value,
     botCount: Number($("#bot-count").value),
     botDifficulty: $("#bot-difficulty").value,
+    tournamentGames: Number($("#tournament-games").value),
   });
 }
 
@@ -64,6 +65,7 @@ function confirmLeave() {
 $("#name").value = localStorage.getItem("fode-name") || "";
 $("#solo").onclick = () => join("solo-game");
 $("#create").onclick = () => join("create-room");
+$("#tournament").onclick = () => join("create-tournament");
 $("#join").onclick = () => join("join-room");
 $("#code").addEventListener("input", (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 $("#rules-open").onclick = () => $("#rules").showModal();
@@ -307,6 +309,31 @@ function rankingHtml() {
   return `<div class="ranking"><div class="rank-title">🏆 RANKING DA SALA</div>${rows}</div>`;
 }
 
+function tournamentStandingsHtml({ podium = false } = {}) {
+  const tournament = state.tournament;
+  if (!tournament?.standings?.length) return "";
+  const rows = tournament.standings.map((entry) => {
+    const medal = podium ? (["🥇", "🥈", "🥉"][entry.position - 1] || `${entry.position}º`) : `${entry.position}º`;
+    const mine = entry.id === state.me?.id;
+    return `<div class="tournament-row ${mine ? "mine" : ""}"><span>${medal}</span><b>${escapeHtml(entry.name)}</b><small>${entry.points} pts · ${entry.wins} vitória${entry.wins === 1 ? "" : "s"}</small></div>`;
+  }).join("");
+  return `<section class="tournament-standings"><div>⚡ PLACAR DO TORNEIO</div>${rows}</section>`;
+}
+
+function renderTournamentBar() {
+  const bar = $("#tournament-bar");
+  const tournament = state.tournament;
+  bar.classList.toggle("hidden", !tournament);
+  if (!tournament) { bar.innerHTML = ""; return; }
+  const current = tournament.finished
+    ? "FINAL"
+    : state.phase === "game_over"
+      ? `RESULTADO ${tournament.completedGames}/${tournament.totalGames}`
+      : `${Math.min(tournament.completedGames + 1, tournament.totalGames)}/${tournament.totalGames}`;
+  const leader = tournament.standings[0];
+  bar.innerHTML = `<b>⚡ TORNEIO ${current}</b><span>${leader && tournament.completedGames ? `LÍDER: ${escapeHtml(leader.name)} · ${leader.points} PTS` : "A PONTUAÇÃO COMEÇA NA 1ª PARTIDA"}</span>`;
+}
+
 function matchStandingsHtml() {
   const standings = state.matchStandings || [];
   if (!standings.length) return "";
@@ -380,6 +407,7 @@ function render() {
   renderAutoBar();
   renderSpectatorBar();
   renderWatchers();
+  renderTournamentBar();
   renderPot();
   renderSeats();
   renderAction();
@@ -489,8 +517,9 @@ function renderAction() {
   if (state.phase === "lobby") {
     const url = roomUrl(state.code);
     const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
-    panel.innerHTML = `<div class="panel-title">SALA DE ESPERA</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
-      <p>Convide a galera pelo link ou pelo código <b>${state.code}</b>.</p>
+    const tournament = state.tournament;
+    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO RELÂMPAGO" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
+      <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. A classificação de cada uma vale pontos.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}</p>
       <div class="share">
         <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />
         <div class="share-actions">
@@ -498,7 +527,7 @@ function renderAction() {
           <a id="wa-share" class="wa" href="https://wa.me/?text=${waText}" target="_blank" rel="noopener">WHATSAPP</a>
         </div>
       </div>
-      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>COMEÇAR O CAOS</button>` : "<p>O dono da sala começa a partida.</p>"}
+      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS"}</button>` : "<p>O dono da sala começa a partida.</p>"}
       ${rankingHtml()}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
     $("#share-url").onclick = (event) => event.target.select();
@@ -552,7 +581,7 @@ function renderAction() {
   if (state.phase === "game_over") {
     // Bots e jogadores ausentes (que caíram ou saíram) que o dono pode tirar antes de recomeçar.
     // No modo solo (offline) não faz sentido tirar bots — só vale em salas online.
-    const removable = (isHost() && !state.solo)
+    const removable = (isHost() && !state.solo && !state.tournament)
       ? state.players.filter((player) => player.id !== state.me?.id && (player.isBot || !player.connected || player.auto))
       : [];
     const kickHtml = removable.length
@@ -562,8 +591,17 @@ function renderAction() {
     const championHtml = lr
       ? `<div class="champion"><span class="champion-name">🏆 ${escapeHtml(lr.name)}</span>${lr.streak >= 2 ? `<span class="champion-streak">🔥 venceu as últimas ${lr.streak} partidas</span>` : lr.wins >= 3 ? `<span class="champion-streak">👑 ${lr.wins} vitórias na sala</span>` : ""}</div>`
       : "";
-    panel.innerHTML = `<div class="panel-title">FIM DE JOGO</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchStandingsHtml()}${rankingHtml()}${kickHtml}${isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : ""}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    const tournament = state.tournament;
+    const tournamentFinished = tournament?.finished;
+    const tournamentControls = tournament
+      ? (tournamentFinished
+        ? (isHost() ? '<button id="restart">RECOMEÇAR TORNEIO</button>' : "")
+        : (isHost() ? `<button id="next-tournament">PRÓXIMA PARTIDA · ${tournament.completedGames + 1}/${tournament.totalGames}</button>` : "<p>Esperando o dono da sala iniciar a próxima partida.</p>"))
+      : (isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "");
+    const panelTitle = tournamentFinished ? "TORNEIO ENCERRADO" : "FIM DE JOGO";
+    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
+    $("#next-tournament")?.addEventListener("click", () => socket.emit("next-tournament-game"));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);
     return;

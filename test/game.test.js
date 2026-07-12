@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -115,6 +115,20 @@ test("classificação final põe sobrevivente primeiro e o último eliminado aci
     { name: "Caio", position: 2, survived: false, eliminatedAtRound: 5 },
     { name: "Duda", position: 3, survived: false, eliminatedAtRound: 3 },
     { name: "Bia", position: 4, survived: false, eliminatedAtRound: 2 },
+  ]);
+});
+
+test("torneio relâmpago pontua a classificação e desempata por vitórias", () => {
+  assert.deepEqual([1, 2, 3, 4].map((position) => tournamentPoints(position, 4)), [5, 3, 2, 1]);
+  assert.equal(tournamentPoints(0, 4), 0);
+  assert.deepEqual(tournamentStandingsFrom([
+    { name: "Bia", points: 8, wins: 1, lastPosition: 2 },
+    { name: "Ana", points: 8, wins: 2, lastPosition: 3 },
+    { name: "Caio", points: 5, wins: 1, lastPosition: 1 },
+  ]).map(({ name, position }) => ({ name, position })), [
+    { name: "Ana", position: 1 },
+    { name: "Bia", position: 2 },
+    { name: "Caio", position: 3 },
   ]);
 });
 

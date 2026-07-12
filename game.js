@@ -149,3 +149,19 @@ export function finalStandingsFrom(players) {
     eliminatedAtRound: player.eliminatedAtRound ?? null,
   }));
 }
+
+// Pontos do Torneio Relâmpago: a vitória vale um ponto extra, e ninguém sai
+// de uma partida sem pontuar. Ex.: 4 jogadores → 5, 3, 2 e 1 ponto.
+export function tournamentPoints(position, playerCount) {
+  if (!Number.isInteger(position) || position < 1 || position > playerCount) return 0;
+  return position === 1 ? playerCount + 1 : Math.max(1, playerCount - position + 1);
+}
+
+export function tournamentStandingsFrom(entries) {
+  return [...entries]
+    .sort((a, b) => b.points - a.points
+      || b.wins - a.wins
+      || (a.lastPosition ?? Infinity) - (b.lastPosition ?? Infinity)
+      || a.name.localeCompare(b.name, "pt-BR"))
+    .map((entry, index) => ({ ...entry, position: index + 1 }));
+}

@@ -39,6 +39,14 @@
         </div>
         <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
         <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
+        <div class="tournament-setup">
+          <label for="tournament-games">TORNEIO RELÂMPAGO</label>
+          <select id="tournament-games" aria-label="Quantidade de partidas no torneio">
+            <option value="3" selected>3 partidas</option>
+            <option value="5">5 partidas</option>
+          </select>
+          <button id="tournament" class="tournament">CRIAR TORNEIO <b>⚡</b></button>
+        </div>
         <div class="or"><span>OU ENTRE NUMA</span></div>
         <div class="join-row">
           <input id="code" maxlength="5" placeholder="CÓDIGO" aria-label="Código da sala" />
@@ -60,6 +68,7 @@
       <div id="auto-bar" class="auto-bar hidden"></div>
       <div id="spectator-bar" class="spectator-bar hidden"></div>
       <div id="status" class="status"></div>
+      <section id="tournament-bar" class="tournament-bar hidden" aria-live="polite"></section>
       <div id="watchers" class="watchers hidden"></div>
       <div id="manilhas" class="manilhas-fixas"></div>
       <div class="game-layout">
