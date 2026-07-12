@@ -394,6 +394,7 @@ function renderWatchers() {
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
+  game.classList.toggle("tournament-mode", Boolean(state.tournament));
   // Minha vez de decidir sem cartas para clicar (aposta, ou jogar carta única no escuro):
   // o painel vira um modal/bottom-sheet no mobile em vez de ficar lá embaixo.
   const actingNow = state.turnId === state.me?.id

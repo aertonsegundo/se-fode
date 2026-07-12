@@ -164,6 +164,7 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .table-stage { display:flex; justify-content:center; align-items:center; min-width:0; }
 .poker { position:relative; width:100%; max-width:680px; aspect-ratio:8/6; margin:auto; --seat-rx:46%; --seat-ry:44%; --card-rx:24%; --card-ry:25%; }
 .felt { position:absolute; inset:9% 4%; min-height:0; border-radius:50%/60%; background:radial-gradient(120% 120% at 50% 35%,#2b5946,#1f4133 70%); border:11px solid #33291e; box-shadow:inset 0 0 0 3px #547363,inset 0 8px 30px #0006,0 22px 45px #0009; display:grid; place-items:center; }
+.tournament-mode .felt { background:radial-gradient(120% 120% at 50% 35%,#9d3029,#581b1c 70%); border-color:#3a1717; box-shadow:inset 0 0 0 3px #d76657,inset 0 8px 30px #0007,0 22px 45px #0009; }
 .felt::after { content:"SE FODE"; color:#ffffff0d; font:clamp(2.4rem,7vw,5.4rem) "Archivo Black"; transform:rotate(-9deg); position:absolute; white-space:nowrap; pointer-events:none; }
 .manilhas-fixas { position:static; max-width:none; text-align:center; font-size:.64rem; letter-spacing:.03em; color:#c7c3b6; margin:-.2rem 0 .3rem; }
 .manilhas-fixas span { margin-right:.45rem; color:#8d897e; letter-spacing:.14em; }
