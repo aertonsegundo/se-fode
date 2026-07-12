@@ -337,8 +337,8 @@ function startRound(room) {
 }
 
 function startGame(room) {
+  const entrants = seatedPlayers(room);
   if (room.tournament && room.tournament.playerIds.length === 0) {
-    const entrants = seatedPlayers(room);
     room.tournament.playerIds = entrants.map((player) => player.id);
     room.tournament.scores = Object.fromEntries(entrants.map((player) => [player.id, { points: 0, wins: 0, lastPosition: null }]));
   }
@@ -362,6 +362,22 @@ function startGame(room) {
   room.lastWinnerName = null;
   room.history = [];
   const dealerPool = activePlayers(room);
+  if (dealerPool.length < 2) {
+    room.phase = "lobby";
+    room.dealerId = null;
+    room.turnId = null;
+    room.message = "Faltam jogadores para começar. Chame pelo menos mais uma pessoa.";
+    if (room.tournament) {
+      // A escalação ficou incompleta (por exemplo, após saídas). Libera uma
+      // nova inscrição no lobby em vez de deixar o torneio preso ou derrubar
+      // o servidor ao tentar escolher um dealer inexistente.
+      room.tournament.playerIds = [];
+      room.tournament.scores = {};
+      room.tournament.completedGames = 0;
+      room.tournament.finished = false;
+    }
+    return broadcast(room);
+  }
   room.dealerId = dealerPool[Math.floor(Math.random() * dealerPool.length)].id;
   startRound(room);
 }
@@ -633,6 +649,11 @@ io.on("connection", (socket) => {
     if (room.phase !== "lobby") return notice(socket, "Essa partida já começou.");
     room.players = room.players.filter((player) => player.isBot || player.connected);
     if (room.players.length < 2) return notice(socket, "Chame pelo menos mais uma pessoa.");
+    if (room.tournament && room.tournament.completedGames === 0) {
+      room.tournament.playerIds = [];
+      room.tournament.scores = {};
+      room.tournament.finished = false;
+    }
     startGame(room);
   });
 
