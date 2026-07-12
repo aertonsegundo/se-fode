@@ -423,6 +423,9 @@ function renderSeats() {
     const meta = player.bid == null
       ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
       : `aposta ${player.bid} · fez ${player.wins}`;
+    const lives = player.lives > 0 ? player.lives : 0;
+    const hearts = lives > 0 ? "♥".repeat(lives) : "×";
+    const compactHearts = lives > 0 ? `♥ ×${lives}` : "×";
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
@@ -433,7 +436,7 @@ function renderSeats() {
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
-            <div class="hearts" title="${player.lives} vidas">${player.lives > 0 ? "♥".repeat(player.lives) : "×"}</div>
+            <div class="hearts" title="${lives} vidas"><span class="hearts-full">${hearts}</span><span class="hearts-compact">${compactHearts}</span></div>
           </div>
         </div>
         ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
