@@ -13,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
+const RANDOM_AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
 const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡", fepe: "🍾", victin: "😐", chico: "🤠", muriloejp: "👬", rtn: "🫡" };
 
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
@@ -72,6 +73,12 @@ function tournamentState(room) {
 
 function playerById(room, id) {
   return room.players.find((player) => player.id === id);
+}
+
+function assignRandomAvatar(room, player) {
+  const unused = RANDOM_AVATAR_KEYS.filter((avatarKey) => !room.players.some((other) => other.avatarKey === avatarKey));
+  const choices = unused.length ? unused : RANDOM_AVATAR_KEYS;
+  player.avatarKey = choices[Math.floor(Math.random() * choices.length)];
 }
 
 function sendSession(socket, room, player) {
@@ -140,6 +147,7 @@ function publicState(room, viewerId) {
       connected: player.connected,
       auto: Boolean(player.auto),
       isBot: Boolean(player.isBot),
+      avatarKey: player.avatarKey || null,
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
     })),
@@ -170,10 +178,10 @@ function broadcast(room) {
 }
 
 function newRoom(code, host) {
-  return {
+  const room = {
     code,
     hostId: host.id,
-    players: [host],
+    players: [],
     phase: "lobby",
     dealerId: null,
     turnId: null,
@@ -200,6 +208,9 @@ function newRoom(code, host) {
     revealTimer: null,
     message: "Esperando a turma chegar.",
   };
+  assignRandomAvatar(room, host);
+  room.players.push(host);
+  return room;
 }
 
 function createPlayer(socket, name) {
@@ -592,7 +603,9 @@ io.on("connection", (socket) => {
     const room = newRoom(code, player);
     room.botDifficulty = botDifficulty;
     room.solo = true;
-    room.players.push(...Array.from({ length: botCount }, (_, index) => createBot(code, index)));
+    const bots = Array.from({ length: botCount }, (_, index) => createBot(code, index));
+    bots.forEach((bot) => assignRandomAvatar(room, bot));
+    room.players.push(...bots);
     rooms.set(code, room);
     sendSession(socket, room, player);
     startGame(room);
@@ -636,6 +649,7 @@ io.on("connection", (socket) => {
     // No lobby ou no fim de jogo, entra direto para a próxima partida.
     const midGame = (room.phase !== "lobby" && room.phase !== "game_over") || Boolean(room.tournament && room.phase !== "lobby");
     player.spectator = midGame;
+    assignRandomAvatar(room, player);
     room.players.push(player);
     sendSession(socket, room, player);
     transferHost(room);

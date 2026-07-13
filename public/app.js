@@ -456,8 +456,11 @@ function renderSeats() {
     const hearts = lives > 0 ? "♥".repeat(lives) : "×";
     const compactHearts = lives > 0 ? `♥ ×${lives}` : "×";
     const isMaldito = player.name.trim().toLocaleLowerCase("pt-BR") === "maldito";
-    const avatar = isMaldito
-      ? '<img src="/avatars/maldito.png" alt="Avatar de Maldito" />'
+    const avatarSource = isMaldito
+      ? "/avatars/maldito.png"
+      : player.avatarKey ? `/avatars/players/${encodeURIComponent(player.avatarKey)}.webp` : null;
+    const avatar = avatarSource
+      ? `<img src="${avatarSource}" alt="Avatar de ${escapeHtml(player.name)}" />`
       : escapeHtml((player.name[0] || "?").toUpperCase());
 
     return `
@@ -465,7 +468,7 @@ function renderSeats() {
       <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""}" style="--cos:${cos};--sin:${sin}">
         <div class="turn-flag">VEZ</div>
         <div class="seat-body">
-          <div class="avatar ${isMaldito ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
+          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
