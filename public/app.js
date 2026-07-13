@@ -455,13 +455,17 @@ function renderSeats() {
     const lives = player.lives > 0 ? player.lives : 0;
     const hearts = lives > 0 ? "♥".repeat(lives) : "×";
     const compactHearts = lives > 0 ? `♥ ×${lives}` : "×";
+    const isMaldito = player.name.trim().toLocaleLowerCase("pt-BR") === "maldito";
+    const avatar = isMaldito
+      ? '<img src="/avatars/maldito.png" alt="Avatar de Maldito" />'
+      : escapeHtml((player.name[0] || "?").toUpperCase());
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
       <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""}" style="--cos:${cos};--sin:${sin}">
         <div class="turn-flag">VEZ</div>
         <div class="seat-body">
-          <div class="avatar">${escapeHtml((player.name[0] || "?").toUpperCase())}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
+          <div class="avatar ${isMaldito ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>

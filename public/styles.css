@@ -50,6 +50,8 @@ button { cursor:pointer; }
 .player-row.out { opacity:.35; text-decoration:line-through; }
 .player-row.disconnected { opacity:.55; }
 .avatar { width:1.8rem; height:1.8rem; display:grid; place-items:center; background:var(--blue); color:var(--ink); font-weight:900; transform:rotate(-3deg); }
+.avatar.profile-photo { overflow:hidden; background:#111; }
+.avatar.profile-photo img { width:100%; height:100%; object-fit:cover; transform:rotate(3deg) scale(1.12); }
 .hearts { color:var(--red); letter-spacing:-.15em; white-space:nowrap; }
 .bid-chip { font-size:.64rem; color:#aaa69a; }
 .bot-chip { display:inline-block; margin-left:.35rem; padding:.08rem .28rem; background:var(--acid); color:var(--ink); font-size:.5rem; letter-spacing:.08em; vertical-align:middle; }
