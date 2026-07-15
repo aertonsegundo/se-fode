@@ -39,6 +39,16 @@ const admin = supabaseEnabled
 
 if (!supabaseEnabled) {
   console.warn("[supabase] SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY ausentes — contas desativadas.");
+} else {
+  // Valida as chaves no boot: a causa nº 1 de 401 no /api/me é a service_role
+  // errada (ex.: anon key colada no lugar). Decodifica só role/ref (não é segredo).
+  const claims = (jwt) => { try { return JSON.parse(Buffer.from(String(jwt).split(".")[1], "base64").toString()); } catch { return {}; } };
+  const svc = claims(serviceKey);
+  const an = claims(anonKey);
+  const urlRef = (url.match(/https:\/\/([^.]+)\./) || [])[1];
+  if (svc.role && svc.role !== "service_role") console.warn(`[supabase] ⚠️ SUPABASE_SERVICE_ROLE_KEY tem role="${svc.role}" (esperado "service_role"). Isso causa 401 no /api/me — use a chave 'service_role' do painel do Supabase.`);
+  if (an.role && an.role !== "anon") console.warn(`[supabase] ⚠️ SUPABASE_ANON_KEY tem role="${an.role}" (esperado "anon").`);
+  if (urlRef && svc.ref && svc.ref !== urlRef) console.warn(`[supabase] ⚠️ SUPABASE_SERVICE_ROLE_KEY é de outro projeto (ref="${svc.ref}") — não bate com a URL (ref="${urlRef}").`);
 }
 
 const PHOTO_BUCKET = "avatars";
