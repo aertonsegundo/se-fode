@@ -241,7 +241,12 @@ $("#auth-form").addEventListener("submit", async (event) => {
     if (authMode === "signup") {
       const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName || email.split("@")[0] } } });
       if (error) throw error;
-      if (!data.session) { setAuthError("Conta criada! Confirme seu e-mail para entrar."); setAuthMode("login"); }
+      if (!data.session) {
+        // setAuthMode limpa mensagens anteriores, então ele precisa vir antes
+        // do aviso de confirmação para a pessoa saber o próximo passo.
+        setAuthMode("login");
+        setAuthError("Conta criada! Confirme seu e-mail para entrar.");
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
