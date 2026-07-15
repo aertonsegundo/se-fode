@@ -49,26 +49,6 @@
         <p>Aposte. Blefe. Mele o jogo.<br />Tente não se foder.</p>
       </header>
       <form class="entry-card" onsubmit="return false">
-        <label for="name">SEU NOME</label>
-        <input id="name" maxlength="18" autocomplete="name" placeholder="Ex: Pimenta" />
-        <div class="solo-options">
-          <label for="bot-count">QUANTOS BOTS NA MESA?</label>
-          <select id="bot-count" aria-label="Quantidade de bots">
-            <option value="1">1 bot</option>
-            <option value="2">2 bots</option>
-            <option value="3" selected>3 bots</option>
-            <option value="4">4 bots</option>
-            <option value="5">5 bots</option>
-            <option value="6">6 bots</option>
-            <option value="7">7 bots</option>
-          </select>
-          <label for="bot-difficulty">DIFICULDADE DOS BOTS</label>
-          <select id="bot-difficulty" aria-label="Dificuldade dos bots">
-            <option value="easy">Fácil — caótico</option>
-            <option value="normal" selected>Normal — esperto</option>
-            <option value="hard">Difícil — cruel</option>
-          </select>
-        </div>
         <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
         <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
         <div class="tournament-setup">
@@ -136,16 +116,44 @@
     </section>
   </main>
 
+  <dialog id="solo-modal" class="solo-dialog">
+    <button id="solo-close" class="close">×</button>
+    <div class="kicker">PARTIDA SOLO</div>
+    <h2>CONTRA OS BOTS</h2>
+    <label class="profile-label" for="bot-count">QUANTOS BOTS NA MESA?</label>
+    <select id="bot-count" aria-label="Quantidade de bots">
+      <option value="1">1 bot</option>
+      <option value="2">2 bots</option>
+      <option value="3" selected>3 bots</option>
+      <option value="4">4 bots</option>
+      <option value="5">5 bots</option>
+      <option value="6">6 bots</option>
+      <option value="7">7 bots</option>
+    </select>
+    <label class="profile-label" for="bot-difficulty">DIFICULDADE DOS BOTS</label>
+    <select id="bot-difficulty" aria-label="Dificuldade dos bots">
+      <option value="easy">Fácil — caótico</option>
+      <option value="normal" selected>Normal — esperto</option>
+      <option value="hard">Difícil — cruel</option>
+    </select>
+    <button id="solo-start" class="primary">COMEÇAR PARTIDA <b>♠</b></button>
+  </dialog>
+
   <dialog id="profile" class="profile-dialog">
     <button id="profile-close" class="close">×</button>
     <div class="kicker">SEU PERFIL</div>
-    <h2>FOTO &amp; BANNER</h2>
+    <h2>SUA CONTA</h2>
     <div class="profile-current">
       <span id="profile-photo" class="profile-photo-lg"></span>
       <div class="profile-current-info">
         <b id="profile-name"></b>
         <div id="profile-banner-preview"></div>
       </div>
+    </div>
+    <label class="profile-label" for="profile-name-input">SEU NOME</label>
+    <div class="name-edit">
+      <input id="profile-name-input" maxlength="18" placeholder="Seu apelido" autocomplete="off" />
+      <button id="profile-name-save">SALVAR</button>
     </div>
     <label class="profile-label">ESCOLHA UM AVATAR</label>
     <div id="avatar-choices" class="avatar-choices"></div>

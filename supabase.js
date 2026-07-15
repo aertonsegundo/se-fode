@@ -133,6 +133,14 @@ export async function leaderboard(limit = 50) {
   }));
 }
 
+export async function setUserName(id, rawName) {
+  if (!admin) return { ok: false, error: "Contas desativadas." };
+  const name = String(rawName || "").trim().replace(/\s+/g, " ").slice(0, 18);
+  if (!name) return { ok: false, error: "Escolha um nome." };
+  const { error } = await admin.from("profiles").update({ display_name: name, updated_at: new Date().toISOString() }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true, displayName: name };
+}
+
 export async function setUserBanner(id, banner) {
   if (!admin) return false;
   if (!BANNER_KEYS.includes(banner)) return false;

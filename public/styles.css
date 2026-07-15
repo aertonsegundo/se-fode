@@ -409,12 +409,12 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 
 /* Barra de conta no topo do menu */
 .account-bar { position:fixed; top:0; left:0; right:0; z-index:30; display:flex; align-items:center; justify-content:space-between; gap:.6rem; padding:.55rem .9rem; background:linear-gradient(#171713f2,#17171300); flex-wrap:wrap; }
-.account-chip { display:flex; align-items:center; gap:.55rem; border:1px solid #3d3b34; background:#20201b; color:var(--paper); padding:.3rem .6rem .3rem .35rem; border-radius:999px; }
-.account-photo { width:2rem; height:2rem; border-radius:50%; overflow:hidden; display:grid; place-items:center; background:var(--blue); color:var(--ink); font-weight:900; flex:0 0 2rem; }
+.account-chip { display:flex; align-items:center; gap:.6rem; border:1px solid #3d3b34; background:#20201b; color:var(--paper); padding:.4rem .8rem .4rem .4rem; border-radius:16px; }
+.account-photo { width:2.2rem; height:2.2rem; border-radius:50%; overflow:hidden; display:grid; place-items:center; background:var(--blue); color:var(--ink); font-weight:900; flex:0 0 2.2rem; }
 .account-photo img { width:100%; height:100%; object-fit:cover; }
-.account-meta { display:flex; flex-direction:column; align-items:flex-start; line-height:1.05; }
-.account-name { font-weight:800; font-size:.82rem; }
-.account-wins { font-size:.6rem; color:#c9b24a; font-weight:700; }
+.account-meta { display:flex; flex-direction:column; align-items:flex-start; gap:.18rem; }
+.account-name { font-weight:800; font-size:.85rem; line-height:1.1; }
+.account-wins { font-size:.6rem; color:#c9b24a; font-weight:700; line-height:1; }
 .account-actions { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
 .account-btn { border:1px solid #3d3b34; background:#20201b; color:var(--paper); font-weight:800; font-size:.66rem; letter-spacing:.06em; padding:.45rem .7rem; border-radius:7px; text-decoration:none; }
 .account-btn.ghost { background:transparent; color:#b9b4a6; }
@@ -436,10 +436,21 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 @keyframes seat-fire { 0%,100% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 12px var(--bn-glow); } 50% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 22px var(--bn-glow); } }
 .seat-banner { position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bn-bg); color:var(--bn-fg); border:1px solid var(--bn); border-radius:999px; padding:.05rem .5rem; font-size:.46rem; font-weight:900; letter-spacing:.1em; white-space:nowrap; z-index:6; text-transform:uppercase; }
 
-/* ===================== MODAL DE PERFIL ===================== */
-.profile-dialog, .ranking-dialog { border:0; border-radius:14px; padding:1.8rem; max-width:440px; width:92vw; background:#1c1b16; color:var(--paper); box-shadow:0 24px 60px #000a; }
-.profile-dialog::backdrop, .ranking-dialog::backdrop { background:#000a; backdrop-filter:blur(2px); }
-.profile-dialog h2, .ranking-dialog h2 { font:1.9rem "Archivo Black",sans-serif; letter-spacing:-.03em; margin:.1em 0 .3em; }
+/* ===================== MODAIS (perfil, ranking, solo) ===================== */
+.profile-dialog, .ranking-dialog, .solo-dialog { border:0; border-radius:14px; padding:1.8rem; max-width:440px; width:92vw; background:#1c1b16; color:var(--paper); box-shadow:0 24px 60px #000a; }
+.profile-dialog::backdrop, .ranking-dialog::backdrop, .solo-dialog::backdrop { background:#000a; backdrop-filter:blur(2px); }
+.profile-dialog h2, .ranking-dialog h2, .solo-dialog h2 { font:1.9rem "Archivo Black",sans-serif; letter-spacing:-.03em; margin:.1em 0 .3em; }
+
+/* Modal do solo */
+.solo-dialog select { width:100%; border:2px solid #3a382f; background:#26241d; color:var(--paper); padding:.7rem .65rem; font-weight:700; border-radius:8px; margin-bottom:.3rem; }
+.solo-dialog .primary { width:100%; margin-top:1.2rem; border:2px solid var(--acid); background:var(--acid); color:var(--ink); padding:.95rem; font-weight:900; letter-spacing:.04em; border-radius:9px; display:flex; justify-content:center; gap:.5rem; }
+
+/* Editar nome no perfil */
+.name-edit { display:flex; gap:.5rem; }
+.name-edit input { flex:1; border:2px solid #3a382f; background:#26241d; color:var(--paper); padding:.6rem .65rem; border-radius:8px; font-size:.95rem; outline:none; }
+.name-edit input:focus { border-color:var(--acid); }
+.name-edit button { border:2px solid var(--acid); background:var(--acid); color:var(--ink); font-weight:900; font-size:.72rem; letter-spacing:.05em; padding:0 .9rem; border-radius:8px; }
+.name-edit button:disabled { opacity:.5; }
 .profile-current { display:flex; align-items:center; gap:1rem; margin:.6rem 0 1.2rem; }
 .profile-photo-lg { width:4.2rem; height:4.2rem; border-radius:14px; overflow:hidden; display:grid; place-items:center; background:var(--blue); color:var(--ink); font:1.8rem "Archivo Black",sans-serif; flex:0 0 4.2rem; }
 .profile-photo-lg img { width:100%; height:100%; object-fit:cover; }

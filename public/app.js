@@ -37,10 +37,9 @@ function showToast(text) {
 }
 
 function join(kind) {
-  const name = $("#name").value.trim();
-  localStorage.setItem("fode-name", name);
+  // O nome agora vem da conta (editável no perfil), não mais de um campo no menu.
   socket.emit(kind, {
-    name,
+    name: accountProfile?.displayName || "",
     code: $("#code").value,
     botCount: Number($("#bot-count").value),
     botDifficulty: $("#bot-difficulty").value,
@@ -68,8 +67,10 @@ function confirmLeave() {
   leaveRoom();
 }
 
-$("#name").value = localStorage.getItem("fode-name") || "";
-$("#solo").onclick = () => join("solo-game");
+// Jogar sozinho abre um modal com as opções (bots/dificuldade) antes de começar.
+$("#solo").onclick = () => $("#solo-modal").showModal();
+$("#solo-close").onclick = () => $("#solo-modal").close();
+$("#solo-start").onclick = () => { $("#solo-modal").close(); join("solo-game"); };
 $("#create").onclick = () => join("create-room");
 $("#tournament").onclick = () => join("create-tournament");
 $("#join").onclick = () => join("join-room");
@@ -84,7 +85,7 @@ $(".mini-brand").addEventListener("click", (event) => { if (state) { event.preve
 const sharedCode = (new URLSearchParams(location.search).get("sala") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
 if (sharedCode) {
   $("#code").value = sharedCode;
-  setTimeout(() => $("#name").focus(), 0);
+  setTimeout(() => $("#code").focus(), 0);
 }
 
 socket.on("connect", () => {
@@ -189,8 +190,6 @@ function showLoggedIn() {
   authScreen.classList.add("hidden");
   if (!state) home.classList.remove("hidden");
   renderAccountBar();
-  // prefill do nome com o apelido da conta
-  if (accountProfile && !$("#name").value.trim()) $("#name").value = accountProfile.displayName || "";
 }
 
 function renderAccountBar() {
@@ -282,6 +281,7 @@ const AVATAR_OPTIONS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jog
 function openProfile() {
   if (!accountProfile) return;
   $("#profile-name").textContent = accountProfile.displayName;
+  $("#profile-name-input").value = accountProfile.displayName || "";
   $("#profile-photo").innerHTML = photoMarkup(accountProfile.photo, accountProfile.displayName);
   $("#profile-banner-preview").innerHTML = `<span class="banner-pill banner-${accountProfile.banner}">${escapeHtml(bannerTitle(accountProfile.banner))}</span>`;
   $("#avatar-choices").innerHTML = AVATAR_OPTIONS.map((key) => {
@@ -291,6 +291,27 @@ function openProfile() {
   $("#avatar-choices").querySelectorAll("[data-avatar]").forEach((btn) => btn.onclick = () => savePhoto({ avatarKey: btn.dataset.avatar }));
   $("#profile").showModal();
 }
+
+async function saveName() {
+  const name = $("#profile-name-input").value.trim();
+  if (!name) return showToast("Escolha um nome.");
+  if (name === accountProfile.displayName) return;
+  const btn = $("#profile-name-save");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/me/name", { method: "POST", body: JSON.stringify({ name }) });
+    accountProfile.displayName = res.displayName;
+    $("#profile-name").textContent = res.displayName;
+    renderAccountBar();
+    showToast("Nome atualizado!");
+  } catch (err) {
+    showToast(err.message || "Não deu pra salvar o nome.");
+  } finally {
+    btn.disabled = false;
+  }
+}
+$("#profile-name-save")?.addEventListener("click", saveName);
+$("#profile-name-input")?.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); saveName(); } });
 
 async function savePhoto(payload) {
   try {

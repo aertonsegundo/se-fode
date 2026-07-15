@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
-import { publicConfig, profileFromToken, verifyToken, ensureProfile, listUsers, leaderboard, setUserBanner, setUserPhoto, recordGame, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
+import { publicConfig, profileFromToken, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -49,6 +49,15 @@ app.get("/api/me", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
   res.json({ profile, banners: BANNERS, avatars: AVATAR_KEYS });
+});
+
+// Usuário troca o próprio nome de exibição.
+app.post("/api/me/name", async (req, res) => {
+  const profile = await authProfile(req);
+  if (!profile) return res.status(401).json({ error: "Não autenticado." });
+  const result = await setUserName(profile.id, req.body?.name);
+  if (!result.ok) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, displayName: result.displayName });
 });
 
 // Usuário troca a própria foto (avatar pronto ou upload).
