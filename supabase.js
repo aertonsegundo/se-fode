@@ -46,9 +46,22 @@ if (!supabaseEnabled) {
   const svc = claims(serviceKey);
   const an = claims(anonKey);
   const urlRef = (url.match(/https:\/\/([^.]+)\./) || [])[1];
-  if (svc.role && svc.role !== "service_role") console.warn(`[supabase] ⚠️ SUPABASE_SERVICE_ROLE_KEY tem role="${svc.role}" (esperado "service_role"). Isso causa 401 no /api/me — use a chave 'service_role' do painel do Supabase.`);
+  if (svc.role !== "service_role") console.warn(`[supabase] ⚠️ SUPABASE_SERVICE_ROLE_KEY ${svc.role ? `tem role="${svc.role}"` : "não parece ser um JWT válido"} (esperado "service_role"). Isso causa 401 no /api/me — use a chave 'service_role' (secret) do painel do Supabase.`);
   if (an.role && an.role !== "anon") console.warn(`[supabase] ⚠️ SUPABASE_ANON_KEY tem role="${an.role}" (esperado "anon").`);
   if (urlRef && svc.ref && svc.ref !== urlRef) console.warn(`[supabase] ⚠️ SUPABASE_SERVICE_ROLE_KEY é de outro projeto (ref="${svc.ref}") — não bate com a URL (ref="${urlRef}").`);
+}
+
+// Autoteste no boot: prova que a service_role realmente funciona (listUsers exige ela).
+// Loga ✅/❌ claro para diagnóstico rápido em produção (ex.: nos logs do Render).
+export async function selfTest() {
+  if (!admin) return;
+  try {
+    const { error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
+    if (error) throw error;
+    console.log("[supabase] ✅ conexão e service_role OK — contas ativas.");
+  } catch (error) {
+    console.error(`[supabase] ❌ service_role NÃO funciona (${error.message}). O login vai dar 401 no /api/me. Confira SUPABASE_SERVICE_ROLE_KEY (e SUPABASE_URL) no ambiente.`);
+  }
 }
 
 const PHOTO_BUCKET = "avatars";

@@ -171,9 +171,14 @@ async function applySession(session) {
     const me = await api("/api/me");
     accountProfile = me.profile;
     bannerCatalog = me.banners || [];
-  } catch {
+  } catch (err) {
+    // Token válido mas o servidor não carregou o perfil (tipicamente 401 por
+    // SUPABASE_SERVICE_ROLE_KEY errada no servidor). Mostra o motivo em vez de
+    // voltar em silêncio — assim não parece que "nada aconteceu" após o cadastro.
     accountProfile = null;
     showAuthScreen();
+    setAuthError("Entrou, mas o servidor não carregou seu perfil (" + (err?.message || "erro") + "). Se você administra o jogo, confira a SUPABASE_SERVICE_ROLE_KEY no servidor.");
+    console.error("Falha ao carregar /api/me:", err);
     return;
   }
   showLoggedIn();

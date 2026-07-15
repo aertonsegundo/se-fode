@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
-import { publicConfig, profileFromToken, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
+import { publicConfig, profileFromToken, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -963,4 +963,7 @@ io.on("connection", (socket) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-server.listen(port, "0.0.0.0", () => console.log(`Se Fode rodando em http://localhost:${port}`));
+server.listen(port, "0.0.0.0", () => {
+  console.log(`Se Fode rodando em http://localhost:${port}`);
+  selfTest();
+});
