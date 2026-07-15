@@ -1,5 +1,11 @@
+import { createClient } from "/vendor/supabase.js";
+
 const socket = io({ autoConnect: false });
 const SESSION_KEY = "fode-session";
+let supabase = null;
+let accountProfile = null; // { id, email, displayName, role, isAdmin, photo, banner, ... }
+let accountToken = null;
+let bannerCatalog = [];    // [{ key, title }]
 let state = null;
 let animatedRound = 0;
 let connectedBefore = false;
@@ -109,7 +115,236 @@ socket.on("state", (next) => {
   game.classList.remove("hidden");
   render();
 });
-socket.connect();
+socket.on("auth-required", () => {
+  showToast("Sua sessão expirou. Entre de novo.");
+  logout();
+});
+
+// ===== Contas (Supabase Auth) =====
+const authScreen = $("#auth");
+
+function setAuthError(text) {
+  const box = $("#auth-error");
+  box.textContent = text || "";
+  box.classList.toggle("hidden", !text);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(accountToken ? { Authorization: `Bearer ${accountToken}` } : {}), ...(options.headers || {}) },
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Erro ${res.status}`);
+  return res.json();
+}
+
+async function boot() {
+  let cfg;
+  try { cfg = await fetch("/api/config").then((r) => r.json()); }
+  catch { cfg = { enabled: false }; }
+  if (!cfg.enabled) {
+    authScreen.classList.remove("hidden");
+    home.classList.add("hidden");
+    $("#auth-form").classList.add("hidden");
+    $("#auth-toggle").classList.add("hidden");
+    $("#auth-disabled").classList.remove("hidden");
+    return;
+  }
+  supabase = createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true } });
+  supabase.auth.onAuthStateChange((_event, session) => applySession(session));
+  const { data } = await supabase.auth.getSession();
+  applySession(data.session);
+}
+
+let sessionReady = false;
+async function applySession(session) {
+  const token = session?.access_token || null;
+  accountToken = token;
+  if (!token) {
+    accountProfile = null;
+    showAuthScreen();
+    return;
+  }
+  socket.auth = { token }; // toda reconexão do socket usa o token atual
+  try {
+    const me = await api("/api/me");
+    accountProfile = me.profile;
+    bannerCatalog = me.banners || [];
+  } catch {
+    accountProfile = null;
+    showAuthScreen();
+    return;
+  }
+  showLoggedIn();
+  if (!sessionReady) { sessionReady = true; socket.connect(); }
+}
+
+function showAuthScreen() {
+  authScreen.classList.remove("hidden");
+  home.classList.add("hidden");
+  game.classList.add("hidden");
+}
+
+function showLoggedIn() {
+  authScreen.classList.add("hidden");
+  if (!state) home.classList.remove("hidden");
+  renderAccountBar();
+  // prefill do nome com o apelido da conta
+  if (accountProfile && !$("#name").value.trim()) $("#name").value = accountProfile.displayName || "";
+}
+
+function renderAccountBar() {
+  if (!accountProfile) return;
+  $("#account-name").textContent = accountProfile.displayName;
+  $("#account-photo").innerHTML = photoMarkup(accountProfile.photo, accountProfile.displayName);
+  $("#account-wins").innerHTML = `🏆 <b>${accountProfile.wins}</b> vitória${accountProfile.wins === 1 ? "" : "s"}`;
+  $("#dashboard-link").classList.toggle("hidden", !accountProfile.isAdmin);
+}
+
+// Monta a foto (avatar pronto, url de upload ou inicial) para um elemento.
+function photoMarkup(photo, name) {
+  const src = photoUrlFor(photo);
+  return src ? `<img src="${src}" alt="${escapeHtml(name || "")}" />` : escapeHtml((name?.[0] || "?").toUpperCase());
+}
+function photoUrlFor(photo) {
+  if (!photo) return null;
+  if (/^https?:\/\//.test(photo)) return photo;
+  return `/avatars/players/${encodeURIComponent(photo)}.webp`;
+}
+
+// --- Formulário de login/cadastro ---
+let authMode = "login";
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === "signup";
+  $("#auth-title").textContent = signup ? "CRIAR CONTA" : "ENTRAR";
+  $("#auth-sub").textContent = signup ? "Crie sua conta para jogar." : "Faça login para jogar.";
+  $("#auth-submit").textContent = signup ? "CRIAR CONTA" : "ENTRAR";
+  $("#auth-name-label").classList.toggle("hidden", !signup);
+  $("#auth-name").classList.toggle("hidden", !signup);
+  $("#auth-toggle").innerHTML = signup ? "Já tem conta? <b>Entrar</b>" : "Não tem conta? <b>Criar conta</b>";
+  $("#auth-password").autocomplete = signup ? "new-password" : "current-password";
+  setAuthError("");
+}
+
+$("#auth-toggle").onclick = () => setAuthMode(authMode === "login" ? "signup" : "login");
+$("#auth-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setAuthError("");
+  const email = $("#auth-email").value.trim();
+  const password = $("#auth-password").value;
+  const displayName = $("#auth-name").value.trim();
+  if (!email || !password) return setAuthError("Preencha e-mail e senha.");
+  if (authMode === "signup" && password.length < 6) return setAuthError("A senha precisa de pelo menos 6 caracteres.");
+  const submit = $("#auth-submit");
+  submit.disabled = true;
+  try {
+    if (authMode === "signup") {
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName || email.split("@")[0] } } });
+      if (error) throw error;
+      if (!data.session) { setAuthError("Conta criada! Confirme seu e-mail para entrar."); setAuthMode("login"); }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    }
+  } catch (err) {
+    setAuthError(err?.message || "Não foi possível autenticar.");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+async function logout() {
+  try { if (socket.connected) socket.emit("leave-room"); } catch {}
+  localStorage.removeItem(SESSION_KEY);
+  state = null;
+  sessionReady = false;
+  if (socket.connected) socket.disconnect();
+  game.classList.add("hidden");
+  home.classList.add("hidden");
+  if (supabase) await supabase.auth.signOut();
+  accountProfile = null; accountToken = null;
+  showAuthScreen();
+}
+
+boot();
+
+// ===== Perfil (foto) =====
+$("#logout")?.addEventListener("click", logout);
+$("#profile-open")?.addEventListener("click", openProfile);
+$("#profile-close")?.addEventListener("click", () => $("#profile").close());
+
+function bannerTitle(key) {
+  return bannerCatalog.find((banner) => banner.key === key)?.title || "Novato";
+}
+
+const AVATAR_OPTIONS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
+function openProfile() {
+  if (!accountProfile) return;
+  $("#profile-name").textContent = accountProfile.displayName;
+  $("#profile-photo").innerHTML = photoMarkup(accountProfile.photo, accountProfile.displayName);
+  $("#profile-banner-preview").innerHTML = `<span class="banner-pill banner-${accountProfile.banner}">${escapeHtml(bannerTitle(accountProfile.banner))}</span>`;
+  $("#avatar-choices").innerHTML = AVATAR_OPTIONS.map((key) => {
+    const active = accountProfile.photo === key ? "active" : "";
+    return `<button class="avatar-choice ${active}" data-avatar="${key}"><img src="/avatars/players/${key}.webp" alt="${key}" /></button>`;
+  }).join("");
+  $("#avatar-choices").querySelectorAll("[data-avatar]").forEach((btn) => btn.onclick = () => savePhoto({ avatarKey: btn.dataset.avatar }));
+  $("#profile").showModal();
+}
+
+async function savePhoto(payload) {
+  try {
+    const res = await api("/api/me/photo", { method: "POST", body: JSON.stringify(payload) });
+    accountProfile.photo = res.photo;
+    renderAccountBar();
+    openProfile();
+    showToast("Foto atualizada!");
+  } catch (err) {
+    showToast(err.message || "Não deu pra salvar a foto.");
+  }
+}
+
+$("#photo-upload")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  if (file.size > 2_500_000) return showToast("Imagem muito grande (máx. ~2MB).");
+  const reader = new FileReader();
+  reader.onload = () => savePhoto({ dataUrl: reader.result });
+  reader.readAsDataURL(file);
+});
+
+// ===== Ranking geral =====
+$("#ranking-open")?.addEventListener("click", openRanking);
+$("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
+
+async function openRanking() {
+  const dialog = $("#ranking");
+  const body = $("#ranking-body");
+  body.innerHTML = '<p class="ranking-loading">Carregando…</p>';
+  dialog.showModal();
+  try {
+    const data = await api("/api/leaderboard");
+    bannerCatalog = data.banners || bannerCatalog;
+    const rows = (data.leaderboard || []).filter((user) => user.gamesPlayed > 0 || user.wins > 0);
+    if (!rows.length) { body.innerHTML = '<p class="ranking-loading">Ninguém pontuou ainda. Seja o primeiro. 🏆</p>'; return; }
+    body.innerHTML = rows.map((user, index) => {
+      const medal = ["🥇", "🥈", "🥉"][index] || `${index + 1}º`;
+      const mine = user.id === data.meId ? "mine" : "";
+      const bannerTag = user.banner && user.banner !== "novato"
+        ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
+      return `<div class="lb-row ${mine}">
+        <span class="lb-pos">${medal}</span>
+        <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
+        <span class="lb-name">${escapeHtml(user.displayName)}${bannerTag}</span>
+        <span class="lb-wins">${user.wins}<small>🏆</small></span>
+        <span class="lb-games">${user.gamesPlayed} jogos</span>
+      </div>`;
+    }).join("");
+  } catch (err) {
+    body.innerHTML = `<p class="ranking-loading">${escapeHtml(err.message || "Erro ao carregar.")}</p>`;
+  }
+}
 
 // ===== Chat da sala =====
 const chatLog = $("#chat-log");
@@ -456,17 +691,21 @@ function renderSeats() {
     const hearts = lives > 0 ? "♥".repeat(lives) : "×";
     const compactHearts = lives > 0 ? `♥ ×${lives}` : "×";
     const isMaldito = player.name.trim().toLocaleLowerCase("pt-BR") === "maldito";
-    const avatarSource = isMaldito
-      ? "/avatars/maldito.png"
+    const avatarSource = player.photoUrl
+      ? player.photoUrl
+      : isMaldito ? "/avatars/maldito.png"
       : player.avatarKey ? `/avatars/players/${encodeURIComponent(player.avatarKey)}.webp` : null;
     const avatar = avatarSource
       ? `<img src="${avatarSource}" alt="Avatar de ${escapeHtml(player.name)}" />`
       : escapeHtml((player.name[0] || "?").toUpperCase());
+    const banner = player.banner && player.banner !== "novato" ? player.banner : null;
+    const bannerRibbon = banner ? `<div class="seat-banner">${escapeHtml(bannerTitle(banner))}</div>` : "";
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
-      <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""}" style="--cos:${cos};--sin:${sin}">
+      <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}">
         <div class="turn-flag">VEZ</div>
+        ${bannerRibbon}
         <div class="seat-body">
           <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
           <div class="seat-info">

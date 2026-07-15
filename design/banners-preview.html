@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:wght@600;700;800&display=swap');
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  background:
+    radial-gradient(120% 90% at 50% 0%, #2a2822 0%, #17160f 60%),
+    #14130d;
+  font-family:"DM Sans",system-ui,sans-serif; color:#f1eddf; padding:38px 40px 48px;
+}
+.head { text-align:center; margin-bottom:30px; }
+.head .k { font-size:.7rem; letter-spacing:.24em; color:#d8ff45; font-weight:800; }
+.head h1 { font:2.4rem "Archivo Black",sans-serif; letter-spacing:-.04em; margin-top:6px; }
+.head p { color:#9d998c; font-size:.82rem; margin-top:6px; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; max-width:1000px; margin:0 auto; }
+
+/* ===== Base do banner (placa da cadeira) ===== */
+.banner {
+  position:relative; overflow:hidden; border-radius:16px; padding:16px 18px;
+  display:flex; align-items:center; gap:15px; min-height:104px;
+  border:2px solid #4a483f; background:#201f1a;
+  box-shadow:0 10px 26px #0008;
+}
+.crest {
+  width:56px; height:56px; flex:0 0 56px; border-radius:14px; display:grid; place-items:center;
+  font-size:1.9rem; background:#00000035; position:relative; z-index:2;
+}
+.who { flex:1; min-width:0; position:relative; z-index:2; }
+.pname { display:block; font:1.35rem "Archivo Black",sans-serif; letter-spacing:-.02em; line-height:1; }
+.btitle { display:block; margin-top:7px; font-size:.62rem; font-weight:800; letter-spacing:.18em; }
+.hp { position:relative; z-index:2; color:#ff3b30; font-size:1.05rem; letter-spacing:-.12em; white-space:nowrap; }
+.tag { position:absolute; top:9px; right:12px; z-index:3; font-size:.5rem; font-weight:800; letter-spacing:.14em; opacity:.6; }
+
+/* ===== 1. REI DO BARALHO — dourado ===== */
+.b-rei {
+  border-color:#ffd970;
+  background:linear-gradient(135deg,#4a3a10 0%,#2c220a 55%,#3a2c0b 100%);
+  box-shadow:0 10px 26px #0008, 0 0 0 1px #ffe9a833 inset, 0 0 22px #ffcf5a33;
+}
+.b-rei::before { /* brilho diagonal */
+  content:""; position:absolute; inset:0; z-index:1;
+  background:linear-gradient(115deg,transparent 40%,#ffe9a83a 48%,transparent 56%);
+}
+.b-rei .crest { background:radial-gradient(circle at 35% 30%,#fff2c0,#e9b53a 60%,#a9781a); box-shadow:0 0 14px #ffcf5a88; }
+.b-rei .pname { color:#ffe9a8; text-shadow:0 1px 0 #6b4e12; }
+.b-rei .btitle { color:#e6bd54; }
+
+/* ===== 2. O MALDITO — vermelho com fogo ===== */
+.b-maldito {
+  border-color:#ff5a2a;
+  background:linear-gradient(180deg,#2a0a08 0%,#160504 100%);
+  box-shadow:0 10px 26px #0008, 0 0 24px #ff3a1044;
+}
+.b-maldito::before, .b-maldito::after { /* chamas subindo */
+  content:""; position:absolute; left:-5%; right:-5%; bottom:-14px; height:82%; z-index:1;
+  background:
+    radial-gradient(42% 62% at 18% 100%, #ffd23f 0%, #ff7a18 34%, #e0140a 58%, transparent 74%),
+    radial-gradient(36% 58% at 50% 100%, #ffe98a 0%, #ff8f1e 38%, #d21109 62%, transparent 80%),
+    radial-gradient(42% 62% at 82% 100%, #ffce3f 0%, #ff6a18 34%, #d8120a 58%, transparent 74%);
+  filter:blur(7px); mix-blend-mode:screen; opacity:.9;
+  animation:flame 1.5s ease-in-out infinite alternate;
+}
+.b-maldito::after { opacity:.55; filter:blur(11px); animation-duration:1.05s; transform:translateY(-6px) scaleY(1.15); }
+@keyframes flame { from { transform:translateY(6px) scaleY(.92); } to { transform:translateY(-7px) scaleY(1.14); } }
+.b-maldito .crest { background:radial-gradient(circle at 40% 30%,#ffb36a,#e0210c 65%,#7d0a04); box-shadow:0 0 16px #ff5a2aaa; }
+.b-maldito .pname { color:#ffdcc4; text-shadow:0 0 12px #ff5a2a99; }
+.b-maldito .btitle { color:#ff8756; }
+
+/* ===== 3. PATO DO BARALHO — amarelo ===== */
+.b-pato {
+  border-color:#ffd24a;
+  background:linear-gradient(135deg,#ffd54a 0%,#f7a81e 100%);
+  color:#3a2a06;
+}
+.b-pato .crest { background:#fff4c0; box-shadow:0 3px 0 #c98a12; animation:quack 1.8s ease-in-out infinite; }
+@keyframes quack { 0%,100%{ transform:rotate(-6deg) } 50%{ transform:rotate(8deg) translateY(-2px) } }
+.b-pato .pname { color:#3a2a06; }
+.b-pato .btitle { color:#8a5c08; }
+.b-pato .hp { color:#c22; }
+
+/* ===== 4. CORINGA — roxo ===== */
+.b-coringa {
+  border-color:#b06bff;
+  background:linear-gradient(135deg,#3a1466 0%,#210a3f 60%,#4a1a7a 100%);
+  box-shadow:0 10px 26px #0008, 0 0 22px #b06bff44;
+}
+.b-coringa .crest { background:radial-gradient(circle at 35% 30%,#e6c6ff,#a24dff 60%,#5a1aa0); box-shadow:0 0 14px #b06bff99; }
+.b-coringa .pname { color:#ecdcff; }
+.b-coringa .btitle { color:#c79bff; }
+
+/* ===== 5. MANILHA — verde feltro ===== */
+.b-manilha {
+  border-color:#caa94a;
+  background:linear-gradient(135deg,#1c5a3f 0%,#0f3a29 100%);
+  box-shadow:0 10px 26px #0008, 0 0 0 1px #caa94a33 inset;
+}
+.b-manilha .crest { background:radial-gradient(circle at 40% 30%,#ead79a,#caa94a 65%,#8a6f22); color:#123a2a; box-shadow:0 0 12px #caa94a66; }
+.b-manilha .pname { color:#e2f3e8; }
+.b-manilha .btitle { color:#cbb267; }
+
+/* ===== 6. ZAP (4♣) — a mais forte, preto + acid ===== */
+.b-zap {
+  border-color:#d8ff45;
+  background:linear-gradient(135deg,#14140e 0%,#0b0b08 100%);
+  box-shadow:0 10px 26px #0008, 0 0 20px #d8ff4533;
+}
+.b-zap .crest { background:#0d0d0a; border:2px solid #d8ff45; color:#eaffb0; font:1.2rem "Archivo Black",sans-serif; box-shadow:0 0 14px #d8ff4577; }
+.b-zap .pname { color:#eaffb0; }
+.b-zap .btitle { color:#b6d84a; }
+
+/* ===== 7. NOVATO — padrão neutro ===== */
+.b-novato { }
+.b-novato .crest { background:#2c2b25; color:#cfcbbd; }
+.b-novato .pname { color:#ece7d6; }
+.b-novato .btitle { color:#8d897e; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="k">SE FODE · PERSONALIZAÇÃO</div>
+    <h1>BANNERS DA MESA</h1>
+    <p>Placa que aparece na cadeira do jogador. Por enquanto, só o admin atribui a cada usuário.</p>
+  </div>
+  <div class="grid">
+    <div class="banner b-rei">
+      <div class="crest">👑</div>
+      <div class="who"><span class="pname">Pimenta</span><span class="btitle">REI DO BARALHO</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-maldito">
+      <div class="crest">💀</div>
+      <div class="who"><span class="pname">Victin</span><span class="btitle">O MALDITO</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-pato">
+      <div class="crest">🦆</div>
+      <div class="who"><span class="pname">Fepe</span><span class="btitle">PATO DO BARALHO</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-coringa">
+      <div class="crest">🃏</div>
+      <div class="who"><span class="pname">Chico</span><span class="btitle">O CORINGA</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-manilha">
+      <div class="crest">♣</div>
+      <div class="who"><span class="pname">Murilo</span><span class="btitle">MANILHA</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-zap">
+      <div class="crest">4♣</div>
+      <div class="who"><span class="pname">JP</span><span class="btitle">O ZAP</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-novato">
+      <div class="crest">♠</div>
+      <div class="who"><span class="pname">RTN</span><span class="btitle">NOVATO</span></div>
+      <div class="hp">♥♥♥♥♥</div>
+    </div>
+    <div class="banner b-novato" style="opacity:.35;border-style:dashed;">
+      <div class="crest">＋</div>
+      <div class="who"><span class="pname" style="font-size:1rem;color:#8d897e">mais em breve…</span><span class="btitle">&nbsp;</span></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,3 +1,4 @@
+import "./env.js"; // PRIMEIRO: carrega o .env antes de qualquer módulo que leia process.env
 import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
@@ -5,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
+import { publicConfig, profileFromToken, verifyToken, ensureProfile, listUsers, leaderboard, setUserBanner, setUserPhoto, recordGame, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -18,6 +20,10 @@ const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", ch
 
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
 // deploy nunca fica preso numa versao antiga em cache no cliente.
+app.use(express.json({ limit: "3mb" }));
+
+// Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
+// deploy nunca fica preso numa versao antiga em cache no cliente.
 app.use(express.static(path.join(__dirname, "public"), {
   etag: true,
   setHeaders: (res, filePath) => {
@@ -25,6 +31,69 @@ app.use(express.static(path.join(__dirname, "public"), {
   },
 }));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
+
+// ===== Contas / API =====
+// Config pública para o browser se autenticar no Supabase (anon key é pública).
+app.get("/api/config", (_req, res) => res.json(publicConfig()));
+
+// Extrai o perfil a partir do header Authorization: Bearer <access_token>.
+async function authProfile(req) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return null;
+  return profileFromToken(token);
+}
+
+// Perfil do usuário logado (+ catálogos de banner/avatar para a UI de perfil).
+app.get("/api/me", async (req, res) => {
+  const profile = await authProfile(req);
+  if (!profile) return res.status(401).json({ error: "Não autenticado." });
+  res.json({ profile, banners: BANNERS, avatars: AVATAR_KEYS });
+});
+
+// Usuário troca a própria foto (avatar pronto ou upload).
+app.post("/api/me/photo", async (req, res) => {
+  const profile = await authProfile(req);
+  if (!profile) return res.status(401).json({ error: "Não autenticado." });
+  const result = await setUserPhoto(profile.id, { avatarKey: req.body?.avatarKey, dataUrl: req.body?.dataUrl });
+  if (!result.ok) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, photo: result.photo });
+});
+
+// Ranking geral por vitórias — qualquer usuário logado vê.
+app.get("/api/leaderboard", async (req, res) => {
+  const profile = await authProfile(req);
+  if (!profile) return res.status(401).json({ error: "Não autenticado." });
+  res.json({ leaderboard: await leaderboard(50), banners: BANNERS, meId: profile.id });
+});
+
+// Só admin.
+async function adminProfile(req, res) {
+  const profile = await authProfile(req);
+  if (!profile) { res.status(401).json({ error: "Não autenticado." }); return null; }
+  if (!profile.isAdmin) { res.status(403).json({ error: "Acesso restrito a administradores." }); return null; }
+  return profile;
+}
+
+// Dashboard admin: lista usuários com seus dados.
+app.get("/api/admin/users", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  res.json({ users: await listUsers(), banners: BANNERS });
+});
+
+// Admin atribui um banner a um usuário.
+app.post("/api/admin/user/:id/banner", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  const banner = String(req.body?.banner || "");
+  if (!BANNER_KEYS.includes(banner)) return res.status(400).json({ error: "Banner inválido." });
+  const ok = await setUserBanner(req.params.id, banner);
+  if (!ok) return res.status(400).json({ error: "Não foi possível atribuir o banner." });
+  res.json({ ok: true });
+});
+
+app.get("/dashboard", (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
 
 const cleanName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);
 const cleanChat = (value) => String(value || "").replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -76,9 +145,22 @@ function playerById(room, id) {
 }
 
 function assignRandomAvatar(room, player) {
+  if (player.avatarKey || player.photoUrl) return; // já tem foto escolhida no perfil
   const unused = RANDOM_AVATAR_KEYS.filter((avatarKey) => !room.players.some((other) => other.avatarKey === avatarKey));
   const choices = unused.length ? unused : RANDOM_AVATAR_KEYS;
   player.avatarKey = choices[Math.floor(Math.random() * choices.length)];
+}
+
+// Aplica os dados do perfil autenticado (foto e banner) ao jogador/assento.
+function applyProfile(player, user) {
+  if (!user) return;
+  player.userId = user.id;
+  player.banner = user.banner || "novato";
+  player.photoUrl = null;
+  if (user.photo) {
+    if (/^https?:\/\//.test(user.photo)) { player.photoUrl = user.photo; player.avatarKey = null; }
+    else player.avatarKey = user.photo;
+  }
 }
 
 function sendSession(socket, room, player) {
@@ -148,6 +230,8 @@ function publicState(room, viewerId) {
       auto: Boolean(player.auto),
       isBot: Boolean(player.isBot),
       avatarKey: player.avatarKey || null,
+      photoUrl: player.photoUrl || null,
+      banner: player.banner || "novato",
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
     })),
@@ -214,7 +298,9 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  return { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, hand: [] };
+  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, hand: [], userId: null, banner: "novato", photoUrl: null };
+  applyProfile(player, socket.data.user);
+  return player;
 }
 
 function createBot(code, index) {
@@ -549,6 +635,9 @@ function endGame(room) {
     room.lastWinnerName = null; // ninguém venceu: não conta pro ranking
     room.message = "Todo mundo se fodeu. Impressionante.";
   }
+  // Grava as stats das contas: +1 partida para todos os humanos, +1 vitória pro vencedor.
+  const humanIds = seatedPlayers(room).filter((player) => player.userId).map((player) => player.userId);
+  if (humanIds.length) recordGame(humanIds, winner?.userId || null);
   if (room.tournament) {
     const matchStandings = finalStandingsFrom(seatedPlayers(room));
     const playersInMatch = matchStandings.length;
@@ -569,6 +658,24 @@ function endGame(room) {
   broadcast(room);
 }
 
+// Autentica o socket no handshake: quem não estiver logado não entra em salas.
+io.use(async (socket, next) => {
+  try {
+    socket.data.user = supabaseEnabled ? await profileFromToken(socket.handshake.auth?.token) : null;
+  } catch {
+    socket.data.user = null;
+  }
+  next();
+});
+
+// Login obrigatório para criar/entrar em salas.
+function requireUser(socket) {
+  if (socket.data.user) return true;
+  socket.emit("auth-required");
+  notice(socket, "Faça login para entrar em uma sala.");
+  return false;
+}
+
 io.on("connection", (socket) => {
   socket.on("resume-session", ({ code, playerId, resumeToken } = {}) => {
     const room = rooms.get(cleanCode(code));
@@ -587,6 +694,7 @@ io.on("connection", (socket) => {
       room.autoTurnId = null;
     }
     player.auto = false; // voltou para a mesa: reassume o controle do bot
+    applyProfile(player, socket.data.user); // atualiza foto/banner se mudaram enquanto esteve fora
     sendSession(socket, room, player);
     transferHost(room);
     notice(socket, "Você voltou para a mesa.");
@@ -594,7 +702,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("solo-game", ({ name, botCount, botDifficulty } = {}) => {
-    name = cleanName(name);
+    if (!requireUser(socket)) return;
+    name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     botCount = Math.min(7, Math.max(1, Number.isInteger(Number(botCount)) ? Number(botCount) : 3));
     botDifficulty = ["easy", "normal", "hard"].includes(botDifficulty) ? botDifficulty : "normal";
@@ -612,7 +721,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("create-room", ({ name } = {}) => {
-    name = cleanName(name);
+    if (!requireUser(socket)) return;
+    name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     const code = roomCode();
     const player = createPlayer(socket, name);
@@ -623,7 +733,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("create-tournament", ({ name, tournamentGames } = {}) => {
-    name = cleanName(name);
+    if (!requireUser(socket)) return;
+    name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     const totalGames = [3, 5].includes(Number(tournamentGames)) ? Number(tournamentGames) : 3;
     const code = roomCode();
@@ -637,7 +748,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("join-room", ({ name, code } = {}) => {
-    name = cleanName(name);
+    if (!requireUser(socket)) return;
+    name = cleanName(name) || cleanName(socket.data.user.displayName);
     code = cleanCode(code);
     const room = rooms.get(code);
     if (!name) return notice(socket, "Digite seu nome.");

@@ -10,7 +10,39 @@
 <body>
   <div class="noise"></div>
   <main id="app">
-    <section id="home" class="home">
+    <!-- Tela de login / cadastro (login é obrigatório para jogar) -->
+    <section id="auth" class="auth hidden">
+      <div class="auth-card">
+        <div class="kicker">SE FODE</div>
+        <h2 id="auth-title">ENTRAR</h2>
+        <p id="auth-sub" class="auth-sub">Faça login para jogar.</p>
+        <form id="auth-form" onsubmit="return false">
+          <label id="auth-name-label" for="auth-name" class="hidden">COMO QUER SER CHAMADO</label>
+          <input id="auth-name" class="hidden" maxlength="18" placeholder="Seu apelido" autocomplete="nickname" />
+          <label for="auth-email">E-MAIL</label>
+          <input id="auth-email" type="email" placeholder="voce@exemplo.com" autocomplete="email" />
+          <label for="auth-password">SENHA</label>
+          <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+          <div id="auth-error" class="auth-error hidden"></div>
+          <button id="auth-submit" class="primary">ENTRAR</button>
+        </form>
+        <button id="auth-toggle" class="auth-toggle">Não tem conta? <b>Criar conta</b></button>
+        <p id="auth-disabled" class="auth-error hidden">Contas indisponíveis: configure o Supabase no servidor (.env).</p>
+      </div>
+    </section>
+
+    <section id="home" class="home hidden">
+      <div id="account-bar" class="account-bar">
+        <button id="profile-open" class="account-chip" title="Editar perfil">
+          <span id="account-photo" class="account-photo"></span>
+          <span class="account-meta"><span id="account-name" class="account-name"></span><span id="account-wins" class="account-wins"></span></span>
+        </button>
+        <div class="account-actions">
+          <button id="ranking-open" class="account-btn">🏆 RANKING</button>
+          <a id="dashboard-link" href="/dashboard" class="account-btn hidden">DASHBOARD</a>
+          <button id="logout" class="account-btn ghost">SAIR</button>
+        </div>
+      </div>
       <header class="brand">
         <div class="kicker">UM JOGO PARA AMIGOS</div>
         <h1>SE<br />FO<span>DE</span></h1>
@@ -103,6 +135,32 @@
       </div>
     </section>
   </main>
+
+  <dialog id="profile" class="profile-dialog">
+    <button id="profile-close" class="close">×</button>
+    <div class="kicker">SEU PERFIL</div>
+    <h2>FOTO &amp; BANNER</h2>
+    <div class="profile-current">
+      <span id="profile-photo" class="profile-photo-lg"></span>
+      <div class="profile-current-info">
+        <b id="profile-name"></b>
+        <div id="profile-banner-preview"></div>
+      </div>
+    </div>
+    <label class="profile-label">ESCOLHA UM AVATAR</label>
+    <div id="avatar-choices" class="avatar-choices"></div>
+    <label class="profile-label" for="photo-upload">OU ENVIE UMA FOTO</label>
+    <input id="photo-upload" type="file" accept="image/png,image/jpeg,image/webp" />
+    <p class="fine">Seu <b>banner</b> é definido pelo admin no dashboard. Novatos começam sem banner.</p>
+  </dialog>
+
+  <dialog id="ranking" class="ranking-dialog">
+    <button id="ranking-close" class="close">×</button>
+    <div class="kicker">HALL DA FAMA</div>
+    <h2>RANKING GERAL</h2>
+    <p class="ranking-sub">As maiores contagens de vitórias do Se Fode.</p>
+    <div id="ranking-body" class="ranking-body"></div>
+  </dialog>
 
   <dialog id="rules">
     <button id="rules-close" class="close">×</button>

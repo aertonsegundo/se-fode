@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#171713" />
+  <title>Se Fode — Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <main class="dash">
+    <header class="dash-top">
+      <a class="mini-brand" href="/">SE FODE</a>
+      <div class="dash-title">DASHBOARD ADMIN</div>
+      <a href="/" class="dash-back">← VOLTAR AO JOGO</a>
+    </header>
+
+    <div id="dash-gate" class="dash-gate">Carregando…</div>
+
+    <section id="dash-content" class="dash-content hidden">
+      <div class="dash-stats" id="dash-stats"></div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Usuário</th>
+              <th>E-mail</th>
+              <th>Papel</th>
+              <th>Vitórias</th>
+              <th>Jogos</th>
+              <th>Cadastro</th>
+              <th>Último login</th>
+              <th>Banner</th>
+            </tr>
+          </thead>
+          <tbody id="dash-rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <div id="toast" role="status"></div>
+  <script type="module" src="/dashboard.js"></script>
+</body>
+</html>

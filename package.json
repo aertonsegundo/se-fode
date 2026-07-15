@@ -13,6 +13,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.6",
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
   },
