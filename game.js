@@ -150,7 +150,7 @@ export function finalStandingsFrom(players) {
   }));
 }
 
-// Pontos do Torneio Relâmpago: a vitória vale um ponto extra, e ninguém sai
+// Pontos do Torneio Rankeado: a vitória vale um ponto extra, e ninguém sai
 // de uma partida sem pontuar. Ex.: 4 jogadores → 5, 3, 2 e 1 ponto.
 export function tournamentPoints(position, playerCount) {
   if (!Number.isInteger(position) || position < 1 || position > playerCount) return 0;

@@ -885,7 +885,7 @@ function renderAction() {
     const url = roomUrl(state.code);
     const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
     const tournament = state.tournament;
-    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO RELÂMPAGO" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
+    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO RANKEADO" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
       <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. A classificação de cada uma vale pontos.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}</p>
       <div class="share">
         <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />

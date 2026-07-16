@@ -760,7 +760,7 @@ function endGame(room) {
       // Vitória +3; segundo lugar entre humanos +1. Bot não gera vitória/pontos.
       rankPoints: player.id === winner?.id ? 3 : positionById.get(player.id) === 2 ? 1 : 0,
     }));
-  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, room.tournament ? "Torneio relâmpago" : "Partida");
+  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, room.tournament ? "Torneio rankeado" : "Partida");
   if (room.tournament) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
@@ -783,7 +783,7 @@ function endGame(room) {
       })));
     }
     room.message = room.tournament.finished
-      ? `${leader?.name || "Alguém"} venceu o Torneio Relâmpago!`
+      ? `${leader?.name || "Alguém"} venceu o Torneio Rankeado!`
       : `Partida ${room.tournament.completedGames}/${room.tournament.totalGames} encerrada. ${leader?.name || "—"} lidera o torneio.`;
   }
   broadcast(room);
@@ -883,7 +883,7 @@ io.on("connection", (socket) => {
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
     room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {} };
-    room.message = `Torneio Relâmpago de ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
+    room.message = `Torneio Rankeado de ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
     rooms.set(code, room);
     sendSession(socket, room, player);
     broadcast(room);

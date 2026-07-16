@@ -118,7 +118,7 @@ test("classificação final põe sobrevivente primeiro e o último eliminado aci
   ]);
 });
 
-test("torneio relâmpago pontua a classificação e desempata por vitórias", () => {
+test("torneio rankeado pontua a classificação e desempata por vitórias", () => {
   assert.deepEqual([1, 2, 3, 4].map((position) => tournamentPoints(position, 4)), [5, 3, 2, 1]);
   assert.equal(tournamentPoints(0, 4), 0);
   assert.deepEqual(tournamentStandingsFrom([
