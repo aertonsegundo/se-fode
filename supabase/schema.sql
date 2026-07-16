@@ -12,9 +12,15 @@ create table if not exists public.profiles (
   banner        text not null default 'novato',      -- chave do banner (novato/rei/maldito/pato/coringa/manilha/zap)
   wins          integer not null default 0,
   games_played  integer not null default 0,
+  rank_points   integer not null default 0,
+  tournament_titles integer not null default 0,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
+
+-- Também cobre instalações que já tinham a tabela antes do ranking por pontos.
+alter table public.profiles add column if not exists rank_points integer not null default 0;
+alter table public.profiles add column if not exists tournament_titles integer not null default 0;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security.
@@ -70,6 +76,46 @@ as $$
 
   update public.profiles set wins = wins + 1
   where p_winner is not null and id = p_winner;
+$$;
+
+-- Atualização atômica da partida. O servidor envia apenas ids de jogadores
+-- humanos: bots nunca ganham partidas, pontos ou histórico global.
+create or replace function public.record_game_result(p_players uuid[], p_winner uuid, p_rank_points jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles set games_played = games_played + 1
+  where id = any(p_players);
+
+  update public.profiles set wins = wins + 1
+  where p_winner is not null and id = p_winner;
+
+  update public.profiles p
+  set rank_points = p.rank_points + reward.points
+  from (select key, value::integer as points from jsonb_each_text(coalesce(p_rank_points, '{}'::jsonb))) reward
+  where p.id::text = reward.key;
+end;
+$$;
+
+-- Bônus final do torneio: campeão +15, vice +8 e terceiro +5, além do título.
+create or replace function public.award_tournament_result(p_rewards jsonb, p_champion uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles p
+  set rank_points = p.rank_points + reward.points
+  from (select key, value::integer as points from jsonb_each_text(coalesce(p_rewards, '{}'::jsonb))) reward
+  where p.id::text = reward.key;
+
+  update public.profiles set tournament_titles = tournament_titles + 1
+  where p_champion is not null and id = p_champion;
+end;
 $$;
 
 -- Histórico enxuto por jogador. Guarda apenas o resultado final da partida;

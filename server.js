@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
-import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
+import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentResult, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -199,7 +199,8 @@ function tournamentStandings(room) {
     .map((id) => {
       const player = playerById(room, id);
       const score = room.tournament.scores[id];
-      return player && score ? { id, name: player.name, ...score } : null;
+      // Bots continuam na mesa, mas nunca entram no ranking do torneio.
+      return player?.userId && score ? { id, userId: player.userId, name: player.name, ...score } : null;
     })
     .filter(Boolean));
 }
@@ -734,30 +735,42 @@ function endGame(room) {
     room.lastWinnerName = null; // ninguém venceu: não conta pro ranking
     room.message = "Todo mundo se fodeu. Impressionante.";
   }
-  // Grava as stats das contas: +1 partida para todos os humanos, +1 vitória pro vencedor.
-  const matchStandings = finalStandingsFrom(seatedPlayers(room));
-  const positionById = new Map(matchStandings.map((entry) => [entry.id, entry.position]));
+  // Bots não contam: posição, pontos e histórico usam apenas contas humanas.
+  const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
+  const humanCount = humanStandings.length;
+  const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const humanPlayers = seatedPlayers(room)
     .filter((player) => player.userId)
     .map((player) => ({
       userId: player.userId,
-      position: positionById.get(player.id) || seatedPlayers(room).length,
-      playerCount: seatedPlayers(room).length,
+      position: positionById.get(player.id) || humanCount,
+      playerCount: humanCount,
       won: player.id === winner?.id,
+      // Vitória +3; segundo lugar entre humanos +1. Bot não gera vitória/pontos.
+      rankPoints: player.id === winner?.id ? 3 : positionById.get(player.id) === 2 ? 1 : 0,
     }));
-  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, room.tournament ? "Torneio relâmpago" : "Partida" );
+  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, room.tournament ? "Torneio relâmpago" : "Partida");
   if (room.tournament) {
-    const playersInMatch = matchStandings.length;
-    for (const entry of matchStandings) {
+    for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
       if (!score) continue;
-      score.points += tournamentPoints(entry.position, playersInMatch);
+      score.points += tournamentPoints(entry.position, humanCount);
       score.wins += entry.survived ? 1 : 0;
       score.lastPosition = entry.position;
     }
     room.tournament.completedGames += 1;
     room.tournament.finished = room.tournament.completedGames >= room.tournament.totalGames;
     const leader = tournamentStandings(room)[0];
+    // Bônus final só vale com 3+ humanos. Bots não participam nem do cálculo.
+    if (room.tournament.finished && humanCount >= 3 && !room.tournament.rankingAwarded) {
+      room.tournament.rankingAwarded = true;
+      const bonuses = [15, 8, 5];
+      awardTournamentResult(tournamentStandings(room).map((entry) => ({
+        userId: entry.userId,
+        position: entry.position,
+        rankPoints: bonuses[entry.position - 1] || 0,
+      })));
+    }
     room.message = room.tournament.finished
       ? `${leader?.name || "Alguém"} venceu o Torneio Relâmpago!`
       : `Partida ${room.tournament.completedGames}/${room.tournament.totalGames} encerrada. ${leader?.name || "—"} lidera o torneio.`;
@@ -898,6 +911,7 @@ io.on("connection", (socket) => {
       room.tournament.playerIds = [];
       room.tournament.scores = {};
       room.tournament.finished = false;
+      room.tournament.rankingAwarded = false;
     }
     startGame(room);
   });
@@ -960,6 +974,7 @@ io.on("connection", (socket) => {
       if (!room.tournament.finished) return notice(socket, "Use Próxima Partida para continuar o torneio.");
       room.tournament.completedGames = 0;
       room.tournament.finished = false;
+      room.tournament.rankingAwarded = false;
       room.tournament.scores = Object.fromEntries(room.tournament.playerIds
         .map((id) => [id, { points: 0, wins: 0, lastPosition: null }]));
     }

@@ -105,6 +105,8 @@ function shapeProfile(profile, authUser) {
     banner: profile.banner || "novato",
     wins: profile.wins || 0,
     gamesPlayed: profile.games_played || 0,
+    rankPoints: profile.rank_points || 0,
+    tournamentTitles: profile.tournament_titles || 0,
     createdAt: profile.created_at || null,
     lastSignInAt: authUser?.last_sign_in_at ?? null,
   };
@@ -163,22 +165,35 @@ export async function listUsers() {
   return (rows || []).map((row) => shapeProfile(row, authById.get(row.id)));
 }
 
-// Ranking geral por vitórias (para o menu). Devolve os melhores, sem e-mail.
+// Ranking geral por pontos. Vitórias e títulos entram como desempate.
 export async function leaderboard(limit = 50) {
   if (!admin) return [];
-  const { data } = await admin
+  const { data, error } = await admin
     .from("profiles")
-    .select("id, display_name, role, photo, banner, wins, games_played")
+    .select("id, display_name, role, photo, banner, wins, games_played, rank_points, tournament_titles")
+    .order("rank_points", { ascending: false })
+    .order("tournament_titles", { ascending: false })
     .order("wins", { ascending: false })
     .order("games_played", { ascending: false })
     .limit(limit);
-  return (data || []).map((row) => ({
+  // O deploy do servidor pode chegar alguns segundos antes de o admin rodar o
+  // schema. Nesse intervalo, mantém o ranking antigo legível, com zeros novos.
+  const rows = data || (error
+    ? (await admin.from("profiles")
+      .select("id, display_name, role, photo, banner, wins, games_played")
+      .order("wins", { ascending: false })
+      .order("games_played", { ascending: false })
+      .limit(limit)).data || []
+    : []);
+  return rows.map((row) => ({
     id: row.id,
     displayName: row.display_name || "Jogador",
     photo: row.photo || null,
     banner: row.banner || "novato",
     wins: row.wins || 0,
     gamesPlayed: row.games_played || 0,
+    rankPoints: row.rank_points || 0,
+    tournamentTitles: row.tournament_titles || 0,
   }));
 }
 
@@ -186,11 +201,17 @@ export async function leaderboard(limit = 50) {
 // role ou qualquer dado de autenticação.
 export async function publicPlayerProfile(id) {
   if (!admin || !/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
-  const { data: row } = await admin
+  const { data, error: profileError } = await admin
     .from("profiles")
-    .select("id, display_name, photo, banner, wins, games_played, created_at")
+    .select("id, display_name, photo, banner, wins, games_played, rank_points, tournament_titles, created_at")
     .eq("id", id)
     .maybeSingle();
+  const row = data || (profileError
+    ? (await admin.from("profiles")
+      .select("id, display_name, photo, banner, wins, games_played, created_at")
+      .eq("id", id)
+      .maybeSingle()).data
+    : null);
   if (!row) return null;
 
   // A tabela é criada pela atualização do schema. Enquanto ela ainda não foi
@@ -209,6 +230,8 @@ export async function publicPlayerProfile(id) {
     banner: row.banner || "novato",
     wins: row.wins || 0,
     gamesPlayed: row.games_played || 0,
+    rankPoints: row.rank_points || 0,
+    tournamentTitles: row.tournament_titles || 0,
     createdAt: row.created_at || null,
     historyAvailable: !error,
     recentGames: matches || [],
@@ -348,7 +371,20 @@ export async function recordGame(players, winnerId, mode = "Partida") {
   if (!admin || !players?.length) return;
   try {
     const playerIds = players.map((player) => typeof player === "string" ? player : player.userId).filter(Boolean);
-    await admin.rpc("record_game", { p_players: playerIds, p_winner: winnerId || null });
+    const rankPoints = Object.fromEntries(players
+      .filter((player) => typeof player === "object" && player.userId)
+      .map((player) => [player.userId, Math.max(0, Number(player.rankPoints) || 0)]));
+    const { error: resultError } = await admin.rpc("record_game_result", {
+      p_players: playerIds,
+      p_winner: winnerId || null,
+      p_rank_points: rankPoints,
+    });
+    // Enquanto o schema ainda não foi executado, mantém as stats antigas vivas.
+    if (resultError) {
+      const { error: fallbackError } = await admin.rpc("record_game", { p_players: playerIds, p_winner: winnerId || null });
+      if (fallbackError) throw fallbackError;
+      console.warn("[supabase] rode o schema.sql para ativar pontos de ranking:", resultError.message);
+    }
 
     // O histórico é complementar às estatísticas. Se a migration ainda não
     // tiver sido executada, a partida continua contabilizando normalmente.
@@ -370,6 +406,15 @@ export async function recordGame(players, winnerId, mode = "Partida") {
   } catch (error) {
     console.error("[supabase] recordGame falhou:", error.message);
   }
+}
+
+// Bônus final do torneio. O servidor passa somente contas humanas.
+export async function awardTournamentResult(entries) {
+  if (!admin || !entries?.length) return;
+  const champion = entries.find((entry) => entry.position === 1)?.userId || null;
+  const rewards = Object.fromEntries(entries.map((entry) => [entry.userId, Math.max(0, Number(entry.rankPoints) || 0)]));
+  const { error } = await admin.rpc("award_tournament_result", { p_rewards: rewards, p_champion: champion });
+  if (error) console.warn("[supabase] rode o schema.sql para ativar bônus de torneio:", error.message);
 }
 
 export { isUrl };

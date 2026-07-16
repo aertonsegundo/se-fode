@@ -413,7 +413,7 @@ async function openRanking() {
   try {
     const data = await api("/api/leaderboard");
     bannerCatalog = data.banners || bannerCatalog;
-    const rows = (data.leaderboard || []).filter((user) => user.gamesPlayed > 0 || user.wins > 0);
+    const rows = (data.leaderboard || []).filter((user) => user.gamesPlayed > 0 || user.wins > 0 || user.rankPoints > 0 || user.tournamentTitles > 0);
     if (!rows.length) { body.innerHTML = '<p class="ranking-loading">Ninguém pontuou ainda. Seja o primeiro. 🏆</p>'; return; }
     body.innerHTML = rows.map((user, index) => {
       const medal = ["🥇", "🥈", "🥉"][index] || `${index + 1}º`;
@@ -424,8 +424,9 @@ async function openRanking() {
         <span class="lb-pos">${medal}</span>
         <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
         <span class="lb-name">${escapeHtml(user.displayName)}${bannerTag}</span>
-        <span class="lb-wins">${user.wins}<small>🏆</small></span>
-        <span class="lb-games">${user.gamesPlayed} jogos</span>
+        <span class="lb-stat points"><b>${user.rankPoints || 0}</b><small>PTS</small></span>
+        <span class="lb-stat"><b>${user.wins}</b><small>VIT</small></span>
+        <span class="lb-stat titles"><b>${user.tournamentTitles || 0}</b><small>TOR</small></span>
       </div>`;
     }).join("");
   } catch (err) {
