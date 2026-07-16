@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
-import { publicConfig, profileFromToken, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
+import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -57,6 +57,7 @@ app.post("/api/me/name", async (req, res) => {
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
   const result = await setUserName(profile.id, req.body?.name);
   if (!result.ok) return res.status(400).json({ error: result.error });
+  updateLiveProfile(profile.id, { displayName: result.displayName });
   res.json({ ok: true, displayName: result.displayName });
 });
 
@@ -66,6 +67,7 @@ app.post("/api/me/photo", async (req, res) => {
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
   const result = await setUserPhoto(profile.id, { avatarKey: req.body?.avatarKey, dataUrl: req.body?.dataUrl });
   if (!result.ok) return res.status(400).json({ error: result.error });
+  updateLiveProfile(profile.id, { photo: result.photo });
   res.json({ ok: true, photo: result.photo });
 });
 
@@ -99,6 +101,7 @@ app.post("/api/admin/user/:id/banner", async (req, res) => {
   if (!BANNER_KEYS.includes(banner)) return res.status(400).json({ error: "Banner inválido." });
   const ok = await setUserBanner(req.params.id, banner);
   if (!ok) return res.status(400).json({ error: "Não foi possível atribuir o banner." });
+  updateLiveProfile(req.params.id, { banner });
   res.json({ ok: true });
 });
 
@@ -169,6 +172,30 @@ function applyProfile(player, user) {
   if (user.photo) {
     if (/^https?:\/\//.test(user.photo)) { player.photoUrl = user.photo; player.avatarKey = null; }
     else player.avatarKey = user.photo;
+  }
+}
+
+// Propaga foto/banner/nome para o assento AO VIVO, mesmo com o jogador já sentado
+// (ex.: trocou a foto no perfil ou o admin deu um banner durante a partida).
+function updateLiveProfile(userId, { photo, banner, displayName } = {}) {
+  if (!userId) return;
+  for (const room of rooms.values()) {
+    const player = room.players.find((item) => item.userId === userId);
+    if (!player) continue;
+    if (banner !== undefined) player.banner = banner || "novato";
+    if (photo !== undefined) {
+      player.photoUrl = null;
+      player.avatarKey = null;
+      if (photo) {
+        if (/^https?:\/\//.test(photo)) player.photoUrl = photo;
+        else player.avatarKey = photo;
+      }
+      assignRandomAvatar(room, player); // se ficou sem foto, sorteia uma
+    }
+    if (displayName && !room.players.some((other) => other !== player && other.name.toLowerCase() === displayName.toLowerCase())) {
+      player.name = displayName;
+    }
+    broadcast(room);
   }
 }
 
@@ -685,6 +712,14 @@ function requireUser(socket) {
   return false;
 }
 
+// Relê o perfil (foto/banner/nome) do usuário logado, pegando mudanças feitas
+// depois que o socket conectou — senão a mesa mostraria o perfil antigo.
+async function refreshUser(socket) {
+  if (!socket.data.user) return;
+  const fresh = await gameProfileById(socket.data.user.id);
+  if (fresh) socket.data.user = fresh;
+}
+
 io.on("connection", (socket) => {
   socket.on("resume-session", ({ code, playerId, resumeToken } = {}) => {
     const room = rooms.get(cleanCode(code));
@@ -710,8 +745,9 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("solo-game", ({ name, botCount, botDifficulty } = {}) => {
+  socket.on("solo-game", async ({ name, botCount, botDifficulty } = {}) => {
     if (!requireUser(socket)) return;
+    await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     botCount = Math.min(7, Math.max(1, Number.isInteger(Number(botCount)) ? Number(botCount) : 3));
@@ -729,8 +765,9 @@ io.on("connection", (socket) => {
     startGame(room);
   });
 
-  socket.on("create-room", ({ name } = {}) => {
+  socket.on("create-room", async ({ name } = {}) => {
     if (!requireUser(socket)) return;
+    await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     const code = roomCode();
@@ -741,8 +778,9 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("create-tournament", ({ name, tournamentGames } = {}) => {
+  socket.on("create-tournament", async ({ name, tournamentGames } = {}) => {
     if (!requireUser(socket)) return;
+    await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     const totalGames = [3, 5].includes(Number(tournamentGames)) ? Number(tournamentGames) : 3;
@@ -756,8 +794,9 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("join-room", ({ name, code } = {}) => {
+  socket.on("join-room", async ({ name, code } = {}) => {
     if (!requireUser(socket)) return;
+    await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     code = cleanCode(code);
     const room = rooms.get(code);

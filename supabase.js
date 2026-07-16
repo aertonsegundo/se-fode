@@ -123,6 +123,13 @@ export async function profileFromToken(token) {
   return ensureProfile(authUser);
 }
 
+// Relê o perfil pelo id (foto/banner/nome atuais) — usado para pegar mudanças
+// feitas depois que o socket conectou (ex.: trocou a foto, admin deu um banner).
+export async function gameProfileById(id) {
+  if (!admin || !id) return null;
+  return shapeProfile(await fetchProfileRow(id), null);
+}
+
 // Lista todos os usuários com os dados de perfil + e-mail/último login (para o dashboard admin).
 export async function listUsers() {
   if (!admin) return [];
