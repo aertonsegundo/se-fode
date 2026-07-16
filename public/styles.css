@@ -467,6 +467,7 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 
 /* ===================== RANKING GERAL ===================== */
 .ranking-sub { color:#9d998c; font-size:.82rem; margin:0 0 1rem; }
+.ranking-tabs { display:flex; gap:.35rem; margin:.8rem 0 .65rem; border-bottom:1px solid #39372f; padding-bottom:.55rem; overflow-x:auto; }.ranking-tabs button { flex:1; min-width:max-content; border:1px solid #3b3930; border-radius:6px; background:#25241e; color:#aaa69a; padding:.42rem .55rem; font-size:.57rem; font-weight:900; letter-spacing:.06em; }.ranking-tabs button.active { background:var(--acid); border-color:var(--acid); color:var(--ink); }
 .ranking-body { max-height:60vh; overflow:auto; }
 .ranking-loading { color:#9d998c; text-align:center; padding:1.4rem; }
 .lb-row { display:grid; grid-template-columns:2rem 2.2rem 1fr repeat(3,auto); align-items:center; gap:.55rem; padding:.5rem .3rem; border-bottom:1px solid #302f29; font-size:.86rem; }

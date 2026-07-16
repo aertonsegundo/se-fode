@@ -166,7 +166,12 @@
     <button id="ranking-close" class="close">×</button>
     <div class="kicker">HALL DA FAMA</div>
     <h2>RANKING GERAL</h2>
-    <p class="ranking-sub">Posição por pontos. Torneios valem mais; bots não contam.</p>
+    <div id="ranking-tabs" class="ranking-tabs" role="tablist" aria-label="Tipo de ranking">
+      <button type="button" data-ranking-mode="general" class="active" role="tab">GERAL</button>
+      <button type="button" data-ranking-mode="per_game" role="tab">POR PARTIDA</button>
+      <button type="button" data-ranking-mode="weekly" role="tab">SEMANAL</button>
+    </div>
+    <p id="ranking-sub" class="ranking-sub">Pontos acumulados. Torneios valem mais; bots não contam.</p>
     <div id="ranking-body" class="ranking-body"></div>
   </dialog>
 
@@ -199,6 +204,7 @@
         <li><b>Torneio:</b> cada partida segue essa regra. No final, campeão ganha <b>+15</b> e 1 título; vice <b>+8</b>; 3º <b>+5</b>.</li>
         <li>O bônus final só vale com <b>3 ou mais humanos</b>. Bots jogam, mas não contam para posições, vitórias, pontos ou títulos.</li>
         <li>O ranking ordena: <b>pontos → títulos → vitórias</b>.</li>
+        <li>O <b>ranking semanal</b> mostra só os pontos conquistados desde segunda-feira.</li>
       </ul>
     </section>
     <p class="fine">Uma <b>mão</b> tem várias <b>rodadas</b> — uma para cada carta. Na mão de uma carta, a sua fica na testa: todos veem, menos você. Em toda mão, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>

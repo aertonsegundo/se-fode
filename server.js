@@ -83,11 +83,12 @@ app.post("/api/me/photo", async (req, res) => {
   res.json({ ok: true, photo: result.photo });
 });
 
-// Ranking geral por vitórias — qualquer usuário logado vê.
+// Ranking geral, eficiência por partida ou semana atual — qualquer usuário logado vê.
 app.get("/api/leaderboard", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
-  res.json({ leaderboard: await leaderboard(50), banners: BANNERS, meId: profile.id });
+  const mode = ["general", "per_game", "weekly"].includes(req.query.mode) ? req.query.mode : "general";
+  res.json({ leaderboard: await leaderboard(50, mode), mode, banners: BANNERS, meId: profile.id });
 });
 
 // Perfil público que abre ao clicar em alguém na mesa. O perfil autenticado

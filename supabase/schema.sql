@@ -118,6 +118,56 @@ begin
 end;
 $$;
 
+-- Eventos de pontos para rankings por período. Só há eventos de contas humanas:
+-- o servidor não insere bots nesta tabela.
+create table if not exists public.ranking_events (
+  id          bigint generated always as identity primary key,
+  player_id   uuid not null references public.profiles(id) on delete cascade,
+  points      integer not null check (points > 0),
+  kind        text not null check (kind in ('game_win', 'game_second', 'tournament_champion', 'tournament_runner_up', 'tournament_third')),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists ranking_events_weekly_idx
+  on public.ranking_events (created_at desc, player_id);
+
+alter table public.ranking_events enable row level security;
+
+-- Ranking semanal (segunda-feira até agora): pontos, vitórias e títulos ganhos
+-- no período. O servidor lê com service_role; o cliente não acessa direto.
+create or replace function public.weekly_leaderboard(p_limit integer default 50)
+returns table (
+  id uuid,
+  display_name text,
+  photo text,
+  banner text,
+  rank_points bigint,
+  wins bigint,
+  games_played bigint,
+  tournament_titles bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    p.id,
+    p.display_name,
+    p.photo,
+    p.banner,
+    coalesce(sum(e.points), 0)::bigint as rank_points,
+    count(*) filter (where e.kind = 'game_win')::bigint as wins,
+    count(*) filter (where e.kind in ('game_win', 'game_second'))::bigint as games_played,
+    count(*) filter (where e.kind = 'tournament_champion')::bigint as tournament_titles
+  from public.ranking_events e
+  join public.profiles p on p.id = e.player_id
+  where e.created_at >= date_trunc('week', now())
+  group by p.id, p.display_name, p.photo, p.banner
+  order by rank_points desc, tournament_titles desc, wins desc
+  limit greatest(1, least(coalesce(p_limit, 50), 100));
+$$;
+
 -- Histórico enxuto por jogador. Guarda apenas o resultado final da partida;
 -- não registra cartas, conversas nem e-mail.
 create table if not exists public.game_history (

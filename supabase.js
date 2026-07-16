@@ -165,27 +165,8 @@ export async function listUsers() {
   return (rows || []).map((row) => shapeProfile(row, authById.get(row.id)));
 }
 
-// Ranking geral por pontos. Vitórias e títulos entram como desempate.
-export async function leaderboard(limit = 50) {
-  if (!admin) return [];
-  const { data, error } = await admin
-    .from("profiles")
-    .select("id, display_name, role, photo, banner, wins, games_played, rank_points, tournament_titles")
-    .order("rank_points", { ascending: false })
-    .order("tournament_titles", { ascending: false })
-    .order("wins", { ascending: false })
-    .order("games_played", { ascending: false })
-    .limit(limit);
-  // O deploy do servidor pode chegar alguns segundos antes de o admin rodar o
-  // schema. Nesse intervalo, mantém o ranking antigo legível, com zeros novos.
-  const rows = data || (error
-    ? (await admin.from("profiles")
-      .select("id, display_name, role, photo, banner, wins, games_played")
-      .order("wins", { ascending: false })
-      .order("games_played", { ascending: false })
-      .limit(limit)).data || []
-    : []);
-  return rows.map((row) => ({
+function leaderboardRow(row) {
+  return {
     id: row.id,
     displayName: row.display_name || "Jogador",
     photo: row.photo || null,
@@ -194,7 +175,54 @@ export async function leaderboard(limit = 50) {
     gamesPlayed: row.games_played || 0,
     rankPoints: row.rank_points || 0,
     tournamentTitles: row.tournament_titles || 0,
-  }));
+  };
+}
+
+// Geral = total acumulado; por partida = eficiência (mín. 3 jogos); semanal
+// = somente pontos conquistados desde a segunda-feira atual.
+export async function leaderboard(limit = 50, mode = "general") {
+  if (!admin) return [];
+  if (mode === "weekly") {
+    const { data, error } = await admin.rpc("weekly_leaderboard", { p_limit: limit });
+    if (error) {
+      console.warn("[supabase] rode o schema.sql para ativar ranking semanal:", error.message);
+      return [];
+    }
+    return (data || []).map((row) => ({
+      id: row.id,
+      displayName: row.display_name || "Jogador",
+      photo: row.photo || null,
+      banner: row.banner || "novato",
+      wins: Number(row.wins) || 0,
+      gamesPlayed: Number(row.games_played) || 0,
+      rankPoints: Number(row.rank_points) || 0,
+      tournamentTitles: Number(row.tournament_titles) || 0,
+    }));
+  }
+
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id, display_name, role, photo, banner, wins, games_played, rank_points, tournament_titles")
+    .order("rank_points", { ascending: false })
+    .order("tournament_titles", { ascending: false })
+    .order("wins", { ascending: false })
+    .order("games_played", { ascending: false })
+    .limit(mode === "per_game" ? 200 : limit);
+  // O deploy do servidor pode chegar antes de o admin rodar o schema.
+  const rows = data || (error
+    ? (await admin.from("profiles")
+      .select("id, display_name, role, photo, banner, wins, games_played")
+      .order("wins", { ascending: false })
+      .order("games_played", { ascending: false })
+      .limit(mode === "per_game" ? 200 : limit)).data || []
+    : []);
+  const formatted = rows.map(leaderboardRow);
+  if (mode !== "per_game") return formatted;
+  return formatted
+    .filter((row) => row.gamesPlayed >= 3)
+    .map((row) => ({ ...row, pointsPerGame: Number((row.rankPoints / row.gamesPlayed).toFixed(2)) }))
+    .sort((a, b) => b.pointsPerGame - a.pointsPerGame || b.rankPoints - a.rankPoints || b.wins - a.wins)
+    .slice(0, limit);
 }
 
 // Perfil público para abrir a partir da cadeira na mesa. Nunca devolve e-mail,
@@ -366,6 +394,14 @@ export async function deleteEmote(key) {
   return !error;
 }
 
+async function recordRankingEvents(events) {
+  if (!events.length) return;
+  const { error } = await admin.from("ranking_events").insert(events);
+  if (error && !/does not exist|relation/i.test(error.message || "")) {
+    console.error("[supabase] ranking_events falhou:", error.message);
+  }
+}
+
 // Registra o resultado de uma partida: +1 games_played para todos, +1 win para o vencedor.
 export async function recordGame(players, winnerId, mode = "Partida") {
   if (!admin || !players?.length) return;
@@ -385,6 +421,14 @@ export async function recordGame(players, winnerId, mode = "Partida") {
       if (fallbackError) throw fallbackError;
       console.warn("[supabase] rode o schema.sql para ativar pontos de ranking:", resultError.message);
     }
+
+    await recordRankingEvents(players
+      .filter((player) => typeof player === "object" && player.userId && player.rankPoints > 0)
+      .map((player) => ({
+        player_id: player.userId,
+        points: player.rankPoints,
+        kind: player.won ? "game_win" : "game_second",
+      })));
 
     // O histórico é complementar às estatísticas. Se a migration ainda não
     // tiver sido executada, a partida continua contabilizando normalmente.
@@ -415,6 +459,13 @@ export async function awardTournamentResult(entries) {
   const rewards = Object.fromEntries(entries.map((entry) => [entry.userId, Math.max(0, Number(entry.rankPoints) || 0)]));
   const { error } = await admin.rpc("award_tournament_result", { p_rewards: rewards, p_champion: champion });
   if (error) console.warn("[supabase] rode o schema.sql para ativar bônus de torneio:", error.message);
+  await recordRankingEvents(entries
+    .filter((entry) => entry.rankPoints > 0)
+    .map((entry) => ({
+      player_id: entry.userId,
+      points: entry.rankPoints,
+      kind: entry.position === 1 ? "tournament_champion" : entry.position === 2 ? "tournament_runner_up" : "tournament_third",
+    })));
 }
 
 export { isUrl };

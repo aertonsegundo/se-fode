@@ -404,29 +404,56 @@ $("#photo-upload")?.addEventListener("change", (event) => {
 // ===== Ranking geral =====
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
+let rankingMode = "general";
+const RANKING_COPY = {
+  general: "Pontos acumulados. Torneios valem mais; bots não contam.",
+  per_game: "Eficiência: pontos por partida, com mínimo de 3 partidas.",
+  weekly: "Pontos conquistados desde segunda-feira. Bots não contam.",
+};
+
+$("#ranking-tabs")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ranking-mode]");
+  if (button) loadRanking(button.dataset.rankingMode);
+});
 
 async function openRanking() {
-  const dialog = $("#ranking");
+  $("#ranking").showModal();
+  loadRanking("general");
+}
+
+async function loadRanking(mode) {
+  rankingMode = ["general", "per_game", "weekly"].includes(mode) ? mode : "general";
   const body = $("#ranking-body");
+  $("#ranking-tabs").querySelectorAll("[data-ranking-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.rankingMode === rankingMode);
+    button.setAttribute("aria-selected", String(button.dataset.rankingMode === rankingMode));
+  });
+  $("#ranking-sub").textContent = RANKING_COPY[rankingMode];
   body.innerHTML = '<p class="ranking-loading">Carregando…</p>';
-  dialog.showModal();
   try {
-    const data = await api("/api/leaderboard");
+    const data = await api(`/api/leaderboard?mode=${rankingMode}`);
     bannerCatalog = data.banners || bannerCatalog;
     const rows = (data.leaderboard || []).filter((user) => user.gamesPlayed > 0 || user.wins > 0 || user.rankPoints > 0 || user.tournamentTitles > 0);
-    if (!rows.length) { body.innerHTML = '<p class="ranking-loading">Ninguém pontuou ainda. Seja o primeiro. 🏆</p>'; return; }
+    if (!rows.length) {
+      body.innerHTML = `<p class="ranking-loading">${rankingMode === "weekly" ? "Ainda não há pontos nesta semana." : rankingMode === "per_game" ? "São necessárias 3 partidas para entrar aqui." : "Ninguém pontuou ainda. Seja o primeiro. 🏆"}</p>`;
+      return;
+    }
     body.innerHTML = rows.map((user, index) => {
       const medal = ["🥇", "🥈", "🥉"][index] || `${index + 1}º`;
       const mine = user.id === data.meId ? "mine" : "";
       const bannerTag = user.banner && user.banner !== "novato"
         ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
+      const mainValue = rankingMode === "per_game" ? (user.pointsPerGame || 0).toFixed(2) : user.rankPoints || 0;
+      const mainLabel = rankingMode === "per_game" ? "PTS/J" : rankingMode === "weekly" ? "PTS SEM" : "PTS";
+      const winsLabel = rankingMode === "weekly" ? "VIT SEM" : "VIT";
+      const titlesLabel = rankingMode === "weekly" ? "TOR SEM" : "TOR";
       return `<div class="lb-row ${mine}">
         <span class="lb-pos">${medal}</span>
         <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
         <span class="lb-name">${escapeHtml(user.displayName)}${bannerTag}</span>
-        <span class="lb-stat points"><b>${user.rankPoints || 0}</b><small>PTS</small></span>
-        <span class="lb-stat"><b>${user.wins}</b><small>VIT</small></span>
-        <span class="lb-stat titles"><b>${user.tournamentTitles || 0}</b><small>TOR</small></span>
+        <span class="lb-stat points"><b>${mainValue}</b><small>${mainLabel}</small></span>
+        <span class="lb-stat"><b>${user.wins}</b><small>${winsLabel}</small></span>
+        <span class="lb-stat titles"><b>${user.tournamentTitles || 0}</b><small>${titlesLabel}</small></span>
       </div>`;
     }).join("");
   } catch (err) {
