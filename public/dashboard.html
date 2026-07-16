@@ -20,6 +20,8 @@
 
     <section id="dash-content" class="dash-content hidden">
       <div class="dash-stats" id="dash-stats"></div>
+
+      <h2 class="dash-section-title">USUÁRIOS</h2>
       <div class="dash-table-wrap">
         <table class="dash-table">
           <thead>
@@ -37,6 +39,20 @@
           <tbody id="dash-rows"></tbody>
         </table>
       </div>
+
+      <h2 class="dash-section-title">FIGURINHAS</h2>
+      <p class="dash-hint">Ative/desative, exclua ou adicione novas figurinhas. As desativadas somem da barra do jogo.</p>
+      <form id="emote-form" class="emote-form" onsubmit="return false">
+        <div class="emote-form-row">
+          <label>CHAVE<input id="emote-key" maxlength="20" placeholder="ex: chapa" /></label>
+          <label>NOME<input id="emote-title" maxlength="24" placeholder="ex: Chapa" /></label>
+          <label>EMOJI<input id="emote-emoji" maxlength="8" placeholder="😄" /></label>
+          <label>IMAGEM<input id="emote-image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
+        </div>
+        <button id="emote-add" class="dash-btn">+ ADICIONAR FIGURINHA</button>
+        <span id="emote-form-msg" class="emote-form-msg"></span>
+      </form>
+      <div id="emote-grid" class="emote-grid"></div>
     </section>
   </main>
   <div id="toast" role="status"></div>

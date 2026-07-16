@@ -31,6 +31,25 @@ export const BANNER_KEYS = BANNERS.map((banner) => banner.key);
 // Avatares prontos que o usuário pode escolher (arquivos em /avatars/players/<key>.webp).
 export const AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
 
+// Figurinhas nativas (têm imagem estática em /emotes/<key>.png; image_url fica null).
+// Servem de seed inicial da tabela emotes.
+export const BUILTIN_EMOTES = [
+  { key: "joia", emoji: "👍", title: "Joia" },
+  { key: "estiloso", emoji: "😎", title: "Estiloso" },
+  { key: "raiva", emoji: "😡", title: "Raiva" },
+  { key: "medo", emoji: "😨", title: "Medo" },
+  { key: "choro", emoji: "😭", title: "Choro" },
+  { key: "lingua", emoji: "😝", title: "Língua" },
+  { key: "sorriso", emoji: "😁", title: "Sorrisão" },
+  { key: "risada", emoji: "🤣", title: "Risada" },
+  { key: "ideia", emoji: "💡", title: "Ideia" },
+  { key: "fepe", emoji: "🍾", title: "Fepe" },
+  { key: "victin", emoji: "😐", title: "Victin" },
+  { key: "chico", emoji: "🤠", title: "Chico" },
+  { key: "muriloejp", emoji: "👬", title: "Murilo e JP" },
+  { key: "rtn", emoji: "🫡", title: "RTN" },
+];
+
 export const supabaseEnabled = Boolean(url && anonKey && serviceKey);
 
 const admin = supabaseEnabled
@@ -216,6 +235,78 @@ export async function setUserPhoto(id, { avatarKey, dataUrl } = {}) {
     return error ? { ok: false, error: error.message } : { ok: true, photo: publicUrl };
   }
   return { ok: false, error: "Nada para atualizar." };
+}
+
+// Sobe um data URL de imagem para o Storage e devolve a URL pública.
+async function uploadDataUrl(dataUrl, pathNoExt) {
+  const match = /^data:(image\/(png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || "");
+  if (!match) return { ok: false, error: "Imagem inválida." };
+  const contentType = match[1];
+  const buffer = Buffer.from(match[3], "base64");
+  if (buffer.length > 2_500_000) return { ok: false, error: "Imagem muito grande (máx. ~2MB)." };
+  await ensureBucket();
+  const ext = contentType.split("/")[1].replace("jpeg", "jpg");
+  const filePath = `${pathNoExt}.${ext}`;
+  const { error } = await admin.storage.from(PHOTO_BUCKET).upload(filePath, buffer, { contentType, upsert: true });
+  if (error) return { ok: false, error: error.message };
+  const { data } = admin.storage.from(PHOTO_BUCKET).getPublicUrl(filePath);
+  return { ok: true, url: `${data.publicUrl}?v=${Date.now()}` };
+}
+
+const shapeEmote = (row) => ({ key: row.key, title: row.title, emoji: row.emoji, imageUrl: row.image_url || null, active: !!row.active, sort: row.sort ?? 0, builtin: BUILTIN_EMOTES.some((b) => b.key === row.key) });
+
+const builtinEmoteList = () => BUILTIN_EMOTES.map((emote, index) => ({ ...emote, imageUrl: null, active: true, sort: index, builtin: true }));
+
+// Semeia a tabela emotes com as figurinhas nativas na primeira vez.
+export async function seedEmotes() {
+  if (!admin) return;
+  const { count, error } = await admin.from("emotes").select("key", { count: "exact", head: true });
+  if (error) { console.warn("[emotes] tabela ausente — rode supabase/schema.sql para gerenciar figurinhas."); return; }
+  if (count && count > 0) return;
+  await admin.from("emotes").insert(BUILTIN_EMOTES.map((emote, index) => ({ key: emote.key, title: emote.title, emoji: emote.emoji, image_url: null, active: true, sort: index })));
+}
+
+// Lista as figurinhas (ordenadas). Sem Supabase / sem a tabela, cai para as nativas.
+export async function listEmotes(activeOnly = false) {
+  if (!admin) return builtinEmoteList();
+  let query = admin.from("emotes").select("*").order("sort", { ascending: true });
+  if (activeOnly) query = query.eq("active", true);
+  const { data, error } = await query;
+  if (error) return builtinEmoteList(); // tabela ainda não criada
+  return (data || []).map(shapeEmote);
+}
+
+// Cria uma figurinha nova (com upload opcional de imagem).
+export async function createEmote({ key, title, emoji, dataUrl } = {}) {
+  if (!admin) return { ok: false, error: "Contas desativadas." };
+  key = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
+  if (!key) return { ok: false, error: "Chave inválida (use letras/números)." };
+  title = String(title || "").trim().slice(0, 24) || key;
+  emoji = String(emoji || "").trim().slice(0, 8) || "❓";
+  const { data: exists } = await admin.from("emotes").select("key").eq("key", key).maybeSingle();
+  if (exists) return { ok: false, error: "Já existe uma figurinha com essa chave." };
+  let imageUrl = null;
+  if (dataUrl) {
+    const up = await uploadDataUrl(dataUrl, `emotes/${key}`);
+    if (!up.ok) return up;
+    imageUrl = up.url;
+  }
+  const { data: last } = await admin.from("emotes").select("sort").order("sort", { ascending: false }).limit(1).maybeSingle();
+  const sort = (last?.sort ?? BUILTIN_EMOTES.length - 1) + 1;
+  const { error } = await admin.from("emotes").insert({ key, title, emoji, image_url: imageUrl, active: true, sort });
+  return error ? { ok: false, error: error.message } : { ok: true, key };
+}
+
+export async function setEmoteActive(key, active) {
+  if (!admin) return false;
+  const { error } = await admin.from("emotes").update({ active: Boolean(active) }).eq("key", String(key || ""));
+  return !error;
+}
+
+export async function deleteEmote(key) {
+  if (!admin) return false;
+  const { error } = await admin.from("emotes").delete().eq("key", String(key || ""));
+  return !error;
 }
 
 // Registra o resultado de uma partida: +1 games_played para todos, +1 win para o vencedor.

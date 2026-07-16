@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
-import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS } from "./supabase.js";
+import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -16,7 +16,19 @@ const rooms = new Map();
 const STARTING_LIVES = 5;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
 const RANDOM_AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
-const EMOTES = { joia: "👍", estiloso: "😎", raiva: "😡", medo: "😨", choro: "😭", lingua: "😝", sorriso: "😁", risada: "🤣", ideia: "💡", fepe: "🍾", victin: "😐", chico: "🤠", muriloejp: "👬", rtn: "🫡" };
+// Figurinhas dinâmicas (gerenciadas no dashboard). Cache em memória, semeado com
+// as nativas e recarregado quando o admin altera algo.
+let emoteList = BUILTIN_EMOTES.map((emote, index) => ({ ...emote, imageUrl: null, active: true, sort: index, builtin: true }));
+let emoteMap = Object.fromEntries(emoteList.map((emote) => [emote.key, emote]));
+async function loadEmotes() {
+  emoteList = await listEmotes(false);
+  emoteMap = Object.fromEntries(emoteList.map((emote) => [emote.key, emote]));
+}
+const activeEmotes = () => emoteList.filter((emote) => emote.active);
+async function reloadAndBroadcastEmotes() {
+  await loadEmotes();
+  io.emit("emotes", activeEmotes()); // atualiza a barra de todo mundo na hora
+}
 
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
 // deploy nunca fica preso numa versao antiga em cache no cliente.
@@ -102,6 +114,46 @@ app.post("/api/admin/user/:id/banner", async (req, res) => {
   const ok = await setUserBanner(req.params.id, banner);
   if (!ok) return res.status(400).json({ error: "Não foi possível atribuir o banner." });
   updateLiveProfile(req.params.id, { banner });
+  res.json({ ok: true });
+});
+
+// Figurinhas ativas para a barra do jogo (público — usadas depois do login).
+app.get("/api/emotes", (_req, res) => res.json({ emotes: activeEmotes() }));
+
+// Admin: lista todas as figurinhas (inclusive inativas).
+app.get("/api/admin/emotes", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  res.json({ emotes: emoteList });
+});
+
+// Admin: cria uma figurinha nova (emoji e/ou upload de imagem).
+app.post("/api/admin/emotes", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  const result = await createEmote({ key: req.body?.key, title: req.body?.title, emoji: req.body?.emoji, dataUrl: req.body?.dataUrl });
+  if (!result.ok) return res.status(400).json({ error: result.error });
+  await reloadAndBroadcastEmotes();
+  res.json({ ok: true });
+});
+
+// Admin: ativa/desativa uma figurinha.
+app.post("/api/admin/emotes/:key/active", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  const ok = await setEmoteActive(req.params.key, req.body?.active);
+  if (!ok) return res.status(400).json({ error: "Não foi possível atualizar a figurinha." });
+  await reloadAndBroadcastEmotes();
+  res.json({ ok: true });
+});
+
+// Admin: exclui uma figurinha.
+app.delete("/api/admin/emotes/:key", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  const ok = await deleteEmote(req.params.key);
+  if (!ok) return res.status(400).json({ error: "Não foi possível excluir a figurinha." });
+  await reloadAndBroadcastEmotes();
   res.json({ ok: true });
 });
 
@@ -860,8 +912,9 @@ io.on("connection", (socket) => {
   socket.on("emote", (key) => {
     const room = rooms.get(socket.data.roomCode);
     const player = room && playerById(room, socket.data.playerId);
-    if (!room || !player || !EMOTES[key]) return;
-    const payload = { playerId: player.id, name: player.name, key, emoji: EMOTES[key] };
+    const emote = emoteMap[String(key)];
+    if (!room || !player || !emote || !emote.active) return;
+    const payload = { playerId: player.id, name: player.name, key: emote.key, emoji: emote.emoji, imageUrl: emote.imageUrl };
     for (const member of room.players) {
       if (!member.isBot && member.connected && member.socketId) io.to(member.socketId).emit("emote", payload);
     }
@@ -1002,7 +1055,8 @@ io.on("connection", (socket) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-server.listen(port, "0.0.0.0", () => {
+server.listen(port, "0.0.0.0", async () => {
   console.log(`Se Fode rodando em http://localhost:${port}`);
   selfTest();
+  try { await seedEmotes(); await loadEmotes(); } catch (error) { console.error("[emotes] carga inicial falhou:", error.message); }
 });

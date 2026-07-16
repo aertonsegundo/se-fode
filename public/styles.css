@@ -504,6 +504,30 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .role-chip.admin { background:var(--acid); color:var(--ink); }
 .banner-select { background:var(--bn-bg); color:var(--bn-fg); border:1px solid var(--bn); border-radius:7px; padding:.35rem .5rem; font-weight:700; font-size:.74rem; }
 
+/* Dashboard — figurinhas */
+.dash-section-title { font:1.1rem "Archivo Black",sans-serif; letter-spacing:.02em; margin:2rem 0 .3rem; }
+.dash-hint { color:#8d897e; font-size:.78rem; margin:0 0 1rem; }
+.emote-form { background:#1c1b16; border:1px solid #302f29; border-radius:12px; padding:1rem; margin-bottom:1.2rem; }
+.emote-form-row { display:flex; gap:.8rem; flex-wrap:wrap; margin-bottom:.8rem; }
+.emote-form label { display:flex; flex-direction:column; gap:.3rem; font-size:.58rem; font-weight:800; letter-spacing:.12em; color:#8d897e; }
+.emote-form input { background:#26241d; border:2px solid #3a382f; color:var(--paper); border-radius:7px; padding:.5rem .6rem; font-size:.9rem; outline:none; }
+.emote-form input:focus { border-color:var(--acid); }
+.emote-form input[type=file] { padding:.4rem; font-size:.72rem; }
+.dash-btn { border:2px solid var(--acid); background:var(--acid); color:var(--ink); font-weight:900; font-size:.72rem; letter-spacing:.05em; padding:.6rem 1rem; border-radius:8px; }
+.dash-btn:disabled { opacity:.5; }
+.emote-form-msg { margin-left:.8rem; color:#ff8a7a; font-size:.78rem; font-weight:700; }
+.emote-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.8rem; }
+.emote-card { background:#1c1b16; border:1px solid #302f29; border-radius:12px; padding:.8rem; display:flex; flex-direction:column; align-items:center; gap:.5rem; text-align:center; }
+.emote-card.off { opacity:.5; }
+.emote-media { width:3.4rem; height:3.4rem; display:grid; place-items:center; }
+.emote-media img { max-width:100%; max-height:100%; object-fit:contain; }
+.emote-emoji-fallback { font-size:2.4rem; line-height:1; }
+.emote-info b { display:block; font-size:.85rem; }
+.emote-info span { font-size:.62rem; color:#8d897e; }
+.emote-actions { display:flex; gap:.4rem; }
+.emote-toggle-btn, .emote-del-btn { border:1px solid #3d3b34; background:#26241d; color:var(--paper); font-weight:700; font-size:.64rem; padding:.35rem .55rem; border-radius:6px; }
+.emote-del-btn { color:#ff8a7a; border-color:#5a2a24; }
+
 @media (max-width:600px) {
   .account-bar { padding:.5rem .6rem; }
   .account-name { max-width:8rem; overflow:hidden; text-overflow:ellipsis; }

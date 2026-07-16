@@ -44,19 +44,24 @@ async function boot() {
   supabase = createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true } });
   const { data } = await supabase.auth.getSession();
   token = data.session?.access_token || null;
-  if (!token) return gate("Você precisa entrar com uma conta admin.", true);
+  if (!token) return leave(); // não logado: não entra no dashboard
   loadUsers();
 }
 
+// Manda de volta pro jogo quem não pode estar aqui (não logado ou não-admin).
+function leave() { location.replace("/"); }
+const bearer = () => ({ Authorization: `Bearer ${token}` });
+const jsonBearer = () => ({ "Content-Type": "application/json", ...bearer() });
+
 async function loadUsers() {
   try {
-    const res = await fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } });
-    if (res.status === 401) return gate("Sessão expirada. Entre novamente.", true);
-    if (res.status === 403) return gate("Acesso restrito a administradores.");
+    const res = await fetch("/api/admin/users", { headers: bearer() });
+    if (res.status === 401 || res.status === 403) return leave(); // não-admin não entra
     if (!res.ok) throw new Error("Falha ao carregar usuários.");
     const data = await res.json();
     banners = data.banners || [];
     render(data.users || []);
+    loadEmotes();
   } catch (err) {
     gate(err.message || "Erro ao carregar.");
   }
@@ -113,6 +118,106 @@ async function setBanner(userId, banner, select) {
   } finally {
     select.disabled = false;
   }
+}
+
+// ===== Figurinhas =====
+async function loadEmotes() {
+  try {
+    const res = await fetch("/api/admin/emotes", { headers: bearer() });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderEmotes(data.emotes || []);
+  } catch { /* silencioso */ }
+}
+
+function renderEmotes(list) {
+  const grid = $("#emote-grid");
+  grid.innerHTML = "";
+  for (const emote of list) {
+    const card = document.createElement("div");
+    card.className = "emote-card" + (emote.active ? "" : " off");
+
+    const media = document.createElement("div");
+    media.className = "emote-media";
+    const img = document.createElement("img");
+    img.src = emote.imageUrl || `/emotes/${emote.key}.png`;
+    img.alt = "";
+    img.onerror = () => { media.innerHTML = ""; const span = document.createElement("span"); span.className = "emote-emoji-fallback"; span.textContent = emote.emoji || "❓"; media.appendChild(span); };
+    media.appendChild(img);
+    card.appendChild(media);
+
+    const info = document.createElement("div");
+    info.className = "emote-info";
+    info.innerHTML = `<b>${escapeHtml(emote.title || emote.key)}</b><span>:${escapeHtml(emote.key)}:${emote.builtin ? " · nativa" : ""}${emote.active ? "" : " · inativa"}</span>`;
+    card.appendChild(info);
+
+    const actions = document.createElement("div");
+    actions.className = "emote-actions";
+    const toggle = document.createElement("button");
+    toggle.className = "emote-toggle-btn";
+    toggle.textContent = emote.active ? "Desativar" : "Ativar";
+    toggle.onclick = () => setEmoteActive(emote.key, !emote.active);
+    const del = document.createElement("button");
+    del.className = "emote-del-btn";
+    del.textContent = "Excluir";
+    del.onclick = () => removeEmote(emote.key, emote.title || emote.key);
+    actions.append(toggle, del);
+    card.appendChild(actions);
+
+    grid.appendChild(card);
+  }
+}
+
+async function setEmoteActive(key, active) {
+  try {
+    const res = await fetch(`/api/admin/emotes/${encodeURIComponent(key)}/active`, { method: "POST", headers: jsonBearer(), body: JSON.stringify({ active }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro.");
+    toast(active ? "Figurinha ativada." : "Figurinha desativada.");
+    loadEmotes();
+  } catch (err) { toast(err.message || "Não deu pra atualizar."); }
+}
+
+async function removeEmote(key, title) {
+  if (!confirm(`Excluir a figurinha "${title}"?`)) return;
+  try {
+    const res = await fetch(`/api/admin/emotes/${encodeURIComponent(key)}`, { method: "DELETE", headers: bearer() });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro.");
+    toast("Figurinha excluída.");
+    loadEmotes();
+  } catch (err) { toast(err.message || "Não deu pra excluir."); }
+}
+
+const emoteMsg = (text) => { $("#emote-form-msg").textContent = text || ""; };
+
+$("#emote-add").onclick = () => {
+  const key = $("#emote-key").value.trim();
+  const title = $("#emote-title").value.trim();
+  const emoji = $("#emote-emoji").value.trim();
+  const file = $("#emote-image").files?.[0];
+  emoteMsg("");
+  if (!key) return emoteMsg("Informe a chave (letras/números).");
+  if (!emoji && !file) return emoteMsg("Ponha um emoji ou envie uma imagem.");
+  if (file && file.size > 2_500_000) return emoteMsg("Imagem muito grande (máx. ~2MB).");
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = () => createEmoteReq({ key, title, emoji, dataUrl: reader.result });
+    reader.readAsDataURL(file);
+  } else {
+    createEmoteReq({ key, title, emoji });
+  }
+};
+
+async function createEmoteReq(body) {
+  const btn = $("#emote-add");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/admin/emotes", { method: "POST", headers: jsonBearer(), body: JSON.stringify(body) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro.");
+    toast("Figurinha adicionada!");
+    $("#emote-key").value = ""; $("#emote-title").value = ""; $("#emote-emoji").value = ""; $("#emote-image").value = "";
+    loadEmotes();
+  } catch (err) { emoteMsg(err.message || "Não deu pra adicionar."); }
+  finally { btn.disabled = false; }
 }
 
 boot();

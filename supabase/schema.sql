@@ -73,6 +73,22 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Figurinhas (emotes) gerenciáveis pelo admin no dashboard.
+-- image_url null => usa a imagem estática /emotes/<key>.png (built-in) ou o emoji.
+-- ---------------------------------------------------------------------------
+create table if not exists public.emotes (
+  key         text primary key,
+  title       text not null default '',
+  emoji       text not null default '❓',
+  image_url   text,
+  active      boolean not null default true,
+  sort        integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+alter table public.emotes enable row level security;
+-- Sem policies: o servidor lê/escreve com a service_role; o cliente nunca acessa direto.
+
+-- ---------------------------------------------------------------------------
 -- Bucket público para as fotos de upload (o servidor também tenta criar via API).
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)

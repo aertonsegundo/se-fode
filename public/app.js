@@ -440,36 +440,33 @@ $("#chat-form").addEventListener("submit", (event) => {
 });
 
 // ===== Emotes =====
-// Cada emote tenta usar a imagem /emotes/<key>.png; se o arquivo não existir,
-// cai automaticamente para o emoji Unicode correspondente.
-const EMOTE_LIST = [
-  { key: "joia", emoji: "👍", title: "Joia" },
-  { key: "estiloso", emoji: "😎", title: "Estiloso" },
-  { key: "raiva", emoji: "😡", title: "Raiva" },
-  { key: "medo", emoji: "😨", title: "Medo" },
-  { key: "choro", emoji: "😭", title: "Choro" },
-  { key: "lingua", emoji: "😝", title: "Língua" },
-  { key: "sorriso", emoji: "😁", title: "Sorrisão" },
-  { key: "risada", emoji: "🤣", title: "Risada" },
-  { key: "ideia", emoji: "💡", title: "Ideia" },
-  { key: "fepe", emoji: "🍾", title: "Fepe" },
-  { key: "victin", emoji: "😐", title: "Victin" },
-  { key: "chico", emoji: "🤠", title: "Chico" },
-  { key: "muriloejp", emoji: "👬", title: "Murilo e JP" },
-  { key: "rtn", emoji: "🫡", title: "RTN" },
-];
-const EMOTE_EMOJI = Object.fromEntries(EMOTE_LIST.map((e) => [e.key, e.emoji]));
+// A lista de figurinhas vem do servidor (gerenciável no dashboard). Cada uma usa
+// imageUrl (upload) OU cai para /emotes/<key>.png e, por fim, para o emoji.
+let emoteList = [];
+let emoteById = {};
 let emoteCooldown = 0;
 
-function emoteMedia(key, emoji, cls) {
+async function loadEmotes() {
+  try {
+    const data = await fetch("/api/emotes").then((r) => r.json());
+    setEmotes(data.emotes || []);
+  } catch { /* mantém o que já tiver */ }
+}
+function setEmotes(list) {
+  emoteList = list;
+  emoteById = Object.fromEntries(list.map((emote) => [emote.key, emote]));
+  buildEmoteBar();
+}
+
+function emoteMedia(emote, cls) {
   const img = document.createElement("img");
   img.className = cls;
-  img.src = `/emotes/${key}.png`;
-  img.alt = emoji;
+  img.src = emote.imageUrl || `/emotes/${emote.key}.png`;
+  img.alt = emote.emoji || "";
   img.onerror = () => {
     const span = document.createElement("span");
     span.className = cls;
-    span.textContent = emoji;
+    span.textContent = emote.emoji || "❓";
     img.replaceWith(span);
   };
   return img;
@@ -478,34 +475,35 @@ function emoteMedia(key, emoji, cls) {
 function buildEmoteBar() {
   const bar = $("#emote-bar");
   bar.innerHTML = "";
-  for (const { key, emoji, title } of EMOTE_LIST) {
+  for (const emote of emoteList) {
     const button = document.createElement("button");
-    button.dataset.emote = key;
-    button.title = title;
-    button.appendChild(emoteMedia(key, emoji, "emote-btn-media"));
+    button.dataset.emote = emote.key;
+    button.title = emote.title;
+    button.appendChild(emoteMedia(emote, "emote-btn-media"));
     button.onclick = () => {
       const now = performance.now();
       if (now - emoteCooldown < 400) return; // evita spam
       emoteCooldown = now;
-      socket.emit("emote", key);
+      socket.emit("emote", emote.key);
     };
     bar.appendChild(button);
   }
 }
-buildEmoteBar();
 
+socket.on("emotes", (list) => setEmotes(list || [])); // atualiza a barra ao vivo
 socket.on("emote", (payload) => spawnEmote(payload));
+loadEmotes();
 
-function spawnEmote({ key, emoji, name } = {}) {
-  const face = emoji || EMOTE_EMOJI[key];
-  if (!face && !key) return;
+function spawnEmote({ key, emoji, imageUrl, name } = {}) {
+  const emote = { key, emoji: emoji || emoteById[key]?.emoji || "❓", imageUrl: imageUrl ?? emoteById[key]?.imageUrl ?? null };
+  if (!key && !emote.emoji) return;
   const layer = $("#emote-layer");
   const fly = document.createElement("div");
   fly.className = "emote-fly";
   fly.style.left = `${8 + Math.random() * 78}%`;
   fly.style.setProperty("--drift", `${Math.random() * 90 - 45}px`);
   fly.style.setProperty("--rot", `${Math.random() * 34 - 17}deg`);
-  fly.appendChild(emoteMedia(key, face || "❓", "emote-emoji"));
+  fly.appendChild(emoteMedia(emote, "emote-emoji"));
   const who = document.createElement("span");
   who.className = "emote-who";
   who.textContent = name || "";
