@@ -182,6 +182,39 @@ export async function leaderboard(limit = 50) {
   }));
 }
 
+// Perfil público para abrir a partir da cadeira na mesa. Nunca devolve e-mail,
+// role ou qualquer dado de autenticação.
+export async function publicPlayerProfile(id) {
+  if (!admin || !/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
+  const { data: row } = await admin
+    .from("profiles")
+    .select("id, display_name, photo, banner, wins, games_played, created_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (!row) return null;
+
+  // A tabela é criada pela atualização do schema. Enquanto ela ainda não foi
+  // aplicada, o painel continua útil com os totais do perfil.
+  const { data: matches, error } = await admin
+    .from("game_history")
+    .select("played_at, position, player_count, won, mode")
+    .eq("player_id", id)
+    .order("played_at", { ascending: false })
+    .limit(8);
+
+  return {
+    id: row.id,
+    displayName: row.display_name || "Jogador",
+    photo: row.photo || null,
+    banner: row.banner || "novato",
+    wins: row.wins || 0,
+    gamesPlayed: row.games_played || 0,
+    createdAt: row.created_at || null,
+    historyAvailable: !error,
+    recentGames: matches || [],
+  };
+}
+
 export async function setUserName(id, rawName) {
   if (!admin) return { ok: false, error: "Contas desativadas." };
   const name = String(rawName || "").trim().replace(/\s+/g, " ").slice(0, 18);
@@ -310,10 +343,29 @@ export async function deleteEmote(key) {
 }
 
 // Registra o resultado de uma partida: +1 games_played para todos, +1 win para o vencedor.
-export async function recordGame(playerIds, winnerId) {
-  if (!admin || !playerIds?.length) return;
+export async function recordGame(players, winnerId, mode = "Partida") {
+  if (!admin || !players?.length) return;
   try {
+    const playerIds = players.map((player) => typeof player === "string" ? player : player.userId).filter(Boolean);
     await admin.rpc("record_game", { p_players: playerIds, p_winner: winnerId || null });
+
+    // O histórico é complementar às estatísticas. Se a migration ainda não
+    // tiver sido executada, a partida continua contabilizando normalmente.
+    const history = players
+      .filter((player) => typeof player === "object" && player.userId)
+      .map((player) => ({
+        player_id: player.userId,
+        position: player.position,
+        player_count: player.playerCount,
+        won: Boolean(player.won),
+        mode,
+      }));
+    if (history.length) {
+      const { error } = await admin.from("game_history").insert(history);
+      if (error && !/does not exist|relation/i.test(error.message || "")) {
+        console.error("[supabase] game_history falhou:", error.message);
+      }
+    }
   } catch (error) {
     console.error("[supabase] recordGame falhou:", error.message);
   }

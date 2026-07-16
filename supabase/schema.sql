@@ -72,6 +72,23 @@ as $$
   where p_winner is not null and id = p_winner;
 $$;
 
+-- Histórico enxuto por jogador. Guarda apenas o resultado final da partida;
+-- não registra cartas, conversas nem e-mail.
+create table if not exists public.game_history (
+  id            bigint generated always as identity primary key,
+  player_id     uuid not null references public.profiles(id) on delete cascade,
+  played_at     timestamptz not null default now(),
+  position      smallint not null check (position > 0),
+  player_count  smallint not null check (player_count > 0),
+  won           boolean not null default false,
+  mode          text not null default 'Partida'
+);
+
+create index if not exists game_history_player_played_at_idx
+  on public.game_history (player_id, played_at desc);
+
+alter table public.game_history enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- Figurinhas (emotes) gerenciáveis pelo admin no dashboard.
 -- image_url null => usa a imagem estática /emotes/<key>.png (built-in) ou o emoji.

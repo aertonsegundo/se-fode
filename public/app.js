@@ -216,6 +216,61 @@ function photoUrlFor(photo) {
   return `/avatars/players/${encodeURIComponent(photo)}.webp`;
 }
 
+function profileStats(profile) {
+  const games = Number(profile.gamesPlayed || 0);
+  const wins = Number(profile.wins || 0);
+  return { games, wins, rate: games ? Math.round((wins / games) * 100) : 0 };
+}
+
+function playerPhotoMarkup(profile) {
+  return photoMarkup(profile.photo || null, profile.displayName || profile.name || "Jogador");
+}
+
+function recentGameLabel(game) {
+  const date = game.played_at ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(game.played_at)) : "—";
+  return `${date} · ${game.mode || "Partida"}`;
+}
+
+function renderPlayerCard(profile, currentPlayer = null) {
+  const body = $("#player-card-body");
+  const stats = profileStats(profile);
+  const banner = profile.banner && profile.banner !== "novato"
+    ? `<span class="banner-pill banner-${escapeHtml(profile.banner)}">${escapeHtml(bannerTitle(profile.banner))}</span>` : "";
+  const now = currentPlayer ? `<div class="player-card-now"><span>NA MESA</span><b>${currentPlayer.lives} ${currentPlayer.lives === 1 ? "vida" : "vidas"}</b><small>${currentPlayer.bid == null ? "Ainda não apostou" : `Apostou ${currentPlayer.bid} · fez ${currentPlayer.wins}`}</small></div>` : "";
+  const games = (profile.recentGames || []).map((game) => `
+    <li class="player-history-item ${game.won ? "won" : ""}">
+      <span class="history-result">${game.won ? "🏆" : `${game.position}º`}</span>
+      <span><b>${game.won ? "Vitória" : `${game.position}º lugar de ${game.player_count}`}</b><small>${escapeHtml(recentGameLabel(game))}</small></span>
+    </li>`).join("");
+  body.innerHTML = `
+    <div class="kicker">PERFIL DE JOGADOR</div>
+    <div class="player-card-head">
+      <span class="player-card-photo ${photoUrlFor(profile.photo) ? "has-img" : ""}">${playerPhotoMarkup(profile)}</span>
+      <div><h2>${escapeHtml(profile.displayName || profile.name || "Jogador")}</h2>${banner}</div>
+    </div>
+    ${now}
+    <div class="player-stat-grid"><div><b>${stats.games}</b><span>PARTIDAS</span></div><div><b>${stats.wins}</b><span>VITÓRIAS</span></div><div><b>${stats.rate}%</b><span>APROVEITAMENTO</span></div></div>
+    <section class="player-history"><div class="player-history-title">HISTÓRICO RECENTE</div>${profile.historyAvailable === false ? '<p class="player-history-empty">O histórico começa a ser salvo nas próximas partidas.</p>' : games ? `<ul>${games}</ul>` : '<p class="player-history-empty">Ainda não terminou uma partida.</p>'}</section>`;
+}
+
+async function openPlayerCard(player) {
+  const dialog = $("#player-card");
+  const body = $("#player-card-body");
+  dialog.showModal();
+  body.innerHTML = '<p class="player-card-loading">Carregando perfil…</p>';
+  if (!player.profileId) {
+    renderPlayerCard({ displayName: player.name, photo: player.photoUrl || player.avatarKey || null, banner: player.banner, gamesPlayed: 0, wins: 0, recentGames: [] }, player);
+    return;
+  }
+  try {
+    const data = await api(`/api/players/${encodeURIComponent(player.profileId)}`);
+    bannerCatalog = data.banners || bannerCatalog;
+    renderPlayerCard(data.profile, player);
+  } catch (err) {
+    body.innerHTML = `<p class="player-card-loading">${escapeHtml(err.message || "Não foi possível abrir o perfil.")}</p>`;
+  }
+}
+
 // --- Formulário de login/cadastro ---
 let authMode = "login";
 function setAuthMode(mode) {
@@ -282,6 +337,7 @@ boot();
 $("#logout")?.addEventListener("click", logout);
 $("#profile-open")?.addEventListener("click", openProfile);
 $("#profile-close")?.addEventListener("click", () => $("#profile").close());
+$("#player-card-close")?.addEventListener("click", () => $("#player-card").close());
 
 function bannerTitle(key) {
   return bannerCatalog.find((banner) => banner.key === key)?.title || "Novato";
@@ -732,7 +788,7 @@ function renderSeats() {
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
-      <div data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}">
+      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}" aria-label="Abrir perfil de ${escapeHtml(player.name)}">
         <div class="turn-flag">VEZ</div>
         ${bannerRibbon}
         <div class="seat-body">
@@ -747,8 +803,15 @@ function renderSeats() {
         ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
         ${!player.connected ? (player.auto ? '<div class="seat-tag off">🤖 BOT NO LUGAR</div>' : '<div class="seat-tag off">RECONECTANDO</div>') : ""}
         ${player.auto && !player.isBot && player.connected && (state.phase === "bidding" || state.phase === "playing") ? '<div class="seat-tag auto">🤖 AUTO</div>' : ""}
-      </div>`;
+      </button>`;
   }).join("");
+
+  $("#seats").querySelectorAll("[data-seat]").forEach((seat) => {
+    seat.onclick = () => {
+      const player = state?.players.find((item) => item.id === seat.dataset.seat);
+      if (player) openPlayerCard(player);
+    };
+  });
 
   $("#empty-table").classList.toggle("hidden", state.phase === "lobby" || state.table.length > 0 || forehead);
 }

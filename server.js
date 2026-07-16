@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
-import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
+import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -88,6 +88,16 @@ app.get("/api/leaderboard", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
   res.json({ leaderboard: await leaderboard(50), banners: BANNERS, meId: profile.id });
+});
+
+// Perfil público que abre ao clicar em alguém na mesa. O perfil autenticado
+// controla a autorização; a resposta não contém e-mail nem dados privados.
+app.get("/api/players/:id", async (req, res) => {
+  const viewer = await authProfile(req);
+  if (!viewer) return res.status(401).json({ error: "Não autenticado." });
+  const profile = await publicPlayerProfile(req.params.id);
+  if (!profile) return res.status(404).json({ error: "Perfil não encontrado." });
+  res.json({ profile, banners: BANNERS });
 });
 
 // Só admin.
@@ -308,6 +318,7 @@ function publicState(room, viewerId) {
     solo: room.solo,
     players: seatedPlayers(room).map((player) => ({
       id: player.id,
+      profileId: player.userId || null,
       name: player.name,
       lives: player.lives,
       bid: player.bid,
@@ -724,10 +735,18 @@ function endGame(room) {
     room.message = "Todo mundo se fodeu. Impressionante.";
   }
   // Grava as stats das contas: +1 partida para todos os humanos, +1 vitória pro vencedor.
-  const humanIds = seatedPlayers(room).filter((player) => player.userId).map((player) => player.userId);
-  if (humanIds.length) recordGame(humanIds, winner?.userId || null);
+  const matchStandings = finalStandingsFrom(seatedPlayers(room));
+  const positionById = new Map(matchStandings.map((entry) => [entry.id, entry.position]));
+  const humanPlayers = seatedPlayers(room)
+    .filter((player) => player.userId)
+    .map((player) => ({
+      userId: player.userId,
+      position: positionById.get(player.id) || seatedPlayers(room).length,
+      playerCount: seatedPlayers(room).length,
+      won: player.id === winner?.id,
+    }));
+  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, room.tournament ? "Torneio relâmpago" : "Partida" );
   if (room.tournament) {
-    const matchStandings = finalStandingsFrom(seatedPlayers(room));
     const playersInMatch = matchStandings.length;
     for (const entry of matchStandings) {
       const score = room.tournament.scores[entry.id];

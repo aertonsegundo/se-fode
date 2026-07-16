@@ -178,7 +178,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 @media (prefers-reduced-motion:reduce) { .pot { animation:none; } }
 
 .seats { position:absolute; inset:0; z-index:3; pointer-events:none; }
-.seat { position:absolute; left:calc(50% + var(--cos) * var(--seat-rx)); top:calc(50% + var(--sin) * var(--seat-ry)); transform:translate(-50%,-50%); width:142px; padding:.4rem .5rem; background:#20201bef; border:1px solid #403e37; border-radius:12px; box-shadow:0 6px 16px #0006; z-index:2; transition:box-shadow .18s,border-color .18s,transform .18s; }
+.seat { position:absolute; left:calc(50% + var(--cos) * var(--seat-rx)); top:calc(50% + var(--sin) * var(--seat-ry)); transform:translate(-50%,-50%); width:142px; padding:.4rem .5rem; background:#20201bef; color:var(--paper); border:1px solid #403e37; border-radius:12px; box-shadow:0 6px 16px #0006; z-index:2; transition:box-shadow .18s,border-color .18s,transform .18s; text-align:left; font:inherit; pointer-events:auto; }
+.seat:hover, .seat:focus-visible { border-color:var(--blue); box-shadow:0 0 0 2px #7aa7ff99,0 7px 18px #0009; outline:0; }
 .seat.me { border-color:#5a6f2b; background:#232414ef; }
 .seat.turn { border-color:var(--acid); box-shadow:0 0 0 2px var(--acid),0 0 22px #d8ff4577; z-index:6; }
 .seat.out { opacity:.4; filter:grayscale(.7); }
@@ -437,9 +438,9 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .seat-banner { position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bn-bg); color:var(--bn-fg); border:1px solid var(--bn); border-radius:999px; padding:.05rem .5rem; font-size:.46rem; font-weight:900; letter-spacing:.1em; white-space:nowrap; z-index:6; text-transform:uppercase; }
 
 /* ===================== MODAIS (perfil, ranking, solo) ===================== */
-.profile-dialog, .ranking-dialog, .solo-dialog { border:0; border-radius:14px; padding:1.8rem; max-width:440px; width:92vw; background:#1c1b16; color:var(--paper); box-shadow:0 24px 60px #000a; }
-.profile-dialog::backdrop, .ranking-dialog::backdrop, .solo-dialog::backdrop { background:#000a; backdrop-filter:blur(2px); }
-.profile-dialog h2, .ranking-dialog h2, .solo-dialog h2 { font:1.9rem "Archivo Black",sans-serif; letter-spacing:-.03em; margin:.1em 0 .3em; }
+.profile-dialog, .ranking-dialog, .solo-dialog, .player-card-dialog { border:0; border-radius:14px; padding:1.8rem; max-width:440px; width:92vw; background:#1c1b16; color:var(--paper); box-shadow:0 24px 60px #000a; }
+.profile-dialog::backdrop, .ranking-dialog::backdrop, .solo-dialog::backdrop, .player-card-dialog::backdrop { background:#000a; backdrop-filter:blur(2px); }
+.profile-dialog h2, .ranking-dialog h2, .solo-dialog h2, .player-card-dialog h2 { font:1.9rem "Archivo Black",sans-serif; letter-spacing:-.03em; margin:.1em 0 .3em; }
 
 /* Modal do solo */
 .solo-dialog select { width:100%; border:2px solid #3a382f; background:#26241d; color:var(--paper); padding:.7rem .65rem; font-weight:700; border-radius:8px; margin-bottom:.3rem; }
@@ -477,6 +478,22 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .lb-wins { font-weight:900; color:#ffe27a; }
 .lb-wins small { font-size:.7em; }
 .lb-games { font-size:.68rem; color:#8d897e; white-space:nowrap; }
+
+/* ===================== PERFIL PÚBLICO NA MESA ===================== */
+.player-card-dialog { max-width:365px; padding:1.35rem; border:1px solid #49463c; }
+.player-card-loading { min-height:12rem; display:grid; place-items:center; color:#a9a599; }
+.player-card-head { display:flex; align-items:center; gap:.85rem; margin:.8rem 1.4rem .8rem 0; }
+.player-card-head h2 { font-size:1.55rem; overflow-wrap:anywhere; }
+.player-card-photo { width:4rem; height:4rem; flex:0 0 4rem; display:grid; place-items:center; overflow:hidden; border-radius:12px; background:var(--blue); color:var(--ink); font:1.6rem "Archivo Black",sans-serif; }
+.player-card-photo img { width:100%; height:100%; object-fit:cover; }
+.player-card-now { display:grid; grid-template-columns:auto 1fr; gap:.16rem .55rem; padding:.65rem .7rem; border:1px solid #3a382f; border-radius:9px; background:#25241e; margin:.9rem 0; }
+.player-card-now span { grid-row:span 2; align-self:center; font-size:.52rem; color:var(--acid); letter-spacing:.12em; writing-mode:vertical-rl; transform:rotate(180deg); }
+.player-card-now b { font-size:.9rem; }.player-card-now small { color:#aaa69a; font-size:.68rem; }
+.player-stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; }
+.player-stat-grid > div { padding:.65rem .35rem; text-align:center; background:#292821; border-radius:8px; }
+.player-stat-grid b { display:block; color:#ffe27a; font:1.2rem "Archivo Black",sans-serif; }.player-stat-grid span { color:#a9a599; font-size:.48rem; letter-spacing:.08em; }
+.player-history { margin-top:1.1rem; }.player-history-title { font-size:.6rem; color:#a9a599; letter-spacing:.16em; margin-bottom:.45rem; }.player-history ul { padding:0; margin:0; list-style:none; }
+.player-history-item { display:flex; align-items:center; gap:.55rem; padding:.48rem .1rem; border-top:1px solid #302f29; }.history-result { width:1.55rem; font-weight:900; text-align:center; color:#b9b4a6; }.player-history-item.won .history-result { color:#ffe27a; }.player-history-item b,.player-history-item small { display:block; }.player-history-item b { font-size:.76rem; }.player-history-item small { color:#8d897e; font-size:.62rem; margin-top:.1rem; }.player-history-empty { margin:.5rem 0 0; color:#8d897e; font-size:.75rem; }
 
 /* ===================== DASHBOARD ===================== */
 .dash { min-height:100vh; min-height:100dvh; padding:1.2rem 1.6rem 3rem; max-width:1100px; margin:0 auto; }
