@@ -34,6 +34,16 @@ async function reloadAndBroadcastEmotes() {
 // deploy nunca fica preso numa versao antiga em cache no cliente.
 app.use(express.json({ limit: "3mb" }));
 
+// Mantém a URL oficial única. O health check do Render fica acessível para que
+// o serviço antigo continue saudável enquanto encaminha os visitantes.
+app.use((req, res, next) => {
+  const host = String(req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
+  if (host === "se-fode-online.onrender.com" && req.path !== "/health") {
+    return res.redirect(308, `https://sefode.com${req.originalUrl}`);
+  }
+  next();
+});
+
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
 // deploy nunca fica preso numa versao antiga em cache no cliente.
 app.use(express.static(path.join(__dirname, "public"), {
