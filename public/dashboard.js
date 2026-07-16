@@ -133,6 +133,10 @@ async function loadEmotes() {
 function renderEmotes(list) {
   const grid = $("#emote-grid");
   grid.innerHTML = "";
+  if (!list.length) {
+    grid.innerHTML = '<p class="dash-hint">Nenhuma figurinha. Reinicie o servidor para restaurar as nativas ou adicione uma acima.</p>';
+    return;
+  }
   for (const emote of list) {
     const card = document.createElement("div");
     card.className = "emote-card" + (emote.active ? "" : " off");

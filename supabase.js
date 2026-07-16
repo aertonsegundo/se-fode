@@ -290,13 +290,14 @@ const shapeEmote = (row) => ({ key: row.key, title: row.title, emoji: row.emoji,
 
 const builtinEmoteList = () => BUILTIN_EMOTES.map((emote, index) => ({ ...emote, imageUrl: null, active: true, sort: index, builtin: true }));
 
-// Semeia a tabela emotes com as figurinhas nativas na primeira vez.
+// Garante que as figurinhas nativas existam na tabela (upsert que NÃO sobrescreve
+// as já presentes — preserva desativações e as personalizadas como a "messi").
+// Roda no boot; figurinhas nativas excluídas voltam no próximo start (são o conjunto base).
 export async function seedEmotes() {
   if (!admin) return;
-  const { count, error } = await admin.from("emotes").select("key", { count: "exact", head: true });
-  if (error) { console.warn("[emotes] tabela ausente — rode supabase/schema.sql para gerenciar figurinhas."); return; }
-  if (count && count > 0) return;
-  await admin.from("emotes").insert(BUILTIN_EMOTES.map((emote, index) => ({ key: emote.key, title: emote.title, emoji: emote.emoji, image_url: null, active: true, sort: index })));
+  const rows = BUILTIN_EMOTES.map((emote, index) => ({ key: emote.key, title: emote.title, emoji: emote.emoji, image_url: null, active: true, sort: index }));
+  const { error } = await admin.from("emotes").upsert(rows, { onConflict: "key", ignoreDuplicates: true });
+  if (error) console.warn("[emotes] tabela ausente — rode supabase/schema.sql para gerenciar figurinhas.");
 }
 
 // Lista as figurinhas (ordenadas). Sem Supabase / sem a tabela, cai para as nativas.
