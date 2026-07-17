@@ -42,7 +42,7 @@ O login é **obrigatório** para jogar. As contas ficam no Supabase (e-mail + se
 No Render, adicione as três variáveis do Supabase em *Environment* (o `render.yaml` não as inclui por serem segredos).
 
 
-O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service na região da Virgínia, com health check em `/health` e deploy automático a cada atualização da branch `main`.
+O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service na região da Virgínia, com health check em `/health` e deploy manual pelo painel do Render.
 
 ## Regras adotadas
 

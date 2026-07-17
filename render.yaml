@@ -8,4 +8,4 @@ services:
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
