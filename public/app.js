@@ -941,12 +941,13 @@ function renderSeats() {
     const cardZone = play
       ? `<div class="seat-card ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
       : "";
-    // no testa, a carta ainda-não-lançada fica na testa do jogador (colada no card dele);
-    // ao ser jogada some daqui e reaparece na frente dele (na mesa) via cardZone.
-    // Assentos da metade de cima recebem a carta ABAIXO do card (senão ela sai da mesa).
-    const foreheadBelow = Number(sin) < -0.2;
+    // no testa, a carta que todos veem fica colada no card do dono, SEMPRE pro lado que
+    // aponta pra fora da mesa (nunca sobre o feltro): em cima nos assentos de cima, embaixo
+    // nos de baixo e nas laterais nas pontas. Ao ser jogada, migra pra frente dele (na mesa).
+    const c = Number(cos), s = Number(sin);
+    const foreheadDir = Math.abs(s) >= Math.abs(c) ? (s < 0 ? "above" : "below") : (c < 0 ? "left" : "right");
     const foreheadOnSeat = foreheadCard && !play
-      ? `<div class="forehead-card ${foreheadBelow ? "below" : ""}"><span class="forehead-tag">TESTA</span>${cardHtml(foreheadCard)}</div>`
+      ? `<div class="forehead-card ${foreheadDir}">${cardHtml(foreheadCard)}</div>`
       : "";
 
     const meta = player.bid == null

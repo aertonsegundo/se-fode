@@ -214,11 +214,12 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-card.melada { filter:grayscale(.55) brightness(.72); }
 .seat-card.melada .card { box-shadow:0 0 0 2px var(--red),0 4px 10px #000a; }
 .melada-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%) rotate(-6deg); background:var(--red); color:#fff; font:.52rem "Archivo Black"; letter-spacing:.05em; padding:.1rem .38rem; border-radius:3px; z-index:3; white-space:nowrap; box-shadow:0 2px 5px #0007; }
-.forehead-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%); background:#171713; color:var(--acid); font-size:.5rem; font-weight:800; letter-spacing:.08em; padding:.08rem .3rem; border-radius:3px; z-index:2; white-space:nowrap; }
-/* carta na testa: fica em cima do card do jogador, não na mesa */
-.forehead-card { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); z-index:6; pointer-events:none; filter:drop-shadow(0 5px 9px #000b); }
-.forehead-card.below { bottom:auto; top:calc(100% + 8px); }
-.forehead-card.below .forehead-tag { top:auto; bottom:-.7rem; }
+/* carta na testa: colada no card do dono, sempre pro lado de fora da mesa (nunca sobre o feltro) */
+.forehead-card { position:absolute; z-index:6; pointer-events:none; filter:drop-shadow(0 5px 9px #000b); --fh-gap:8px; }
+.forehead-card.above { bottom:calc(100% + var(--fh-gap)); left:50%; transform:translateX(-50%); }
+.forehead-card.below { top:calc(100% + var(--fh-gap)); left:50%; transform:translateX(-50%); }
+.forehead-card.left  { right:calc(100% + var(--fh-gap)); top:50%; transform:translateY(-50%); }
+.forehead-card.right { left:calc(100% + var(--fh-gap)); top:50%; transform:translateY(-50%); }
 .forehead-card .card { width:48px; height:70px; font-size:.8rem; padding:.28rem; }
 .forehead-card .card .big-suit { font-size:1.25rem; }
 @keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
@@ -245,7 +246,7 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .hearts-compact { display:inline; white-space:nowrap; }
   .seat-card .card { width:44px; height:64px; font-size:.72rem; padding:.28rem; }
   .seat-card .card .big-suit { font-size:1.15rem; }
-  .forehead-card { bottom:calc(100% + 5px); }
+  .forehead-card { --fh-gap:5px; }
   .forehead-card .card { width:38px; height:56px; font-size:.66rem; padding:.24rem; }
   .forehead-card .card .big-suit { font-size:1.02rem; }
   /* "QUEM SE FODEU" (fim da mão) e "FIM DE JOGO" viram um modal centralizado sobre
