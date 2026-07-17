@@ -941,13 +941,16 @@ function renderSeats() {
     const cardZone = play
       ? `<div class="seat-card ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
       : "";
-    // no testa, a carta que todos veem fica colada no card do dono, SEMPRE pro lado que
-    // aponta pra fora da mesa (nunca sobre o feltro): em cima nos assentos de cima, embaixo
-    // nos de baixo e nas laterais nas pontas. Ao ser jogada, migra pra frente dele (na mesa).
-    const c = Number(cos), s = Number(sin);
-    const foreheadDir = Math.abs(s) >= Math.abs(c) ? (s < 0 ? "above" : "below") : (c < 0 ? "left" : "right");
+    // no testa, a carta que todos veem fica colada na LATERAL do card do dono, pro lado de
+    // fora da mesa (nunca sobre o feltro/texto): assentos à esquerda (cos<0) recebem a carta
+    // à esquerda, os à direita (cos>0) à direita, e o assento oposto (topo, cos≈0) à esquerda.
+    // Nos assentos das extremas laterais (cos≈±1) a carta lateral sairia da tela no mobile,
+    // então lá ela vai pra cima do card (classe "edge", só tratada no CSS mobile).
+    // Ao ser jogada, migra pra frente dele (na mesa) via cardZone.
+    const foreheadSide = Number(cos) > 0 ? "right" : "left";
+    const foreheadEdge = Math.abs(Number(cos)) > 0.9 ? "edge" : "";
     const foreheadOnSeat = foreheadCard && !play
-      ? `<div class="forehead-card ${foreheadDir}">${cardHtml(foreheadCard)}</div>`
+      ? `<div class="forehead-card ${foreheadSide} ${foreheadEdge}">${cardHtml(foreheadCard)}</div>`
       : "";
 
     const meta = player.bid == null
