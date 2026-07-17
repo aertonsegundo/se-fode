@@ -441,7 +441,7 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, afkStrikes: 0, expelled: false, hand: [], userId: null, banner: "novato", photoUrl: null };
+  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, quit: false, afkStrikes: 0, expelled: false, hand: [], userId: null, banner: "novato", photoUrl: null };
   applyProfile(player, socket.data.user);
   return player;
 }
@@ -804,6 +804,11 @@ function scoreRound(room) {
   room.message = losers.length
     ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
     : "Ninguém se fodeu dessa vez — todo mundo cravou.";
+  // Quem saiu de propósito no meio da mão: o bot terminou a mão, agora o jogador sai de vez.
+  if (room.players.some((player) => player.quit)) {
+    room.players = room.players.filter((player) => !player.quit);
+    transferHost(room);
+  }
   if (activePlayers(room).length <= 1) return endGame(room);
   broadcast(room);
   maybeAutoAdvance(room); // mesa sem bots: próxima mão começa sozinha
@@ -911,7 +916,13 @@ function endGame(room) {
 // Autentica o socket no handshake: quem não estiver logado não entra em salas.
 io.use(async (socket, next) => {
   try {
-    socket.data.user = supabaseEnabled ? await profileFromToken(socket.handshake.auth?.token) : null;
+    if (process.env.DEV_AUTH === "1") {
+      // Somente para testes locais (nunca ligado em produção): usuário fake pelo handshake.
+      const name = socket.handshake.auth?.devUser;
+      socket.data.user = name ? { id: `dev-${name}`, displayName: String(name), banner: "novato", onlineWins: 0, photo: null } : null;
+    } else {
+      socket.data.user = supabaseEnabled ? await profileFromToken(socket.handshake.auth?.token) : null;
+    }
   } catch {
     socket.data.user = null;
   }
@@ -952,10 +963,12 @@ io.on("connection", (socket) => {
       room.autoTurnId = null;
     }
     player.auto = false; // voltou para a mesa: reassume o controle do bot
+    // Sem vidas (eliminado) ou já removido da mão: não dá pra jogar — volta como espectador.
+    if (player.eliminated) player.spectator = true;
     applyProfile(player, socket.data.user); // atualiza foto/banner se mudaram enquanto esteve fora
     sendSession(socket, room, player);
     transferHost(room);
-    notice(socket, "Você voltou para a mesa.");
+    notice(socket, player.spectator ? "Você voltou como espectador." : "Você voltou para a mesa.");
     broadcast(room);
   });
 
@@ -1017,7 +1030,17 @@ io.on("connection", (socket) => {
     if (!name) return notice(socket, "Digite seu nome.");
     if (!room) return notice(socket, "Sala não encontrada.");
     if (room.players.length >= 8) return notice(socket, "A sala já está cheia.");
-    if (room.players.some((player) => player.name.toLowerCase() === name.toLowerCase())) return notice(socket, "Esse nome já está na mesa.");
+    // Mesmo nome na mesa: se for um "fantasma" desconectado que dá pra liberar (fora de mão
+    // ativa, ou já eliminado/espectador), remove pra deixar a pessoa voltar. Se for alguém
+    // conectado, um bot, ou um jogador sendo jogado por bot numa mão em andamento, bloqueia.
+    const clash = room.players.find((player) => player.name.toLowerCase() === name.toLowerCase());
+    if (clash) {
+      const activeHand = ["bidding", "playing", "trick_reveal"].includes(room.phase);
+      const busy = clash.connected || clash.isBot || (activeHand && !clash.eliminated && !clash.spectator);
+      if (busy) return notice(socket, "Esse nome já está na mesa.");
+      if (clash.disconnectTimer) { clearTimeout(clash.disconnectTimer); clash.disconnectTimer = null; }
+      room.players = room.players.filter((player) => player.id !== clash.id);
+    }
     const player = createPlayer(socket, name);
     // Partida rolando: entra como espectador e vira jogador na próxima partida.
     // No lobby ou no fim de jogo, entra direto para a próxima partida.
@@ -1163,11 +1186,15 @@ io.on("connection", (socket) => {
     player.connected = false;
     player.socketId = null;
     player.resumeToken = null; // saiu de propósito: não reconecta mais nesta sala
-    if (room.phase === "lobby" || room.phase === "game_over" || player.spectator) {
-      // Espectador (ou saída fora de partida) apenas some — não estava jogando.
+    const activeHand = ["bidding", "playing", "trick_reveal"].includes(room.phase);
+    if (!activeHand || player.spectator) {
+      // Lobby, entre-mãos, fim de jogo ou espectador: não há mão em andamento → sai na hora.
       room.players = room.players.filter((item) => item.id !== player.id);
     } else {
-      player.auto = true; // saiu no meio: um bot assume a vaga rapidamente
+      // Saiu no meio da mão: um bot só TERMINA a mão atual por ele; ao fim dela (scoreRound)
+      // o jogador é removido de vez — não vira bot permanente.
+      player.auto = true;
+      player.quit = true;
     }
     transferHost(room);
     if (room.autoTurnId === player.id && room.botTimer) {

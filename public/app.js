@@ -62,8 +62,12 @@ function leaveRoom() {
 }
 
 function confirmLeave() {
+  const activeHand = state && ["bidding", "playing", "trick_reveal"].includes(state.phase);
   const mid = state && !["lobby", "game_over"].includes(state.phase);
-  if (mid && !confirm("Sair da partida? Um bot assume seu lugar.")) return;
+  const message = activeHand
+    ? "Sair da partida? Um bot termina a mão atual por você e você deixa a mesa."
+    : "Sair da partida?";
+  if (mid && !confirm(message)) return;
   leaveRoom();
 }
 
