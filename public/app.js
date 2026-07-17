@@ -914,6 +914,25 @@ function render() {
   }
 }
 
+// Avatares reaproveitados entre renders: o mesmo <img> por jogador. Como o renderSeats
+// reconstrói o innerHTML do #seats a cada estado (troca de vez etc.), recriar o <img>
+// fazia a foto recarregar e "piscar". Aqui guardamos o elemento e só o remontamos.
+const seatAvatars = new Map();
+function mountSeatAvatars() {
+  const seen = new Set();
+  $("#seats").querySelectorAll(".avatar-mount").forEach((mount) => {
+    const pid = mount.closest("[data-seat]")?.dataset.seat;
+    if (!pid) return;
+    seen.add(pid);
+    let img = seatAvatars.get(pid);
+    if (!img) { img = document.createElement("img"); seatAvatars.set(pid, img); }
+    if (img.getAttribute("src") !== mount.dataset.src) img.setAttribute("src", mount.dataset.src);
+    img.alt = `Avatar de ${mount.dataset.name || ""}`;
+    mount.replaceWith(img); // reatacha o mesmo <img> já decodificado: não recarrega
+  });
+  for (const pid of seatAvatars.keys()) if (!seen.has(pid)) seatAvatars.delete(pid);
+}
+
 function renderSeats() {
   $("#manilhas").innerHTML = `<span>MANILHAS FIXAS</span><b>4♣</b> › <b class="red-text">7♥</b> › <b>A♠</b> › <b class="red-text">7♦</b>`;
   const players = state.players;
@@ -964,8 +983,10 @@ function renderSeats() {
       ? player.photoUrl
       : isMaldito ? "/avatars/maldito.png"
       : player.avatarKey ? `/avatars/players/${encodeURIComponent(player.avatarKey)}.webp` : null;
+    // "mount" preenchido depois do innerHTML com um <img> reaproveitado (ver mountSeatAvatars),
+    // pra a foto não recarregar/piscar a cada re-render.
     const avatar = avatarSource
-      ? `<img src="${avatarSource}" alt="Avatar de ${escapeHtml(player.name)}" />`
+      ? `<span class="avatar-mount" data-src="${escapeHtml(avatarSource)}" data-name="${escapeHtml(player.name)}"></span>`
       : escapeHtml((player.name[0] || "?").toUpperCase());
     const banner = player.banner && player.banner !== "novato" ? player.banner : null;
     const bannerRibbon = banner ? `<div class="seat-banner">${escapeHtml(bannerTitle(banner))}</div>` : "";
@@ -991,6 +1012,8 @@ function renderSeats() {
         ${player.auto && !player.isBot && player.connected && (state.phase === "bidding" || state.phase === "playing") ? '<div class="seat-tag auto">🤖 AUTO</div>' : ""}
       </button>`;
   }).join("");
+
+  mountSeatAvatars();
 
   $("#seats").querySelectorAll("[data-seat]").forEach((seat) => {
     seat.onclick = () => {
