@@ -494,6 +494,10 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .player-stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; }
 .player-stat-grid > div { padding:.65rem .35rem; text-align:center; background:#292821; border-radius:8px; }
 .player-stat-grid b { display:block; color:#ffe27a; font:1.2rem "Archivo Black",sans-serif; }.player-stat-grid span { color:#a9a599; font-size:.48rem; letter-spacing:.08em; }
+.player-points-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-top:.4rem; }
+.player-points-grid > div { padding:.6rem .35rem; text-align:center; background:#20201a; border:1px solid #322f26; border-radius:8px; }
+.player-points-grid b { display:block; color:var(--acid); font:1.15rem "Archivo Black",sans-serif; }
+.player-points-grid span { color:#a9a599; font-size:.46rem; letter-spacing:.06em; }
 .player-history { margin-top:1.1rem; }.player-history-title { font-size:.6rem; color:#a9a599; letter-spacing:.16em; margin-bottom:.45rem; }.player-history ul { padding:0; margin:0; list-style:none; }
 .player-history-item { display:flex; align-items:center; gap:.55rem; padding:.48rem .1rem; border-top:1px solid #302f29; }.history-result { width:1.55rem; font-weight:900; text-align:center; color:#b9b4a6; }.player-history-item.won .history-result { color:#ffe27a; }.player-history-item b,.player-history-item small { display:block; }.player-history-item b { font-size:.76rem; }.player-history-item small { color:#8d897e; font-size:.62rem; margin-top:.1rem; }.player-history-empty { margin:.5rem 0 0; color:#8d897e; font-size:.75rem; }
 

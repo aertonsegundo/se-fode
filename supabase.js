@@ -106,6 +106,8 @@ function shapeProfile(profile, authUser) {
     wins: profile.wins || 0,
     gamesPlayed: profile.games_played || 0,
     rankPoints: profile.rank_points || 0,
+    casualPoints: profile.casual_points || 0,
+    tournamentPoints: profile.tournament_points || 0,
     tournamentTitles: profile.tournament_titles || 0,
     createdAt: profile.created_at || null,
     lastSignInAt: authUser?.last_sign_in_at ?? null,
@@ -174,13 +176,15 @@ function leaderboardRow(row) {
     wins: row.wins || 0,
     gamesPlayed: row.games_played || 0,
     rankPoints: row.rank_points || 0,
+    casualPoints: row.casual_points || 0,
+    tournamentPoints: row.tournament_points || 0,
     tournamentTitles: row.tournament_titles || 0,
   };
 }
 
 // Geral = total acumulado; por partida = eficiência (mín. 3 jogos); semanal
 // = somente pontos conquistados desde a segunda-feira atual.
-export async function leaderboard(limit = 50, mode = "general") {
+export async function leaderboard(limit = 50, mode = "casual") {
   if (!admin) return [];
   if (mode === "weekly") {
     const { data, error } = await admin.rpc("weekly_leaderboard", { p_limit: limit });
@@ -193,36 +197,31 @@ export async function leaderboard(limit = 50, mode = "general") {
       displayName: row.display_name || "Jogador",
       photo: row.photo || null,
       banner: row.banner || "novato",
-      wins: Number(row.wins) || 0,
-      gamesPlayed: Number(row.games_played) || 0,
-      rankPoints: Number(row.rank_points) || 0,
+      points: Number(row.points) || 0,
+      scoringGames: Number(row.scoring_games) || 0,
       tournamentTitles: Number(row.tournament_titles) || 0,
     }));
   }
 
+  // Ranking por bolso: Partida Rápida (casual_points) ou Torneio (tournament_points).
+  const pointsColumn = mode === "tournament" ? "tournament_points" : "casual_points";
   const { data, error } = await admin
     .from("profiles")
-    .select("id, display_name, role, photo, banner, wins, games_played, rank_points, tournament_titles")
-    .order("rank_points", { ascending: false })
+    .select("id, display_name, role, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles")
+    .order(pointsColumn, { ascending: false })
     .order("tournament_titles", { ascending: false })
     .order("wins", { ascending: false })
     .order("games_played", { ascending: false })
-    .limit(mode === "per_game" ? 200 : limit);
-  // O deploy do servidor pode chegar antes de o admin rodar o schema.
+    .limit(limit);
+  // O deploy do servidor pode chegar antes de o admin rodar o schema (colunas novas).
   const rows = data || (error
     ? (await admin.from("profiles")
       .select("id, display_name, role, photo, banner, wins, games_played")
       .order("wins", { ascending: false })
       .order("games_played", { ascending: false })
-      .limit(mode === "per_game" ? 200 : limit)).data || []
+      .limit(limit)).data || []
     : []);
-  const formatted = rows.map(leaderboardRow);
-  if (mode !== "per_game") return formatted;
-  return formatted
-    .filter((row) => row.gamesPlayed >= 3)
-    .map((row) => ({ ...row, pointsPerGame: Number((row.rankPoints / row.gamesPlayed).toFixed(2)) }))
-    .sort((a, b) => b.pointsPerGame - a.pointsPerGame || b.rankPoints - a.rankPoints || b.wins - a.wins)
-    .slice(0, limit);
+  return rows.map(leaderboardRow).map((row) => ({ ...row, points: mode === "tournament" ? row.tournamentPoints : row.casualPoints }));
 }
 
 // Perfil público para abrir a partir da cadeira na mesa. Nunca devolve e-mail,
@@ -231,7 +230,7 @@ export async function publicPlayerProfile(id) {
   if (!admin || !/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
   const { data, error: profileError } = await admin
     .from("profiles")
-    .select("id, display_name, photo, banner, wins, games_played, rank_points, tournament_titles, created_at")
+    .select("id, display_name, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles, created_at")
     .eq("id", id)
     .maybeSingle();
   const row = data || (profileError
@@ -259,6 +258,8 @@ export async function publicPlayerProfile(id) {
     wins: row.wins || 0,
     gamesPlayed: row.games_played || 0,
     rankPoints: row.rank_points || 0,
+    casualPoints: row.casual_points || 0,
+    tournamentPoints: row.tournament_points || 0,
     tournamentTitles: row.tournament_titles || 0,
     createdAt: row.created_at || null,
     historyAvailable: !error,
@@ -422,12 +423,13 @@ export async function recordGame(players, winnerId, mode = "Partida") {
       console.warn("[supabase] rode o schema.sql para ativar pontos de ranking:", resultError.message);
     }
 
+    // Pontos por partida só existem no modo casual; kind 'casual' alimenta o semanal.
     await recordRankingEvents(players
       .filter((player) => typeof player === "object" && player.userId && player.rankPoints > 0)
       .map((player) => ({
         player_id: player.userId,
         points: player.rankPoints,
-        kind: player.won ? "game_win" : "game_second",
+        kind: "casual",
       })));
 
     // O histórico é complementar às estatísticas. Se a migration ainda não
@@ -464,7 +466,7 @@ export async function awardTournamentResult(entries) {
     .map((entry) => ({
       player_id: entry.userId,
       points: entry.rankPoints,
-      kind: entry.position === 1 ? "tournament_champion" : entry.position === 2 ? "tournament_runner_up" : "tournament_third",
+      kind: entry.position === 1 ? "tournament_champion" : "tournament",
     })));
 }
 

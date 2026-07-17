@@ -250,6 +250,7 @@ function renderPlayerCard(profile, currentPlayer = null) {
     </div>
     ${now}
     <div class="player-stat-grid"><div><b>${stats.games}</b><span>PARTIDAS</span></div><div><b>${stats.wins}</b><span>VITÓRIAS</span></div><div><b>${stats.rate}%</b><span>APROVEITAMENTO</span></div></div>
+    <div class="player-points-grid"><div><b>${profile.casualPoints || 0}</b><span>🏆 PARTIDA RÁPIDA</span></div><div><b>${profile.tournamentPoints || 0}</b><span>⚡ TORNEIO</span></div><div><b>${profile.tournamentTitles || 0}</b><span>TÍTULOS</span></div></div>
     <section class="player-history"><div class="player-history-title">HISTÓRICO RECENTE</div>${profile.historyAvailable === false ? '<p class="player-history-empty">O histórico começa a ser salvo nas próximas partidas.</p>' : games ? `<ul>${games}</ul>` : '<p class="player-history-empty">Ainda não terminou uma partida.</p>'}</section>`;
 }
 
@@ -404,11 +405,16 @@ $("#photo-upload")?.addEventListener("change", (event) => {
 // ===== Ranking geral =====
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
-let rankingMode = "general";
+let rankingMode = "casual";
 const RANKING_COPY = {
-  general: "Pontos acumulados. Torneios valem mais; bots não contam.",
-  per_game: "Eficiência: pontos por partida, com mínimo de 3 partidas.",
-  weekly: "Pontos conquistados desde segunda-feira. Bots não contam.",
+  casual: "Partida Rápida: top 3 pontua (3/2/1), só com 3+ humanos. Bots não contam.",
+  tournament: "Torneio: só a classificação final pontua (top 5: 10/6/4/2/1). Bots não contam.",
+  weekly: "Pontos de todos os modos conquistados desde segunda-feira.",
+};
+const RANKING_EMPTY = {
+  casual: "Ninguém pontuou em partida rápida ainda. Chame 3+ pra valer ponto. 🏆",
+  tournament: "Nenhum torneio pontuado ainda. Complete um com 3+ jogadores. ⚡",
+  weekly: "Ainda não há pontos nesta semana.",
 };
 
 $("#ranking-tabs")?.addEventListener("click", (event) => {
@@ -418,11 +424,11 @@ $("#ranking-tabs")?.addEventListener("click", (event) => {
 
 async function openRanking() {
   $("#ranking").showModal();
-  loadRanking("general");
+  loadRanking("casual");
 }
 
 async function loadRanking(mode) {
-  rankingMode = ["general", "per_game", "weekly"].includes(mode) ? mode : "general";
+  rankingMode = ["casual", "tournament", "weekly"].includes(mode) ? mode : "casual";
   const body = $("#ranking-body");
   $("#ranking-tabs").querySelectorAll("[data-ranking-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.rankingMode === rankingMode);
@@ -433,9 +439,9 @@ async function loadRanking(mode) {
   try {
     const data = await api(`/api/leaderboard?mode=${rankingMode}`);
     bannerCatalog = data.banners || bannerCatalog;
-    const rows = (data.leaderboard || []).filter((user) => user.gamesPlayed > 0 || user.wins > 0 || user.rankPoints > 0 || user.tournamentTitles > 0);
+    const rows = (data.leaderboard || []).filter((user) => (user.points || 0) > 0 || (user.wins || 0) > 0 || (user.tournamentTitles || 0) > 0 || (user.gamesPlayed || 0) > 0);
     if (!rows.length) {
-      body.innerHTML = `<p class="ranking-loading">${rankingMode === "weekly" ? "Ainda não há pontos nesta semana." : rankingMode === "per_game" ? "São necessárias 3 partidas para entrar aqui." : "Ninguém pontuou ainda. Seja o primeiro. 🏆"}</p>`;
+      body.innerHTML = `<p class="ranking-loading">${RANKING_EMPTY[rankingMode]}</p>`;
       return;
     }
     body.innerHTML = rows.map((user, index) => {
@@ -443,17 +449,21 @@ async function loadRanking(mode) {
       const mine = user.id === data.meId ? "mine" : "";
       const bannerTag = user.banner && user.banner !== "novato"
         ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
-      const mainValue = rankingMode === "per_game" ? (user.pointsPerGame || 0).toFixed(2) : user.rankPoints || 0;
-      const mainLabel = rankingMode === "per_game" ? "PTS/J" : rankingMode === "weekly" ? "PTS SEM" : "PTS";
-      const winsLabel = rankingMode === "weekly" ? "VIT SEM" : "VIT";
-      const titlesLabel = rankingMode === "weekly" ? "TOR SEM" : "TOR";
+      // Coluna principal + duas secundárias, por modo.
+      const main = user.points || 0;
+      const mainLabel = rankingMode === "weekly" ? "PTS SEM" : "PTS";
+      const secondary = rankingMode === "tournament"
+        ? [[user.tournamentTitles || 0, "TÍT"], [user.wins || 0, "VIT"]]
+        : rankingMode === "weekly"
+          ? [[user.scoringGames || 0, "JOGOS"], [user.tournamentTitles || 0, "TÍT"]]
+          : [[user.wins || 0, "VIT"], [user.tournamentTitles || 0, "TÍT"]];
       return `<div class="lb-row ${mine}">
         <span class="lb-pos">${medal}</span>
         <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
         <span class="lb-name">${escapeHtml(user.displayName)}${bannerTag}</span>
-        <span class="lb-stat points"><b>${mainValue}</b><small>${mainLabel}</small></span>
-        <span class="lb-stat"><b>${user.wins}</b><small>${winsLabel}</small></span>
-        <span class="lb-stat titles"><b>${user.tournamentTitles || 0}</b><small>${titlesLabel}</small></span>
+        <span class="lb-stat points"><b>${main}</b><small>${mainLabel}</small></span>
+        <span class="lb-stat"><b>${secondary[0][0]}</b><small>${secondary[0][1]}</small></span>
+        <span class="lb-stat titles"><b>${secondary[1][0]}</b><small>${secondary[1][1]}</small></span>
       </div>`;
     }).join("");
   } catch (err) {

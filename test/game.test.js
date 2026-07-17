@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -137,6 +137,25 @@ test("streak conta só as vitórias seguidas mais recentes do mesmo nome", () =>
   assert.equal(winStreak(["Bia", "Ana", "Ana"], "Ana"), 2);
   assert.equal(winStreak(["Ana", "Ana", "Bia"], "Ana"), 0); // Bia venceu a última
   assert.equal(winStreak([], "Ana"), 0);
+});
+
+test("pontos casuais: top 3 pontua (3/2/1) só com 3+ humanos", () => {
+  assert.equal(casualPoints(1, 4), 3);
+  assert.equal(casualPoints(2, 4), 2);
+  assert.equal(casualPoints(3, 4), 1);
+  assert.equal(casualPoints(4, 4), 0); // fora do top 3
+  assert.equal(casualPoints(1, 2), 0); // menos de 3 humanos não pontua
+  assert.equal(casualPoints(1, 1), 0); // solo não pontua
+});
+
+test("pontos de torneio: classificação final top 5 (10/6/4/2/1), 3+ humanos", () => {
+  assert.equal(tournamentRankPoints(1, 6), 10);
+  assert.equal(tournamentRankPoints(2, 6), 6);
+  assert.equal(tournamentRankPoints(3, 6), 4);
+  assert.equal(tournamentRankPoints(4, 6), 2);
+  assert.equal(tournamentRankPoints(5, 6), 1);
+  assert.equal(tournamentRankPoints(6, 6), 0); // fora do top 5
+  assert.equal(tournamentRankPoints(1, 2), 0); // menos de 3 humanos não pontua
 });
 
 test("bots espertos reconhecem o Zap como vitória", () => {

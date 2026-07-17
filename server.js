@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentResult, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -747,20 +747,25 @@ function endGame(room) {
     room.message = "Todo mundo se fodeu. Impressionante.";
   }
   // Bots não contam: posição, pontos e histórico usam apenas contas humanas.
+  const isTournament = Boolean(room.tournament);
   const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
   const humanCount = humanStandings.length;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const humanPlayers = seatedPlayers(room)
     .filter((player) => player.userId)
-    .map((player) => ({
-      userId: player.userId,
-      position: positionById.get(player.id) || humanCount,
-      playerCount: humanCount,
-      won: player.id === winner?.id,
-      // Vitória +3; segundo lugar entre humanos +1. Bot não gera vitória/pontos.
-      rankPoints: player.id === winner?.id ? 3 : positionById.get(player.id) === 2 ? 1 : 0,
-    }));
-  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, room.tournament ? "Torneio rankeado" : "Partida");
+    .map((player) => {
+      const position = positionById.get(player.id) || humanCount;
+      return {
+        userId: player.userId,
+        position,
+        playerCount: humanCount,
+        won: player.id === winner?.id,
+        // Partida Rápida: top 3 pontua (3/2/1) só com 3+ humanos. Torneio não pontua
+        // por jogo — os pontos vêm só da classificação final do torneio.
+        rankPoints: isTournament ? 0 : casualPoints(position, humanCount),
+      };
+    });
+  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio rankeado" : "Partida");
   if (room.tournament) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
@@ -772,14 +777,14 @@ function endGame(room) {
     room.tournament.completedGames += 1;
     room.tournament.finished = room.tournament.completedGames >= room.tournament.totalGames;
     const leader = tournamentStandings(room)[0];
-    // Bônus final só vale com 3+ humanos. Bots não participam nem do cálculo.
+    // Pontos de ranking do torneio: só na classificação final, top 5 (10/6/4/2/1),
+    // com 3+ humanos. Bots não participam nem do cálculo.
     if (room.tournament.finished && humanCount >= 3 && !room.tournament.rankingAwarded) {
       room.tournament.rankingAwarded = true;
-      const bonuses = [15, 8, 5];
       awardTournamentResult(tournamentStandings(room).map((entry) => ({
         userId: entry.userId,
         position: entry.position,
-        rankPoints: bonuses[entry.position - 1] || 0,
+        rankPoints: tournamentRankPoints(entry.position, humanCount),
       })));
     }
     room.message = room.tournament.finished

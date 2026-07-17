@@ -21,6 +21,9 @@ create table if not exists public.profiles (
 -- Também cobre instalações que já tinham a tabela antes do ranking por pontos.
 alter table public.profiles add column if not exists rank_points integer not null default 0;
 alter table public.profiles add column if not exists tournament_titles integer not null default 0;
+-- Sprint 1: dois bolsos de pontos separados (Partida Rápida × Torneio).
+alter table public.profiles add column if not exists casual_points integer not null default 0;
+alter table public.profiles add column if not exists tournament_points integer not null default 0;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security.
@@ -78,8 +81,9 @@ as $$
   where p_winner is not null and id = p_winner;
 $$;
 
--- Atualização atômica da partida. O servidor envia apenas ids de jogadores
+-- Atualização atômica da partida CASUAL. O servidor envia apenas ids de jogadores
 -- humanos: bots nunca ganham partidas, pontos ou histórico global.
+-- Os pontos vão para o bolso de Partida Rápida (casual_points).
 create or replace function public.record_game_result(p_players uuid[], p_winner uuid, p_rank_points jsonb)
 returns void
 language plpgsql
@@ -94,13 +98,14 @@ begin
   where p_winner is not null and id = p_winner;
 
   update public.profiles p
-  set rank_points = p.rank_points + reward.points
+  set casual_points = p.casual_points + reward.points
   from (select key, value::integer as points from jsonb_each_text(coalesce(p_rank_points, '{}'::jsonb))) reward
   where p.id::text = reward.key;
 end;
 $$;
 
--- Bônus final do torneio: campeão +15, vice +8 e terceiro +5, além do título.
+-- Resultado final do torneio: pontos vão para o bolso de Torneio (tournament_points)
+-- e o campeão ganha +1 título.
 create or replace function public.award_tournament_result(p_rewards jsonb, p_champion uuid)
 returns void
 language plpgsql
@@ -109,7 +114,7 @@ set search_path = public
 as $$
 begin
   update public.profiles p
-  set rank_points = p.rank_points + reward.points
+  set tournament_points = p.tournament_points + reward.points
   from (select key, value::integer as points from jsonb_each_text(coalesce(p_rewards, '{}'::jsonb))) reward
   where p.id::text = reward.key;
 
@@ -124,26 +129,30 @@ create table if not exists public.ranking_events (
   id          bigint generated always as identity primary key,
   player_id   uuid not null references public.profiles(id) on delete cascade,
   points      integer not null check (points > 0),
-  kind        text not null check (kind in ('game_win', 'game_second', 'tournament_champion', 'tournament_runner_up', 'tournament_third')),
+  kind        text not null,
   created_at  timestamptz not null default now()
 );
+
+-- Instalações antigas tinham um CHECK restrito em kind; removemos para aceitar
+-- os tipos novos ('casual', 'tournament', 'tournament_champion').
+alter table public.ranking_events drop constraint if exists ranking_events_kind_check;
 
 create index if not exists ranking_events_weekly_idx
   on public.ranking_events (created_at desc, player_id);
 
 alter table public.ranking_events enable row level security;
 
--- Ranking semanal (segunda-feira até agora): pontos, vitórias e títulos ganhos
--- no período. O servidor lê com service_role; o cliente não acessa direto.
+-- Ranking semanal COMBINADO (segunda-feira até agora): soma de pontos de todos os
+-- modos + títulos de torneio conquistados na semana. Lido com service_role.
+drop function if exists public.weekly_leaderboard(integer);
 create or replace function public.weekly_leaderboard(p_limit integer default 50)
 returns table (
   id uuid,
   display_name text,
   photo text,
   banner text,
-  rank_points bigint,
-  wins bigint,
-  games_played bigint,
+  points bigint,
+  scoring_games bigint,
   tournament_titles bigint
 )
 language sql
@@ -156,15 +165,14 @@ as $$
     p.display_name,
     p.photo,
     p.banner,
-    coalesce(sum(e.points), 0)::bigint as rank_points,
-    count(*) filter (where e.kind = 'game_win')::bigint as wins,
-    count(*) filter (where e.kind in ('game_win', 'game_second'))::bigint as games_played,
+    coalesce(sum(e.points), 0)::bigint as points,
+    count(*)::bigint as scoring_games,
     count(*) filter (where e.kind = 'tournament_champion')::bigint as tournament_titles
   from public.ranking_events e
   join public.profiles p on p.id = e.player_id
   where e.created_at >= date_trunc('week', now())
   group by p.id, p.display_name, p.photo, p.banner
-  order by rank_points desc, tournament_titles desc, wins desc
+  order by points desc, tournament_titles desc, scoring_games desc
   limit greatest(1, least(coalesce(p_limit, 50), 100));
 $$;
 

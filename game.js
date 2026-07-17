@@ -152,9 +152,23 @@ export function finalStandingsFrom(players) {
 
 // Pontos do Torneio Rankeado: a vitória vale um ponto extra, e ninguém sai
 // de uma partida sem pontuar. Ex.: 4 jogadores → 5, 3, 2 e 1 ponto.
+// (Usado só para decidir a classificação DENTRO do torneio.)
 export function tournamentPoints(position, playerCount) {
   if (!Number.isInteger(position) || position < 1 || position > playerCount) return 0;
   return position === 1 ? playerCount + 1 : Math.max(1, playerCount - position + 1);
+}
+
+// ===== Pontos de ranking global (separados por modo) =====
+// Partida Rápida: só pontua com 3+ humanos na mesa; top 3 leva 3, 2 e 1.
+export function casualPoints(position, humanCount) {
+  if (humanCount < 3 || !Number.isInteger(position)) return 0;
+  return position === 1 ? 3 : position === 2 ? 2 : position === 3 ? 1 : 0;
+}
+
+// Torneio: pontua só a classificação final, com 3+ humanos; top 5 leva 10/6/4/2/1.
+export function tournamentRankPoints(position, humanCount) {
+  if (humanCount < 3 || !Number.isInteger(position)) return 0;
+  return [10, 6, 4, 2, 1][position - 1] || 0;
 }
 
 export function tournamentStandingsFrom(entries) {
