@@ -468,15 +468,44 @@ $("#photo-upload")?.addEventListener("change", (event) => {
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
 let rankingMode = "casual";
-const RANKING_COPY = {
-  casual: "🏆 Partida Rápida — o top 3 pontua e vale mais em mesa cheia (mesa de N: N, N−1, N−2). Só conta com 3+ humanos; bots não entram.",
-  tournament: "⚡ Torneio — só a classificação final pontua (top 5), escalando com o nº de jogadores. Vencer com mais vidas ajuda no desempate interno. Bots não contam.",
-  weekly: "🔥 Semanal — soma dos pontos de todos os modos desde segunda-feira. Quem lidera vira o Campeão da Semana.",
-};
 const RANKING_EMPTY = {
   casual: "Ninguém pontuou em partida rápida ainda. Chame 3+ pra valer ponto. 🏆",
   tournament: "Nenhum torneio pontuado ainda. Complete um com 3+ jogadores. ⚡",
   weekly: "Ainda não há pontos nesta semana.",
+};
+
+// Regras completas por aba (abrem no modal da lâmpada) — copy humanizada + exemplos.
+const RANKING_RULES = {
+  casual: {
+    title: "🏆 Partida Rápida",
+    intro: "Terminou no pódio de uma partida com gente de verdade? Levou ponto. E quanto mais cheia a mesa, mais doce a vitória — ganhar entre muitos vale mais do que ganhar entre poucos.",
+    base: "Pontua o pódio (1º, 2º e 3º). O valor acompanha o tamanho da mesa: numa mesa de N pessoas, o campeão leva N, o vice N−1 e o terceiro N−2.",
+    examples: [
+      { label: "Solo ou menos de 3 pessoas", value: "Não vale ponto — farmar contra bot não cola. 🙂" },
+      { label: "Mesa pequena · 3 pessoas", value: "3 · 2 · 1 para 1º, 2º e 3º" },
+      { label: "Mesa cheia · 8 pessoas", value: "8 · 7 · 6 para 1º, 2º e 3º" },
+    ],
+  },
+  tournament: {
+    title: "⚡ Torneio",
+    intro: "No torneio o que conta é como você termina no geral. Só a classificação final rende pontos — e eles pesam bem mais que os da partida rápida.",
+    base: "Pontua o top 5 da classificação final, escalando com o número de jogadores (cerca de 3× a partida rápida). Dentro do torneio, vencer cada jogo com mais vidas na mão te empurra pra cima na tabela.",
+    examples: [
+      { label: "Torneio com menos de 3 pessoas", value: "Não rende ponto de ranking." },
+      { label: "Torneio pequeno · 3 pessoas", value: "9 · 6 · 3 para 1º, 2º e 3º" },
+      { label: "Torneio cheio · 8 pessoas", value: "24 · 21 · 18 · 15 · 12 do 1º ao 5º" },
+    ],
+  },
+  weekly: {
+    title: "🔥 Semanal",
+    intro: "A foto de quem está voando alto AGORA. Junta tudo que você conquistou — partida rápida e torneio — desde a última segunda-feira.",
+    base: "Cada ponto ganho na semana entra aqui. Zera toda segunda. Quem termina em 1º vira o Campeão da Semana e desfila com o banner dourado na mesa.",
+    examples: [
+      { label: "Venceu 2 rápidas numa mesa de 4", value: "+4 e +4 na semana (8 pontos)" },
+      { label: "Ficou em 2º num torneio de 6", value: "+15 na semana" },
+      { label: "Total da semana", value: "8 + 15 = 23 pontos somados aqui" },
+    ],
+  },
 };
 
 $("#ranking-tabs")?.addEventListener("click", (event) => {
@@ -484,16 +513,23 @@ $("#ranking-tabs")?.addEventListener("click", (event) => {
   if (button) loadRanking(button.dataset.rankingMode);
 });
 
-// Lâmpada: mostra/esconde as regras da aba atual (o conteúdo muda por aba).
-$("#ranking-rules-btn")?.addEventListener("click", () => {
-  const show = $("#ranking-sub").classList.contains("hidden");
-  $("#ranking-sub").classList.toggle("hidden", !show);
-  $("#ranking-rules-btn").classList.toggle("active", show);
-});
+// Lâmpada: abre o modal com a regra completa da aba atual.
+$("#ranking-rules-btn")?.addEventListener("click", () => openRulesModal(rankingMode));
+$("#ranking-rules-close")?.addEventListener("click", () => $("#ranking-rules-modal").close());
+
+function openRulesModal(mode) {
+  const rules = RANKING_RULES[mode] || RANKING_RULES.casual;
+  $("#rules-title").textContent = rules.title;
+  const examples = (rules.examples || []).map((example) =>
+    `<div class="rule-ex"><span class="rule-ex-label">${escapeHtml(example.label)}</span><span class="rule-ex-value">${escapeHtml(example.value)}</span></div>`).join("");
+  $("#rules-body").innerHTML = `
+    <p class="rules-intro">${escapeHtml(rules.intro)}</p>
+    <div class="rules-base">${escapeHtml(rules.base)}</div>
+    ${examples ? `<div class="rules-ex-title">EXEMPLOS</div>${examples}` : ""}`;
+  $("#ranking-rules-modal").showModal();
+}
 
 async function openRanking() {
-  $("#ranking-sub").classList.add("hidden"); // regras começam recolhidas
-  $("#ranking-rules-btn")?.classList.remove("active");
   $("#ranking").showModal();
   loadRanking("casual");
 }
@@ -505,7 +541,6 @@ async function loadRanking(mode) {
     button.classList.toggle("active", button.dataset.rankingMode === rankingMode);
     button.setAttribute("aria-selected", String(button.dataset.rankingMode === rankingMode));
   });
-  $("#ranking-sub").textContent = RANKING_COPY[rankingMode];
   body.innerHTML = '<p class="ranking-loading">Carregando…</p>';
   try {
     const data = await api(`/api/leaderboard?mode=${rankingMode}`);
