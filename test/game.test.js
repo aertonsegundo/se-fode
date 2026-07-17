@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys } from "../game.js";
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -159,6 +159,18 @@ test("pontos de torneio escalam ((N−pos+1)×3), top 5, 3+ humanos", () => {
   assert.equal(tournamentRankPoints(5, 8), 12);
   assert.equal(tournamentRankPoints(6, 8), 0); // fora do top 5
   assert.equal(tournamentRankPoints(1, 2), 0); // menos de 3 humanos não pontua
+});
+
+test("banners liberam por vitórias online; exclusivos/auto não entram", () => {
+  const catalog = [
+    { key: "novato", wins: 0 }, { key: "pato", wins: 2 }, { key: "coringa", wins: 5 },
+    { key: "manilha", wins: 12 }, { key: "zap", wins: 25 },
+    { key: "maldito", exclusive: true }, { key: "campeao", auto: true },
+  ];
+  assert.deepEqual(unlockedBannerKeys(0, catalog), ["novato"]);
+  assert.deepEqual(unlockedBannerKeys(2, catalog), ["novato", "pato"]);
+  assert.deepEqual(unlockedBannerKeys(12, catalog), ["novato", "pato", "coringa", "manilha"]);
+  assert.deepEqual(unlockedBannerKeys(999, catalog), ["novato", "pato", "coringa", "manilha", "zap"]); // exclusivo/auto ficam de fora
 });
 
 test("bots espertos reconhecem o Zap como vitória", () => {

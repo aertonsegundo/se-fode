@@ -456,8 +456,21 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .name-edit button { border:2px solid var(--acid); background:var(--acid); color:var(--ink); font-weight:900; font-size:.72rem; letter-spacing:.05em; padding:0 .9rem; border-radius:8px; }
 .name-edit button:disabled { opacity:.5; }
 .profile-current { display:flex; align-items:center; gap:1rem; margin:.6rem 0 1.2rem; }
-.profile-photo-lg { width:4.2rem; height:4.2rem; border-radius:14px; overflow:hidden; display:grid; place-items:center; background:var(--blue); color:var(--ink); font:1.8rem "Archivo Black",sans-serif; flex:0 0 4.2rem; }
+.profile-photo-btn { position:relative; border:0; background:none; padding:0; cursor:pointer; flex:0 0 4.2rem; }
+.photo-edit-badge { position:absolute; top:-6px; right:-6px; width:1.5rem; height:1.5rem; border-radius:50%; background:var(--acid); color:var(--ink); display:grid; place-items:center; font-size:.75rem; box-shadow:0 1px 4px #0007; }
+.profile-photo-lg { width:4.2rem; height:4.2rem; border-radius:14px; overflow:hidden; display:grid; place-items:center; background:var(--blue); color:var(--ink); font:1.8rem "Archivo Black",sans-serif; }
 .profile-photo-lg img { width:100%; height:100%; object-fit:cover; }
+.profile-photo-btn:hover .profile-photo-lg { outline:2px solid var(--acid); outline-offset:2px; }
+
+/* Grid de banners no perfil */
+.banner-choices { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:.5rem; }
+.banner-choice { display:flex; flex-direction:column; gap:.2rem; align-items:flex-start; text-align:left; padding:.55rem .6rem; border-radius:9px; border:1.5px solid var(--bn,#3a382f); background:var(--bn-bg,#201f1a); color:var(--bn-fg,#cfcbbd); cursor:pointer; }
+.banner-choice .bc-title { font-weight:800; font-size:.78rem; }
+.banner-choice .bc-status { font-size:.58rem; font-weight:700; letter-spacing:.04em; opacity:.85; }
+.banner-choice.active { outline:2px solid var(--bn,var(--acid)); outline-offset:1px; }
+.banner-choice.locked { filter:grayscale(.7) brightness(.7); cursor:not-allowed; }
+.banner-choice.readonly { cursor:default; }
+.banner-choice[disabled] { opacity:.9; }
 .profile-current-info b { font-size:1.1rem; }
 .profile-label { display:block; font-size:.62rem; font-weight:800; letter-spacing:.16em; color:#8d897e; margin:1rem 0 .5rem; }
 .avatar-choices { display:flex; gap:.55rem; flex-wrap:wrap; }

@@ -24,6 +24,8 @@ alter table public.profiles add column if not exists tournament_titles integer n
 -- Sprint 1: dois bolsos de pontos separados (Partida Rápida × Torneio).
 alter table public.profiles add column if not exists casual_points integer not null default 0;
 alter table public.profiles add column if not exists tournament_points integer not null default 0;
+-- Sprint 3: vitórias ONLINE (exclui solo) para desbloquear banners.
+alter table public.profiles add column if not exists online_wins integer not null default 0;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security.
@@ -84,7 +86,9 @@ $$;
 -- Atualização atômica da partida CASUAL. O servidor envia apenas ids de jogadores
 -- humanos: bots nunca ganham partidas, pontos ou histórico global.
 -- Os pontos vão para o bolso de Partida Rápida (casual_points).
-create or replace function public.record_game_result(p_players uuid[], p_winner uuid, p_rank_points jsonb)
+-- p_online = true quando NÃO é solo (conta a vitória para desbloqueio de banners).
+drop function if exists public.record_game_result(uuid[], uuid, jsonb);
+create or replace function public.record_game_result(p_players uuid[], p_winner uuid, p_rank_points jsonb, p_online boolean default false)
 returns void
 language plpgsql
 security definer
@@ -96,6 +100,9 @@ begin
 
   update public.profiles set wins = wins + 1
   where p_winner is not null and id = p_winner;
+
+  update public.profiles set online_wins = online_wins + 1
+  where p_online and p_winner is not null and id = p_winner;
 
   update public.profiles p
   set casual_points = p.casual_points + reward.points

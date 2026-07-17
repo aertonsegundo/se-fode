@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentResult, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -105,6 +105,21 @@ app.post("/api/me/photo", async (req, res) => {
   if (!result.ok) return res.status(400).json({ error: result.error });
   updateLiveProfile(profile.id, { photo: result.photo });
   res.json({ ok: true, photo: result.photo });
+});
+
+// Usuário escolhe o próprio banner — só entre os liberados pelas vitórias online.
+// Exclusivos (maldito/rei) e o automático (campeao) não passam por aqui.
+app.post("/api/me/banner", async (req, res) => {
+  const profile = await authProfile(req);
+  if (!profile) return res.status(401).json({ error: "Não autenticado." });
+  const banner = String(req.body?.banner || "");
+  if (!unlockedBannerKeys(profile.onlineWins, BANNERS).includes(banner)) {
+    return res.status(403).json({ error: "Banner ainda não desbloqueado." });
+  }
+  const ok = await setUserBanner(profile.id, banner);
+  if (!ok) return res.status(400).json({ error: "Não foi possível trocar o banner." });
+  updateLiveProfile(profile.id, { banner });
+  res.json({ ok: true, banner });
 });
 
 // Ranking geral, eficiência por partida ou semana atual — qualquer usuário logado vê.
@@ -256,6 +271,7 @@ function applyProfile(player, user) {
   if (!user) return;
   player.userId = user.id;
   player.banner = user.banner || "novato";
+  player.onlineWins = user.onlineWins || 0; // base para detectar desbloqueio de banner
   player.photoUrl = null;
   if (user.photo) {
     if (/^https?:\/\//.test(user.photo)) { player.photoUrl = user.photo; player.avatarKey = null; }
@@ -781,7 +797,14 @@ function endGame(room) {
         rankPoints: isTournament ? 0 : casualPoints(position, humanCount),
       };
     });
-  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio rankeado" : "Partida");
+  const online = !room.solo; // solo (contra bots) não conta vitória online
+  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio rankeado" : "Partida", online);
+  // Só o vencedor de partida ONLINE ganha vitória online — pode desbloquear banner.
+  if (online && winner?.userId) {
+    winner.onlineWins = (winner.onlineWins || 0) + 1;
+    const unlocked = BANNERS.find((banner) => banner.wins === winner.onlineWins);
+    if (unlocked && winner.socketId) io.to(winner.socketId).emit("banner-unlocked", { key: unlocked.key, title: unlocked.title });
+  }
   if (room.tournament) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];

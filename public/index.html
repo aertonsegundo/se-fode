@@ -144,7 +144,10 @@
     <div class="kicker">SEU PERFIL</div>
     <h2>SUA CONTA</h2>
     <div class="profile-current">
-      <span id="profile-photo" class="profile-photo-lg"></span>
+      <button id="profile-photo-btn" class="profile-photo-btn" title="Trocar foto" aria-label="Trocar foto">
+        <span id="profile-photo" class="profile-photo-lg"></span>
+        <span class="photo-edit-badge" aria-hidden="true">✏️</span>
+      </button>
       <div class="profile-current-info">
         <b id="profile-name"></b>
         <div id="profile-banner-preview"></div>
@@ -155,11 +158,19 @@
       <input id="profile-name-input" maxlength="18" placeholder="Seu apelido" autocomplete="off" />
       <button id="profile-name-save">SALVAR</button>
     </div>
+    <label class="profile-label">SEU BANNER</label>
+    <div id="banner-choices" class="banner-choices"></div>
+    <p class="fine">Banners liberam com <b>vitórias online</b>. Maldito e Rei são concedidos pelo admin; o Campeão da Semana é do líder do ranking semanal.</p>
+  </dialog>
+
+  <dialog id="photo-modal" class="profile-dialog">
+    <button id="photo-close" class="close">×</button>
+    <div class="kicker">FOTO DE PERFIL</div>
+    <h2>ESCOLHER FOTO</h2>
     <label class="profile-label">ESCOLHA UM AVATAR</label>
     <div id="avatar-choices" class="avatar-choices"></div>
     <label class="profile-label" for="photo-upload">OU ENVIE UMA FOTO</label>
     <input id="photo-upload" type="file" accept="image/png,image/jpeg,image/webp" />
-    <p class="fine">Seu <b>banner</b> é definido pelo admin no dashboard. Novatos começam sem banner.</p>
   </dialog>
 
   <dialog id="ranking" class="ranking-dialog">

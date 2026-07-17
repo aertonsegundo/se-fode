@@ -120,6 +120,17 @@ socket.on("auth-required", () => {
   showToast("Sua sessão expirou. Entre de novo.");
   logout();
 });
+// Indicativo de novo banner liberado por vitória online.
+socket.on("banner-unlocked", async ({ title } = {}) => {
+  showToast(`🎉 Novo banner liberado: ${title}! Escolha no seu perfil.`);
+  try {
+    const me = await api("/api/me");
+    accountProfile = me.profile;
+    bannerCatalog = me.banners || bannerCatalog;
+    renderAccountBar();
+    if ($("#profile")?.open) renderBannerChoices();
+  } catch { /* ignora: atualiza no próximo login */ }
+});
 
 // ===== Contas (Supabase Auth) =====
 const authScreen = $("#auth");
@@ -345,18 +356,68 @@ function bannerTitle(key) {
 }
 
 const AVATAR_OPTIONS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
+
 function openProfile() {
   if (!accountProfile) return;
   $("#profile-name").textContent = accountProfile.displayName;
   $("#profile-name-input").value = accountProfile.displayName || "";
   $("#profile-photo").innerHTML = photoMarkup(accountProfile.photo, accountProfile.displayName);
   $("#profile-banner-preview").innerHTML = `<span class="banner-pill banner-${accountProfile.banner}">${escapeHtml(bannerTitle(accountProfile.banner))}</span>`;
+  renderBannerChoices();
+  $("#profile").showModal();
+}
+
+// Grid de banners: a trilha conquistável por vitórias online. Banner concedido
+// (exclusivo/campeão) aparece como cartão atual, não selecionável.
+function renderBannerChoices() {
+  const box = $("#banner-choices");
+  const wins = accountProfile.onlineWins || 0;
+  const current = accountProfile.banner;
+  const currentMeta = bannerCatalog.find((banner) => banner.key === current);
+  const granted = currentMeta && (currentMeta.exclusive || currentMeta.auto)
+    ? `<div class="banner-choice banner-${current} active readonly"><span class="bc-title">${escapeHtml(currentMeta.title)}</span><span class="bc-status">${currentMeta.auto ? "👑 automático" : "concedido"}</span></div>`
+    : "";
+  const trail = bannerCatalog.filter((banner) => Number.isInteger(banner.wins)).map((banner) => {
+    const unlocked = wins >= banner.wins;
+    const active = current === banner.key;
+    const need = banner.wins - wins;
+    return `<button class="banner-choice banner-${banner.key} ${unlocked ? "" : "locked"} ${active ? "active" : ""}" data-banner="${banner.key}" ${unlocked && !active ? "" : "disabled"}>
+      <span class="bc-title">${escapeHtml(banner.title)}</span>
+      <span class="bc-status">${active ? "EM USO" : unlocked ? "Usar" : `🔒 ${need} vit.`}</span>
+    </button>`;
+  }).join("");
+  box.innerHTML = granted + trail;
+  box.querySelectorAll("[data-banner]").forEach((btn) => btn.onclick = () => saveBanner(btn.dataset.banner));
+}
+
+async function saveBanner(key) {
+  if (key === accountProfile.banner) return;
+  try {
+    const res = await api("/api/me/banner", { method: "POST", body: JSON.stringify({ banner: key }) });
+    accountProfile.banner = res.banner;
+    $("#profile-banner-preview").innerHTML = `<span class="banner-pill banner-${accountProfile.banner}">${escapeHtml(bannerTitle(accountProfile.banner))}</span>`;
+    renderBannerChoices();
+    showToast("Banner atualizado!");
+  } catch (err) {
+    showToast(err.message || "Banner ainda não desbloqueado.");
+  }
+}
+
+// --- Modal de foto (aberto ao tocar na foto) ---
+$("#profile-photo-btn")?.addEventListener("click", openPhotoModal);
+$("#photo-close")?.addEventListener("click", () => $("#photo-modal").close());
+
+function renderAvatarChoices() {
   $("#avatar-choices").innerHTML = AVATAR_OPTIONS.map((key) => {
     const active = accountProfile.photo === key ? "active" : "";
     return `<button class="avatar-choice ${active}" data-avatar="${key}"><img src="/avatars/players/${key}.webp" alt="${key}" /></button>`;
   }).join("");
   $("#avatar-choices").querySelectorAll("[data-avatar]").forEach((btn) => btn.onclick = () => savePhoto({ avatarKey: btn.dataset.avatar }));
-  $("#profile").showModal();
+}
+function openPhotoModal() {
+  if (!accountProfile) return;
+  renderAvatarChoices();
+  $("#photo-modal").showModal();
 }
 
 async function saveName() {
@@ -384,8 +445,9 @@ async function savePhoto(payload) {
   try {
     const res = await api("/api/me/photo", { method: "POST", body: JSON.stringify(payload) });
     accountProfile.photo = res.photo;
+    $("#profile-photo").innerHTML = photoMarkup(accountProfile.photo, accountProfile.displayName);
     renderAccountBar();
-    openProfile();
+    if ($("#photo-modal")?.open) renderAvatarChoices(); // atualiza o destaque do avatar escolhido
     showToast("Foto atualizada!");
   } catch (err) {
     showToast(err.message || "Não deu pra salvar a foto.");

@@ -16,19 +16,21 @@ const url = normalizeUrl(process.env.SUPABASE_URL);
 const anonKey = (process.env.SUPABASE_ANON_KEY || "").trim();
 const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 
-// Catálogo fixo de banners. `auto: true` = concedido pelo jogo (não atribuível
-// manualmente pelo admin), como o Campeão da Semana.
+// Catálogo de banners:
+//  - `wins`: liberado pelo nº de vitórias ONLINE (auto-selecionável no perfil).
+//  - `exclusive: true`: só o admin concede (maldito, rei).
+//  - `auto: true`: concedido pelo jogo (Campeão da Semana), não atribuível.
 export const BANNERS = [
-  { key: "novato", title: "Novato" },
-  { key: "rei", title: "Rei do Baralho" },
-  { key: "maldito", title: "O Maldito" },
-  { key: "pato", title: "Pato do Baralho" },
-  { key: "coringa", title: "O Coringa" },
-  { key: "manilha", title: "Manilha" },
-  { key: "zap", title: "O Zap" },
+  { key: "novato", title: "Novato", wins: 0 },
+  { key: "pato", title: "Pato do Baralho", wins: 2 },
+  { key: "coringa", title: "O Coringa", wins: 5 },
+  { key: "manilha", title: "Manilha", wins: 12 },
+  { key: "zap", title: "O Zap", wins: 25 },
+  { key: "maldito", title: "O Maldito", exclusive: true },
+  { key: "rei", title: "Rei do Baralho", exclusive: true },
   { key: "campeao", title: "Campeão da Semana", auto: true },
 ];
-// Só os banners atribuíveis manualmente (exclui os automáticos).
+// Atribuíveis manualmente pelo admin (tudo menos os automáticos).
 export const BANNER_KEYS = BANNERS.filter((banner) => !banner.auto).map((banner) => banner.key);
 
 // Avatares prontos que o usuário pode escolher (arquivos em /avatars/players/<key>.webp).
@@ -107,6 +109,7 @@ function shapeProfile(profile, authUser) {
     photo: profile.photo || null,
     banner: profile.banner || "novato",
     wins: profile.wins || 0,
+    onlineWins: profile.online_wins || 0,
     gamesPlayed: profile.games_played || 0,
     rankPoints: profile.rank_points || 0,
     casualPoints: profile.casual_points || 0,
@@ -407,23 +410,29 @@ async function recordRankingEvents(events) {
 }
 
 // Registra o resultado de uma partida: +1 games_played para todos, +1 win para o vencedor.
-export async function recordGame(players, winnerId, mode = "Partida") {
+export async function recordGame(players, winnerId, mode = "Partida", online = false) {
   if (!admin || !players?.length) return;
   try {
     const playerIds = players.map((player) => typeof player === "string" ? player : player.userId).filter(Boolean);
     const rankPoints = Object.fromEntries(players
       .filter((player) => typeof player === "object" && player.userId)
       .map((player) => [player.userId, Math.max(0, Number(player.rankPoints) || 0)]));
-    const { error: resultError } = await admin.rpc("record_game_result", {
+    let { error: resultError } = await admin.rpc("record_game_result", {
       p_players: playerIds,
       p_winner: winnerId || null,
       p_rank_points: rankPoints,
+      p_online: Boolean(online),
     });
-    // Enquanto o schema ainda não foi executado, mantém as stats antigas vivas.
+    // Schema anterior (sem p_online): tenta a versão de 3 parâmetros — ainda dá
+    // pontos casuais, só não conta a vitória online até rodar o schema novo.
+    if (resultError) {
+      ({ error: resultError } = await admin.rpc("record_game_result", { p_players: playerIds, p_winner: winnerId || null, p_rank_points: rankPoints }));
+    }
+    // Schema bem antigo: mantém ao menos vitórias/partidas.
     if (resultError) {
       const { error: fallbackError } = await admin.rpc("record_game", { p_players: playerIds, p_winner: winnerId || null });
       if (fallbackError) throw fallbackError;
-      console.warn("[supabase] rode o schema.sql para ativar pontos de ranking:", resultError.message);
+      console.warn("[supabase] rode o schema.sql para ativar pontos/vitórias online:", resultError.message);
     }
 
     // Pontos por partida só existem no modo casual; kind 'casual' alimenta o semanal.

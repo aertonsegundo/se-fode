@@ -173,6 +173,12 @@ export function tournamentRankPoints(position, humanCount) {
   return (humanCount - position + 1) * 3;
 }
 
+// Banners liberados pelas vitórias online. Recebe o catálogo (cada banner
+// conquistável tem um limiar em `wins`); exclusivos/automáticos não entram.
+export function unlockedBannerKeys(onlineWins, banners) {
+  return (banners || []).filter((banner) => Number.isInteger(banner.wins) && onlineWins >= banner.wins).map((banner) => banner.key);
+}
+
 export function tournamentStandingsFrom(entries) {
   return [...entries]
     .sort((a, b) => b.points - a.points
