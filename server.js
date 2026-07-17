@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentResult, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -417,6 +417,7 @@ function newRoom(code, host) {
     round: 0,
     trick: 0,
     table: [],
+    playedThisHand: [],
     history: [],
     chat: [],
     trickResult: null,
@@ -476,6 +477,7 @@ function submitPlay(room, playerId, cardId) {
   if (index < 0) return "Essa carta não está na sua mão.";
   const [card] = player.hand.splice(index, 1);
   room.table.push({ playerId: player.id, card });
+  (room.playedThisHand ||= []).push(card); // memória de cartas da mão (bot difícil)
   advancePlay(room);
   return null;
 }
@@ -494,12 +496,24 @@ function chooseBotBid(room, bot) {
 function chooseBotCard(room, bot) {
   const cards = [...bot.hand].sort((a, b) => cardStrength(a) - cardStrength(b));
   if (room.botDifficulty === "easy") return cards[Math.floor(Math.random() * cards.length)];
-  if (bot.wins >= bot.bid) return cards[0];
-  if (room.botDifficulty === "hard" && room.table.length) {
-    const winning = cards.find((card) => trickWinner([...room.table, { playerId: bot.id, card }])?.playerId === bot.id);
-    if (winning) return winning;
-  }
-  return cards.at(-1);
+  if (bot.hand.length === 1) return bot.hand[0];
+  // Oponentes que ainda vão jogar NESTA vaza (depois do bot) e a intenção de cada um.
+  const played = new Set(room.table.map((play) => play.playerId));
+  const after = activePlayers(room)
+    .filter((player) => player.id !== bot.id && !played.has(player.id))
+    .map((player) => ({ needsMore: (player.bid ?? 0) - player.wins, cardsLeft: player.hand.length }));
+  // Difícil tem memória: desconta as cartas já jogadas na mão inteira; normal só a vaza atual.
+  const known = room.botDifficulty === "hard"
+    ? [...bot.hand, ...(room.playedThisHand || [])]
+    : [...bot.hand, ...room.table.map((play) => play.card)];
+  return chooseBotPlay({
+    hand: bot.hand,
+    bid: bot.bid,
+    wins: bot.wins,
+    table: room.table,
+    after,
+    unknown: remainingDeck(known),
+  });
 }
 
 const HUMAN_TURN_MS = 20000; // tempo do jogador online antes do modo automático assumir
@@ -550,6 +564,7 @@ function startRound(room) {
   room.round += 1;
   room.trick = 1;
   room.table = [];
+  room.playedThisHand = []; // zera a memória de cartas a cada nova mão
   room.trickResult = null;
   room.roundLosers = [];
   room.pot = 0;

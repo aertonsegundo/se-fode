@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
+
+const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
 
 test("baralho de truco tem 40 cartas únicas", () => {
   const deck = makeDeck();
@@ -178,4 +180,37 @@ test("bots espertos reconhecem o Zap como vitória", () => {
   assert.equal(suggestedBid(zap, "normal", 4), 1);
   assert.equal(suggestedBid(zap, "hard", 8), 1);
   assert.equal(suggestedBid(zap, "easy", 4), null);
+});
+
+test("aposta probabilística: manilha vale, carta fraca quase nada, e o 3 não é garantido", () => {
+  assert.equal(suggestedBid([C("4♣"), C("7♥")], "hard", 4), 2); // duas manilhas de topo
+  assert.equal(suggestedBid([C("4♦"), C("5♦")], "hard", 8), 0); // duas fracas em mesa cheia
+  assert.ok(suggestedBid([C("3♦"), C("4♦")], "hard", 8) <= 1);  // um 3 em mesa cheia não força alto
+});
+
+test("prob de carta: Zap sempre ganha; carta comum cai com mais oponentes", () => {
+  assert.equal(cardWinProbability(C("4♣"), remainingDeck([C("4♣")]), 5), 1);
+  const few = cardWinProbability(C("K♦"), remainingDeck([C("K♦")]), 1);
+  const many = cardWinProbability(C("K♦"), remainingDeck([C("K♦")]), 7);
+  assert.ok(few > many);
+});
+
+test("bot já garantido larga a carta forte que JÁ perdeu a vaza", () => {
+  const hand = [C("5♦"), C("A♦")];
+  const table = [{ playerId: "x", card: C("4♣") }]; // 4♣ na mesa: imbatível
+  const chosen = chooseBotPlay({ hand, bid: 1, wins: 1, table, after: [], unknown: remainingDeck([...hand, C("4♣")]) });
+  assert.equal(chosen.id, "A♦"); // vai perder de qualquer jeito → se livra da forte
+});
+
+test("bot garantido joga BAIXO quando os oponentes estão cheios (não entrega a forte)", () => {
+  const hand = [C("5♦"), C("A♦")];
+  const after = [{ needsMore: 0, cardsLeft: 2 }, { needsMore: -1, cardsLeft: 2 }]; // ninguém quer ganhar
+  const chosen = chooseBotPlay({ hand, bid: 1, wins: 1, table: [], after, unknown: remainingDeck(hand) });
+  assert.equal(chosen.id, "5♦"); // joga a mais fraca pra tentar perder
+});
+
+test("bot que precisa ganhar tudo joga a mais forte", () => {
+  const hand = [C("5♦"), C("A♦")];
+  const chosen = chooseBotPlay({ hand, bid: 2, wins: 0, table: [], after: [{ needsMore: 2, cardsLeft: 2 }], unknown: remainingDeck(hand) });
+  assert.equal(chosen.id, "A♦");
 });

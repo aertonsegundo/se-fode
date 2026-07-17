@@ -29,19 +29,96 @@ export function cardStrength(card) {
   return RANKS.indexOf(card.rank);
 }
 
+// Cartas do baralho que ainda podem estar com os oponentes (baralho − conhecidas).
+export function remainingDeck(known) {
+  const ids = new Set((known || []).map((card) => card.id ?? `${card.rank}${card.suit}`));
+  return makeDeck().filter((card) => !ids.has(card.id));
+}
+
+// Fração das cartas desconhecidas que empatam/superam a carta (empate pesa metade,
+// porque cartas de mesma força melam aos pares).
+function lossFraction(card, unknown) {
+  const total = unknown.length || 1;
+  const strength = cardStrength(card);
+  let loss = 0;
+  for (const other of unknown) {
+    const os = cardStrength(other);
+    if (os > strength) loss += 1;
+    else if (os === strength) loss += 0.5;
+  }
+  return loss / total;
+}
+
+// Prob. aproximada de uma carta ganhar a vaza contra N oponentes com cartas
+// aleatórias — usada na APOSTA (antes de qualquer jogada/intenção conhecida).
+export function cardWinProbability(card, unknown, opponents) {
+  if (opponents <= 0) return 1;
+  return Math.pow(Math.max(0, 1 - lossFraction(card, unknown)), opponents);
+}
+
+// Aposta sugerida: soma das probabilidades de cada carta ganhar sua vaza,
+// escalando com o nº de oponentes. Corrige o 3 (não é imbatível) e valoriza manilhas.
 export function suggestedBid(hand, difficulty, playerCount) {
   if (difficulty === "easy") return null;
-  const strengths = hand.map(cardStrength);
-  if (difficulty === "normal") {
-    return strengths.filter((strength) => strength >= 8).length;
-  }
   const opponents = Math.max(1, playerCount - 1);
-  const expected = strengths.reduce((sum, strength) => {
-    if (strength === 103) return sum + 1;
-    if (strength >= 100) return sum + ((strength - 99) / 4) ** opponents;
-    return sum + ((strength + 1) / 10) ** opponents;
-  }, 0);
+  const unknown = remainingDeck(hand);
+  const expected = hand.reduce((sum, card) => sum + cardWinProbability(card, unknown, opponents), 0);
   return Math.min(hand.length, Math.round(expected));
+}
+
+const BOT_ID = "__bot__";
+
+// Escolhe a carta do bot mirando ACERTAR a aposta, lendo a vaza e a intenção dos
+// oponentes que jogam depois. `after` = [{ needsMore, cardsLeft }] desses oponentes;
+// `unknown` = cartas que ainda podem estar com eles (com memória de mão, no difícil).
+export function chooseBotPlay({ hand, bid = 0, wins = 0, table = [], after = [], unknown = [] }) {
+  const cards = [...hand].sort((a, b) => cardStrength(a) - cardStrength(b)); // fraca → forte
+  if (cards.length <= 1) return cards[0];
+  const need = bid - wins;
+  const cardsLeft = cards.length;
+  const leading = table.length === 0;
+
+  // Faminto (precisa ganhar) cobre cartas fortes; cheio (já se garantiu) larga baixo.
+  const contestFactor = (opponent) => opponent.needsMore <= 0 ? 0.15
+    : opponent.needsMore >= opponent.cardsLeft ? 0.95 : 0.55;
+  const beatChance = (card, opponent) => {
+    const holdsStronger = 1 - Math.pow(Math.max(0, 1 - lossFraction(card, unknown)), Math.max(1, opponent.cardsLeft));
+    return contestFactor(opponent) * holdsStronger;
+  };
+  const surviveAfter = (card) => after.reduce((prob, opponent) => prob * (1 - beatChance(card, opponent)), 1);
+
+  // Prob. de a carta ganhar a vaza: precisa liderar a mesa atual e sobreviver a quem falta.
+  const winProb = (card) => {
+    if (!leading && trickWinner([...table, { playerId: BOT_ID, card }])?.playerId !== BOT_ID) return 0;
+    return surviveAfter(card);
+  };
+  const evald = cards.map((card) => ({ card, strength: cardStrength(card), prob: winProb(card) }));
+
+  // Já bateu a meta → quer PERDER. Pega a menor prob de vitória; entre elas, larga a
+  // carta mais forte que ainda assim não deve ganhar (livra-se do perigo com segurança).
+  // Se todos os oponentes estão cheios, a menor prob costuma ser a carta mais fraca —
+  // então joga baixo em vez de largar uma forte que passaria batido.
+  if (need <= 0) {
+    const minProb = Math.min(...evald.map((entry) => entry.prob));
+    return evald.filter((entry) => entry.prob <= minProb + 0.02)
+      .reduce((best, entry) => (entry.strength > best.strength ? entry : best)).card;
+  }
+
+  // Precisa ganhar TODAS as restantes → joga a de maior prob (desempate: mais forte).
+  if (need >= cardsLeft) {
+    return evald.reduce((best, entry) =>
+      (entry.prob > best.prob || (entry.prob === best.prob && entry.strength > best.strength)) ? entry : best).card;
+  }
+
+  // Precisa de ALGUMAS vitórias → ganha com a mais fraca confiável (reserva as fortes,
+  // menos previsível); sem vitória confiável, larga baixo e tenta depois.
+  const reliable = evald.filter((entry) => entry.prob >= 0.45).sort((a, b) => a.strength - b.strength);
+  if (reliable.length) return reliable[0].card;
+  if (!leading) {
+    const winners = evald.filter((entry) => entry.prob > 0).sort((a, b) => a.strength - b.strength);
+    if (winners.length) return winners[0].card;
+  }
+  return cards[0];
 }
 
 // Cartas de força idêntica melam AOS PARES, na ordem em que foram jogadas.
