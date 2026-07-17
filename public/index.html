@@ -177,12 +177,15 @@
     <button id="ranking-close" class="close">×</button>
     <div class="kicker">HALL DA FAMA</div>
     <h2>RANKING GERAL</h2>
-    <div id="ranking-tabs" class="ranking-tabs" role="tablist" aria-label="Tipo de ranking">
-      <button type="button" data-ranking-mode="casual" class="active" role="tab">🏆 PARTIDA RÁPIDA</button>
-      <button type="button" data-ranking-mode="tournament" role="tab">⚡ TORNEIO</button>
-      <button type="button" data-ranking-mode="weekly" role="tab">SEMANAL</button>
+    <div class="ranking-tabrow">
+      <div id="ranking-tabs" class="ranking-tabs" role="tablist" aria-label="Tipo de ranking">
+        <button type="button" data-ranking-mode="casual" class="active" role="tab">🏆 PARTIDA RÁPIDA</button>
+        <button type="button" data-ranking-mode="tournament" role="tab">⚡ TORNEIO</button>
+        <button type="button" data-ranking-mode="weekly" role="tab">SEMANAL</button>
+      </div>
+      <button type="button" id="ranking-rules-btn" class="ranking-rules-btn" aria-label="Como pontua" title="Como pontua">💡</button>
     </div>
-    <p id="ranking-sub" class="ranking-sub">Pontos de partidas rápidas (top 3 pontua). Bots não contam.</p>
+    <p id="ranking-sub" class="ranking-sub hidden" role="note"></p>
     <div id="ranking-body" class="ranking-body"></div>
   </dialog>
 

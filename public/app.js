@@ -469,9 +469,9 @@ $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
 let rankingMode = "casual";
 const RANKING_COPY = {
-  casual: "Partida Rápida: top 3 pontua (3/2/1), só com 3+ humanos. Bots não contam.",
-  tournament: "Torneio: só a classificação final pontua (top 5: 10/6/4/2/1). Bots não contam.",
-  weekly: "Pontos de todos os modos conquistados desde segunda-feira.",
+  casual: "🏆 Partida Rápida — o top 3 pontua e vale mais em mesa cheia (mesa de N: N, N−1, N−2). Só conta com 3+ humanos; bots não entram.",
+  tournament: "⚡ Torneio — só a classificação final pontua (top 5), escalando com o nº de jogadores. Vencer com mais vidas ajuda no desempate interno. Bots não contam.",
+  weekly: "🔥 Semanal — soma dos pontos de todos os modos desde segunda-feira. Quem lidera vira o Campeão da Semana.",
 };
 const RANKING_EMPTY = {
   casual: "Ninguém pontuou em partida rápida ainda. Chame 3+ pra valer ponto. 🏆",
@@ -484,7 +484,16 @@ $("#ranking-tabs")?.addEventListener("click", (event) => {
   if (button) loadRanking(button.dataset.rankingMode);
 });
 
+// Lâmpada: mostra/esconde as regras da aba atual (o conteúdo muda por aba).
+$("#ranking-rules-btn")?.addEventListener("click", () => {
+  const show = $("#ranking-sub").classList.contains("hidden");
+  $("#ranking-sub").classList.toggle("hidden", !show);
+  $("#ranking-rules-btn").classList.toggle("active", show);
+});
+
 async function openRanking() {
+  $("#ranking-sub").classList.add("hidden"); // regras começam recolhidas
+  $("#ranking-rules-btn")?.classList.remove("active");
   $("#ranking").showModal();
   loadRanking("casual");
 }
