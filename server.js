@@ -30,6 +30,20 @@ async function reloadAndBroadcastEmotes() {
   io.emit("emotes", activeEmotes()); // atualiza a barra de todo mundo na hora
 }
 
+// Campeão da Semana: o 1º do ranking semanal (dinâmico) usa um banner especial na
+// mesa. Recarregado periodicamente; quando muda, reemite o estado das salas.
+let weeklyChampionId = null;
+async function refreshWeeklyChampion() {
+  if (!supabaseEnabled) return;
+  try {
+    const top = await leaderboard(1, "weekly");
+    const next = top[0]?.points > 0 ? top[0].id : null;
+    if (next === weeklyChampionId) return;
+    weeklyChampionId = next;
+    for (const room of rooms.values()) broadcast(room); // atualiza os banners na mesa
+  } catch { /* mantém o campeão atual */ }
+}
+
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
 // deploy nunca fica preso numa versao antiga em cache no cliente.
 app.use(express.json({ limit: "3mb" }));
@@ -97,7 +111,7 @@ app.post("/api/me/photo", async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
-  const mode = ["general", "per_game", "weekly"].includes(req.query.mode) ? req.query.mode : "general";
+  const mode = ["casual", "tournament", "weekly"].includes(req.query.mode) ? req.query.mode : "casual";
   res.json({ leaderboard: await leaderboard(50, mode), mode, banners: BANNERS, meId: profile.id });
 });
 
@@ -342,7 +356,8 @@ function publicState(room, viewerId) {
       isBot: Boolean(player.isBot),
       avatarKey: player.avatarKey || null,
       photoUrl: player.photoUrl || null,
-      banner: player.banner || "novato",
+      // O Campeão da Semana (líder do ranking semanal) usa o banner especial na mesa.
+      banner: player.userId && player.userId === weeklyChampionId ? "campeao" : (player.banner || "novato"),
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
     })),
@@ -545,6 +560,7 @@ function startRound(room) {
 }
 
 function startGame(room) {
+  refreshWeeklyChampion(); // mantém o banner de campeão fresco quando um jogo começa
   const entrants = seatedPlayers(room);
   if (room.tournament && room.tournament.playerIds.length === 0) {
     room.tournament.playerIds = entrants.map((player) => player.id);
@@ -770,7 +786,9 @@ function endGame(room) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
       if (!score) continue;
-      score.points += tournamentPoints(entry.position, humanCount);
+      // Classificação interna do torneio = pontos de posição + vidas restantes ao
+      // fim do jogo (premia vitórias mais folgadas). Não afeta os pontos de ranking.
+      score.points += tournamentPoints(entry.position, humanCount) + entry.lives;
       score.wins += entry.survived ? 1 : 0;
       score.lastPosition = entry.position;
     }
@@ -1109,4 +1127,6 @@ server.listen(port, "0.0.0.0", async () => {
   console.log(`Se Fode rodando em http://localhost:${port}`);
   selfTest();
   try { await seedEmotes(); await loadEmotes(); } catch (error) { console.error("[emotes] carga inicial falhou:", error.message); }
+  refreshWeeklyChampion();
+  setInterval(refreshWeeklyChampion, 2 * 60 * 1000); // reavalia o campeão da semana a cada 2 min
 });

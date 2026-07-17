@@ -82,7 +82,7 @@ function render(users) {
   ].map(([label, value]) => `<div class="dash-stat"><b>${value}</b><span>${label}</span></div>`).join("");
 
   $("#dash-rows").innerHTML = users.map((user) => {
-    const bannerOptions = banners.map((banner) =>
+    const bannerOptions = banners.filter((banner) => !banner.auto).map((banner) =>
       `<option value="${banner.key}" ${user.banner === banner.key ? "selected" : ""}>${escapeHtml(banner.title)}</option>`).join("");
     return `<tr>
       <td class="dash-user">${photoCell(user.photo, user.displayName)}<span>${escapeHtml(user.displayName)}</span></td>

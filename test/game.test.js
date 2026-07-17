@@ -139,22 +139,25 @@ test("streak conta só as vitórias seguidas mais recentes do mesmo nome", () =>
   assert.equal(winStreak([], "Ana"), 0);
 });
 
-test("pontos casuais: top 3 pontua (3/2/1) só com 3+ humanos", () => {
-  assert.equal(casualPoints(1, 4), 3);
-  assert.equal(casualPoints(2, 4), 2);
-  assert.equal(casualPoints(3, 4), 1);
-  assert.equal(casualPoints(4, 4), 0); // fora do top 3
+test("pontos casuais escalam com a mesa (N−pos+1), top 3, 3+ humanos", () => {
+  assert.equal(casualPoints(1, 3), 3);
+  assert.equal(casualPoints(3, 3), 1);
+  assert.equal(casualPoints(1, 4), 4); // mesa maior, vitória vale mais
+  assert.equal(casualPoints(2, 4), 3);
+  assert.equal(casualPoints(1, 8), 8);
+  assert.equal(casualPoints(3, 8), 6);
+  assert.equal(casualPoints(4, 8), 0); // fora do top 3
   assert.equal(casualPoints(1, 2), 0); // menos de 3 humanos não pontua
   assert.equal(casualPoints(1, 1), 0); // solo não pontua
 });
 
-test("pontos de torneio: classificação final top 5 (10/6/4/2/1), 3+ humanos", () => {
-  assert.equal(tournamentRankPoints(1, 6), 10);
-  assert.equal(tournamentRankPoints(2, 6), 6);
-  assert.equal(tournamentRankPoints(3, 6), 4);
-  assert.equal(tournamentRankPoints(4, 6), 2);
-  assert.equal(tournamentRankPoints(5, 6), 1);
-  assert.equal(tournamentRankPoints(6, 6), 0); // fora do top 5
+test("pontos de torneio escalam ((N−pos+1)×3), top 5, 3+ humanos", () => {
+  assert.equal(tournamentRankPoints(1, 3), 9);
+  assert.equal(tournamentRankPoints(3, 3), 3);
+  assert.equal(tournamentRankPoints(1, 8), 24);
+  assert.equal(tournamentRankPoints(2, 8), 21);
+  assert.equal(tournamentRankPoints(5, 8), 12);
+  assert.equal(tournamentRankPoints(6, 8), 0); // fora do top 5
   assert.equal(tournamentRankPoints(1, 2), 0); // menos de 3 humanos não pontua
 });
 

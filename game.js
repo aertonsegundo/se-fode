@@ -158,17 +158,19 @@ export function tournamentPoints(position, playerCount) {
   return position === 1 ? playerCount + 1 : Math.max(1, playerCount - position + 1);
 }
 
-// ===== Pontos de ranking global (separados por modo) =====
-// Partida Rápida: só pontua com 3+ humanos na mesa; top 3 leva 3, 2 e 1.
+// ===== Pontos de ranking global (separados por modo, escalam com a mesa) =====
+// Partida Rápida: só pontua com 3+ humanos; top 3 leva (nº humanos − posição + 1).
+// Ex.: mesa de 3 → 3/2/1; mesa de 8 → 8/7/6.
 export function casualPoints(position, humanCount) {
-  if (humanCount < 3 || !Number.isInteger(position)) return 0;
-  return position === 1 ? 3 : position === 2 ? 2 : position === 3 ? 1 : 0;
+  if (humanCount < 3 || !Number.isInteger(position) || position > 3) return 0;
+  return humanCount - position + 1;
 }
 
-// Torneio: pontua só a classificação final, com 3+ humanos; top 5 leva 10/6/4/2/1.
+// Torneio: pontua só a classificação final, com 3+ humanos; top 5 leva
+// (nº humanos − posição + 1) × 3 (peso de torneio). Ex.: 3 jog → 9/6/3; 8 jog → 24/21/18/15/12.
 export function tournamentRankPoints(position, humanCount) {
-  if (humanCount < 3 || !Number.isInteger(position)) return 0;
-  return [10, 6, 4, 2, 1][position - 1] || 0;
+  if (humanCount < 3 || !Number.isInteger(position) || position > 5) return 0;
+  return (humanCount - position + 1) * 3;
 }
 
 export function tournamentStandingsFrom(entries) {

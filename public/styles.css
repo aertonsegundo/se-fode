@@ -429,12 +429,15 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .banner-coringa { --bn:#b06bff; --bn-bg:#2a1040; --bn-fg:#ecdcff; --bn-glow:#b06bff55; }
 .banner-manilha { --bn:#caa94a; --bn-bg:#123a2a; --bn-fg:#e2f3e8; --bn-glow:#caa94a55; }
 .banner-zap     { --bn:#d8ff45; --bn-bg:#14140e; --bn-fg:#eaffb0; --bn-glow:#d8ff4555; }
+.banner-campeao { --bn:#ffd700; --bn-bg:#4a3800; --bn-fg:#fff4b0; --bn-glow:#ffd700aa; }
 .banner-pill { display:inline-block; padding:.08rem .5rem; border-radius:999px; font-size:.52rem; font-weight:800; letter-spacing:.08em; vertical-align:middle; margin-left:.35rem; border:1px solid var(--bn); background:var(--bn-bg); color:var(--bn-fg); }
 
 /* Banner na cadeira da mesa */
 .seat.has-banner { border:1px solid var(--bn) !important; box-shadow:0 0 0 1px var(--bn-glow), 0 0 16px var(--bn-glow); }
 .seat.banner-maldito { animation:seat-fire 1.8s ease-in-out infinite; }
 @keyframes seat-fire { 0%,100% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 12px var(--bn-glow); } 50% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 22px var(--bn-glow); } }
+.seat.banner-campeao { animation:champ-glow 1.5s ease-in-out infinite; }
+@keyframes champ-glow { 0%,100% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 14px var(--bn-glow); } 50% { box-shadow:0 0 0 2px var(--bn-glow), 0 0 30px var(--bn-glow); } }
 .seat-banner { position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bn-bg); color:var(--bn-fg); border:1px solid var(--bn); border-radius:999px; padding:.05rem .5rem; font-size:.46rem; font-weight:900; letter-spacing:.1em; white-space:nowrap; z-index:6; text-transform:uppercase; }
 
 /* ===================== MODAIS (perfil, ranking, solo) ===================== */

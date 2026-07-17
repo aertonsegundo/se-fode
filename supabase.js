@@ -16,7 +16,8 @@ const url = normalizeUrl(process.env.SUPABASE_URL);
 const anonKey = (process.env.SUPABASE_ANON_KEY || "").trim();
 const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 
-// Catálogo fixo de banners (a chave é o que fica salvo no perfil).
+// Catálogo fixo de banners. `auto: true` = concedido pelo jogo (não atribuível
+// manualmente pelo admin), como o Campeão da Semana.
 export const BANNERS = [
   { key: "novato", title: "Novato" },
   { key: "rei", title: "Rei do Baralho" },
@@ -25,8 +26,10 @@ export const BANNERS = [
   { key: "coringa", title: "O Coringa" },
   { key: "manilha", title: "Manilha" },
   { key: "zap", title: "O Zap" },
+  { key: "campeao", title: "Campeão da Semana", auto: true },
 ];
-export const BANNER_KEYS = BANNERS.map((banner) => banner.key);
+// Só os banners atribuíveis manualmente (exclui os automáticos).
+export const BANNER_KEYS = BANNERS.filter((banner) => !banner.auto).map((banner) => banner.key);
 
 // Avatares prontos que o usuário pode escolher (arquivos em /avatars/players/<key>.webp).
 export const AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];

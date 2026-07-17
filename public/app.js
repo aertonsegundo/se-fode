@@ -447,8 +447,11 @@ async function loadRanking(mode) {
     body.innerHTML = rows.map((user, index) => {
       const medal = ["🥇", "🥈", "🥉"][index] || `${index + 1}º`;
       const mine = user.id === data.meId ? "mine" : "";
-      const bannerTag = user.banner && user.banner !== "novato"
-        ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
+      // O líder do ranking semanal é o Campeão da Semana (usa o banner especial).
+      const bannerTag = rankingMode === "weekly" && index === 0
+        ? `<span class="banner-pill banner-campeao">👑 Campeão da Semana</span>`
+        : user.banner && user.banner !== "novato"
+          ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
       // Coluna principal + duas secundárias, por modo.
       const main = user.points || 0;
       const mainLabel = rankingMode === "weekly" ? "PTS SEM" : "PTS";
