@@ -441,7 +441,7 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, hand: [], userId: null, banner: "novato", photoUrl: null };
+  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, afkStrikes: 0, expelled: false, hand: [], userId: null, banner: "novato", photoUrl: null };
   applyProfile(player, socket.data.user);
   return player;
 }
@@ -518,6 +518,23 @@ function chooseBotCard(room, bot) {
 
 const HUMAN_TURN_MS = 20000; // tempo do jogador online antes do modo automático assumir
 const RECONNECT_GRACE_MS = 15000; // tempo pra reconectar antes de um bot assumir a vaga de vez
+const AFK_STRIKES_LIMIT = 3; // avisos de inatividade numa partida antes da expulsão
+
+// Expulsa um jogador da partida por inatividade repetida: um bot termina a mão dele
+// (pra não quebrar a rodada), ele volta ao menu e não reconecta nesta sala.
+function expelPlayer(room, player) {
+  if (player.socketId) io.to(player.socketId).emit("expelled", "Você levou 3 avisos de inatividade e saiu da partida.");
+  player.connected = false;
+  player.socketId = null;
+  player.resumeToken = null;
+  player.auto = true;
+  player.expelled = true;
+  if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
+  transferHost(room);
+  if (!room.players.some((item) => !item.isBot && item.connected)) {
+    room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+  }
+}
 
 function playAutomatically(room, player) {
   if (room.turnId !== player.id || player.eliminated) return;
@@ -549,10 +566,19 @@ function scheduleAutomaticTurn(room) {
     if (room.turnId !== player.id || player.eliminated) return;
     // Se o humano voltou ao controle nesse meio-tempo, não joga por ele.
     if (!player.isBot && player.connected && !player.auto && !humanInControl) return;
-    // Estourou o tempo de um humano online: liga o modo automático até ele reassumir.
+    // Estourou o tempo de um humano online: liga o automático e conta o aviso.
     if (humanInControl) {
       player.auto = true;
-      if (player.socketId) io.to(player.socketId).emit("notice", "Tempo esgotado — modo automático ligado. Toque em \"assumir controle\" para voltar.");
+      player.afkStrikes = (player.afkStrikes || 0) + 1;
+      const expel = player.afkStrikes >= AFK_STRIKES_LIMIT;
+      if (player.socketId) io.to(player.socketId).emit("notice", expel
+        ? "3ª inatividade — você foi expulso da partida."
+        : `Inatividade ${player.afkStrikes}/${AFK_STRIKES_LIMIT} — automático ligado. Toque em "assumir controle" pra voltar (na 3ª você sai).`);
+      if (expel) {
+        playAutomatically(room, player); // faz a jogada desta vez
+        expelPlayer(room, player);
+        return broadcast(room);
+      }
     }
     playAutomatically(room, player);
   }, delay);
@@ -592,6 +618,7 @@ function startRound(room) {
 
 function startGame(room) {
   refreshWeeklyChampion(); // mantém o banner de campeão fresco quando um jogo começa
+  room.players = room.players.filter((player) => !player.expelled); // expulsos não voltam
   const entrants = seatedPlayers(room);
   if (room.tournament && room.tournament.playerIds.length === 0) {
     room.tournament.playerIds = entrants.map((player) => player.id);
@@ -609,6 +636,7 @@ function startGame(room) {
     wins: 0,
     roundLoss: null,
     auto: false,
+    afkStrikes: 0,
   }));
   room.handSize = 1;
   room.direction = 1;

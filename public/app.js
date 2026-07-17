@@ -81,6 +81,10 @@ $("#copy-code").onclick = async () => { await navigator.clipboard.writeText(stat
 $("#leave").onclick = confirmLeave;
 $(".mini-brand").addEventListener("click", (event) => { if (state) { event.preventDefault(); confirmLeave(); } });
 
+// Bloqueia o pinch-zoom no mobile (iOS ignora user-scalable=no). O scroll de 1 dedo continua.
+document.addEventListener("gesturestart", (event) => event.preventDefault());
+document.addEventListener("touchmove", (event) => { if (event.touches.length > 1) event.preventDefault(); }, { passive: false });
+
 // Link compartilhado: ?sala=CODIGO já preenche o campo de código.
 const sharedCode = (new URLSearchParams(location.search).get("sala") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
 if (sharedCode) {
@@ -119,6 +123,10 @@ socket.on("state", (next) => {
 socket.on("auth-required", () => {
   showToast("Sua sessão expirou. Entre de novo.");
   logout();
+});
+socket.on("expelled", (message) => {
+  showToast(message || "Você foi expulso da partida por inatividade.");
+  leaveRoom();
 });
 // Indicativo de novo banner liberado por vitória online.
 socket.on("banner-unlocked", async ({ title } = {}) => {
@@ -858,6 +866,23 @@ function renderWatchers() {
     : "";
 }
 
+// Ao virar a MINHA vez de apostar, fecha chat/figurinhas (o painel de aposta vira
+// sheet no mobile e cobria tudo) e trava os botões por um instante — assim um toque
+// que era pro chat/emote não vira um misclick de aposta.
+let lastBidTurnKey = "";
+let bidGuardUntil = 0;
+function maybeGuardBid() {
+  const myBid = state.phase === "bidding" && state.turnId === state.me?.id;
+  if (!myBid) { lastBidTurnKey = ""; return; }
+  const key = String(state.round);
+  if (key === lastBidTurnKey) return;
+  lastBidTurnKey = key;
+  setChatOpen(false);
+  setEmoteOpen(false);
+  bidGuardUntil = Date.now() + 600;
+  setTimeout(() => { if (state) render(); }, 640); // reabilita os botões depois do delay
+}
+
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
@@ -878,6 +903,7 @@ function render() {
   renderTournamentBar();
   renderPot();
   renderSeats();
+  maybeGuardBid();
   renderAction();
   renderHand();
   maybeStartTurnClock();
@@ -1027,7 +1053,8 @@ function renderAction() {
     const handPreview = state.handSize > 1
       ? `<div class="bid-hand">${[...state.me.hand].sort((a, b) => cardStrength(a) - cardStrength(b)).map((card) => cardHtml(card)).join("")}</div>`
       : "";
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p>${handPreview}<div class="bids">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
+    const guarded = Date.now() < bidGuardUntil; // trava breve pós-abertura (anti-misclick)
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p>${handPreview}<div class="bids ${guarded ? "guarded" : ""}">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) && !guarded ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
