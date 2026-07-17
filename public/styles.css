@@ -215,6 +215,18 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-card.melada .card { box-shadow:0 0 0 2px var(--red),0 4px 10px #000a; }
 .melada-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%) rotate(-6deg); background:var(--red); color:#fff; font:.52rem "Archivo Black"; letter-spacing:.05em; padding:.1rem .38rem; border-radius:3px; z-index:3; white-space:nowrap; box-shadow:0 2px 5px #0007; }
 .forehead-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%); background:#171713; color:var(--acid); font-size:.5rem; font-weight:800; letter-spacing:.08em; padding:.08rem .3rem; border-radius:3px; z-index:2; white-space:nowrap; }
+/* Monte central da rodada testa: cartas lançadas no meio da mesa */
+.table-pile { display:flex; gap:.4rem; flex-wrap:wrap; justify-content:center; align-items:flex-end; max-width:82%; z-index:3; }
+.pile-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:.22rem; filter:drop-shadow(0 6px 10px #000a); }
+.pile-card .card { width:52px; height:76px; font-size:.9rem; padding:.3rem; }
+.pile-card .card .big-suit { font-size:1.4rem; }
+.pile-who { font-size:.5rem; font-weight:800; letter-spacing:.05em; color:#e7e2d3; background:#0007; padding:.05rem .32rem; border-radius:3px; white-space:nowrap; }
+.pile-card.launching { animation:pile-launch .4s cubic-bezier(.2,.9,.3,1.25); }
+@keyframes pile-launch { from { transform:translateY(-48px) scale(.5) rotate(-9deg); opacity:0; } to { transform:none; opacity:1; } }
+.pile-card.winning .card { outline:2px solid var(--acid); outline-offset:1px; }
+.pile-card.melada { opacity:.65; }
+.pile-card.melada .card { filter:grayscale(.55); }
+@media (max-width:850px) { .pile-card .card { width:40px; height:58px; font-size:.68rem; } .pile-card .card .big-suit { font-size:1.05rem; } }
 @keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
 .mystery-card { background:#27251f; color:var(--acid); display:grid; place-items:center; place-content:center; font:2rem "Archivo Black"; }
 @media (prefers-reduced-motion:reduce) { .seat.turn .turn-flag,.seat-card.winning .card { animation:none; } }
