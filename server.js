@@ -522,10 +522,12 @@ const AFK_STRIKES_LIMIT = 3; // avisos de inatividade numa partida antes da expu
 const FOREHEAD_MS = 900; // delay entre as cartas na rodada na testa (joga sozinha)
 const NEXT_ROUND_MS = 4000; // tempo pra ver o resultado antes da próxima mão (mesa sem bots)
 
-// Sem bots na mesa: a próxima mão começa sozinha depois de um tempo (mostra o resultado).
-// Com bots, o dono decide quando continuar.
+// Só avança sozinho quando TODOS os jogadores ativos são humanos conectados e no
+// controle. Havendo bot, alguém no automático (AFK) ou caído, o dono decide a hora.
 function maybeAutoAdvance(room) {
-  if (room.phase !== "round_end" || room.players.some((player) => player.isBot)) return;
+  if (room.phase !== "round_end") return;
+  const allEngaged = activePlayers(room).every((player) => !player.isBot && player.connected && !player.auto);
+  if (!allEngaged) return;
   if (room.roundAdvanceTimer) return;
   room.roundAdvanceTimer = setTimeout(() => {
     room.roundAdvanceTimer = null;

@@ -964,9 +964,10 @@ function renderSeats() {
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
       <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}" aria-label="Abrir perfil de ${escapeHtml(player.name)}">
         <div class="turn-flag">VEZ</div>
+        ${isHostSeat ? '<div class="host-star" title="Dono da sala">★</div>' : ""}
         ${bannerRibbon}
         <div class="seat-body">
-          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}${isHostSeat ? '<span class="host-star" title="Dono da sala">★</span>' : ""}</div>
+          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
@@ -1092,7 +1093,9 @@ function renderAction() {
     const list = losers.length
       ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
       : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
-    const hasBots = state.players.some((player) => player.isBot);
+    // Havendo bot, alguém no automático (AFK) ou caído entre os ativos, o dono decide;
+    // só começa sozinho quando todos os ativos são humanos conectados no controle.
+    const needsHost = state.players.some((player) => !player.eliminated && (player.isBot || !player.connected || player.auto));
     // Dono pode tirar da mesa quem está no automático (bot ativo) ou caiu.
     const removable = (isHost() && !state.solo && !state.tournament)
       ? state.players.filter((player) => player.id !== state.hostId && (player.isBot || !player.connected || player.auto))
@@ -1100,7 +1103,7 @@ function renderAction() {
     const kickHtml = removable.length
       ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : !player.connected ? "caiu" : "automático"}</small></button>`).join("")}</div>`
       : "";
-    const nextControl = hasBots
+    const nextControl = needsHost
       ? (isHost() ? '<button id="next">PRÓXIMA MÃO</button>' : "<p>Esperando o dono da sala continuar.</p>")
       : '<p class="auto-next">Próxima mão começando…</p>';
     panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${kickHtml}${nextControl}`;
