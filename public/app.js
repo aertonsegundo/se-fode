@@ -903,7 +903,6 @@ function render() {
   renderTournamentBar();
   renderPot();
   renderSeats();
-  renderForeheadPile();
   maybeGuardBid();
   renderAction();
   renderHand();
@@ -913,36 +912,6 @@ function render() {
     animatedRound = state.round;
     requestAnimationFrame(animateDeal);
   }
-}
-
-// Na rodada testa, as cartas jogadas caem num monte no CENTRO da mesa, uma a uma,
-// com uma animação de lançamento (as cartas são "atiradas" na mesa).
-let pileTrickKey = "";
-function renderForeheadPile() {
-  const pile = $("#table-pile");
-  const forehead = state.handSize === 1 && (state.phase === "playing" || state.phase === "trick_reveal");
-  if (!forehead) { pile.innerHTML = ""; pile.classList.add("hidden"); pileTrickKey = ""; return; }
-  const key = `${state.round}-${state.trick}`;
-  if (key !== pileTrickKey) { pile.innerHTML = ""; pileTrickKey = key; } // nova vaza: limpa o monte
-  pile.classList.toggle("hidden", state.table.length === 0);
-  // Adiciona só as cartas novas (evita re-animar as que já caíram).
-  for (let i = pile.children.length; i < state.table.length; i += 1) {
-    const item = state.table[i];
-    const player = state.players.find((seat) => seat.id === item.playerId);
-    const el = document.createElement("div");
-    el.className = "pile-card launching";
-    el.innerHTML = `${cardHtml(item.card)}<span class="pile-who">${escapeHtml(player?.name || "")}</span>`;
-    pile.appendChild(el);
-  }
-  // No reveal, destaca vencedor/melada.
-  [...pile.children].forEach((el, i) => {
-    const item = state.table[i];
-    if (!item) return;
-    const won = state.phase === "trick_reveal" && state.trickResult?.winnerId === item.playerId;
-    const melada = (state.melada || []).includes(item.card.id);
-    el.classList.toggle("winning", won);
-    el.classList.toggle("melada", melada);
-  });
 }
 
 function renderSeats() {
@@ -968,13 +937,17 @@ function renderSeats() {
     const foreheadCard = forehead && !isMe ? player.foreheadCard : null;
     const melada = play && (state.melada || []).includes(play.card.id);
 
-    // Na testa, a carta JOGADA vai pro monte central (lançada na mesa); no assento
-    // fica só a carta na testa dos outros, enquanto ainda não jogaram.
-    const cardZone = (play && !forehead)
+    // carta jogada fica exatamente na frente do jogador (slot a 24% do raio)
+    const cardZone = play
       ? `<div class="seat-card ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
-      : foreheadCard
-        ? `<div class="seat-card"><span class="forehead-tag">TESTA</span>${cardHtml(foreheadCard)}</div>`
-        : "";
+      : "";
+    // no testa, a carta ainda-não-lançada fica na testa do jogador (colada no card dele);
+    // ao ser jogada some daqui e reaparece na frente dele (na mesa) via cardZone.
+    // Assentos da metade de cima recebem a carta ABAIXO do card (senão ela sai da mesa).
+    const foreheadBelow = Number(sin) < -0.2;
+    const foreheadOnSeat = foreheadCard && !play
+      ? `<div class="forehead-card ${foreheadBelow ? "below" : ""}"><span class="forehead-tag">TESTA</span>${cardHtml(foreheadCard)}</div>`
+      : "";
 
     const meta = player.bid == null
       ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
@@ -997,6 +970,7 @@ function renderSeats() {
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
       <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}" aria-label="Abrir perfil de ${escapeHtml(player.name)}">
         <div class="turn-flag">VEZ</div>
+        ${foreheadOnSeat}
         ${isHostSeat ? '<div class="host-star" title="Dono da sala">★</div>' : ""}
         ${bannerRibbon}
         <div class="seat-body">
