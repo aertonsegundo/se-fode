@@ -519,6 +519,19 @@ function chooseBotCard(room, bot) {
 const HUMAN_TURN_MS = 20000; // tempo do jogador online antes do modo automático assumir
 const RECONNECT_GRACE_MS = 15000; // tempo pra reconectar antes de um bot assumir a vaga de vez
 const AFK_STRIKES_LIMIT = 3; // avisos de inatividade numa partida antes da expulsão
+const FOREHEAD_MS = 900; // delay entre as cartas na rodada na testa (joga sozinha)
+const NEXT_ROUND_MS = 4000; // tempo pra ver o resultado antes da próxima mão (mesa sem bots)
+
+// Sem bots na mesa: a próxima mão começa sozinha depois de um tempo (mostra o resultado).
+// Com bots, o dono decide quando continuar.
+function maybeAutoAdvance(room) {
+  if (room.phase !== "round_end" || room.players.some((player) => player.isBot)) return;
+  if (room.roundAdvanceTimer) return;
+  room.roundAdvanceTimer = setTimeout(() => {
+    room.roundAdvanceTimer = null;
+    if (room.phase === "round_end") nextRound(room);
+  }, NEXT_ROUND_MS);
+}
 
 // Expulsa um jogador da partida por inatividade repetida: um bot termina a mão dele
 // (pra não quebrar a rodada), ele volta ao menu e não reconecta nesta sala.
@@ -553,6 +566,19 @@ function scheduleAutomaticTurn(room) {
   if (room.phase !== "bidding" && room.phase !== "playing") return;
   const player = playerById(room, room.turnId);
   if (!player || player.eliminated) return;
+
+  // Rodada na testa (1 carta): joga sozinha, em ordem, com um pequeno delay —
+  // ninguém escolhe (a carta está na testa), inclusive no solo.
+  if (room.phase === "playing" && room.handSize === 1) {
+    room.autoTurnId = player.id;
+    room.botTimer = setTimeout(() => {
+      room.botTimer = null;
+      room.autoTurnId = null;
+      if (room.turnId !== player.id || player.eliminated) return;
+      submitPlay(room, player.id, player.hand[0]?.id);
+    }, FOREHEAD_MS);
+    return;
+  }
 
   const humanInControl = !player.isBot && player.connected && !player.auto;
   // No solo, o jogador humano joga sem limite de tempo.
@@ -778,9 +804,11 @@ function scoreRound(room) {
     : "Ninguém se fodeu dessa vez — todo mundo cravou.";
   if (activePlayers(room).length <= 1) return endGame(room);
   broadcast(room);
+  maybeAutoAdvance(room); // mesa sem bots: próxima mão começa sozinha
 }
 
 function nextRound(room) {
+  if (room.roundAdvanceTimer) { clearTimeout(room.roundAdvanceTimer); room.roundAdvanceTimer = null; }
   const active = activePlayers(room);
   const oldDealer = room.players.findIndex((player) => player.id === room.dealerId);
   let nextDealer = null;
@@ -1087,7 +1115,7 @@ io.on("connection", (socket) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || socket.data.playerId !== room.hostId) return;
     if (room.tournament && room.phase !== "lobby") return notice(socket, "A escalação do torneio fica fechada até ele terminar.");
-    if (room.phase !== "game_over" && room.phase !== "lobby") return notice(socket, "Só dá pra tirar bots fora da partida.");
+    if (!["game_over", "lobby", "round_end"].includes(room.phase)) return notice(socket, "Só dá pra tirar jogador fora da partida ou entre as mãos.");
     const target = playerById(room, String(targetId || ""));
     if (!target || target.id === room.hostId) return;
     if (!target.isBot && target.connected && !target.auto) return notice(socket, "Esse jogador ainda está na ativa.");
@@ -1100,6 +1128,12 @@ io.on("connection", (socket) => {
     target.resumeToken = null; // removido de propósito: não reconecta mais nesta sala
     room.players = room.players.filter((item) => item.id !== target.id);
     transferHost(room);
+    // Removido entre as mãos: pode acabar o jogo (sobrou 1) ou liberar o auto-avanço.
+    if (room.phase === "round_end") {
+      if (activePlayers(room).length <= 1) return endGame(room);
+      broadcast(room);
+      return maybeAutoAdvance(room);
+    }
     broadcast(room);
   });
 

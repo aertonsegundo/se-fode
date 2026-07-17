@@ -930,6 +930,7 @@ function renderSeats() {
     const isMe = player.id === state.me?.id;
     const isTurn = state.turnId === player.id;
     const isDealer = state.dealerId === player.id;
+    const isHostSeat = state.hostId === player.id;
     const wonTrick = state.phase === "trick_reveal" && state.trickResult?.winnerId === player.id;
     const fodeu = state.phase === "round_end" && player.roundLoss > 0;
     const play = state.table.find((item) => item.playerId === player.id);
@@ -965,7 +966,7 @@ function renderSeats() {
         <div class="turn-flag">VEZ</div>
         ${bannerRibbon}
         <div class="seat-body">
-          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
+          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}${isHostSeat ? '<span class="host-star" title="Dono da sala">★</span>' : ""}</div>
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
@@ -1059,8 +1060,12 @@ function renderAction() {
     return;
   }
   if (state.phase === "playing" && state.turnId === state.me.id) {
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${state.handSize === 1 ? "JOGUE NO ESCURO" : "ESCOLHA UMA CARTA"}</h3><p>${state.handSize === 1 ? "Todo mundo sabe o que vem. Menos você." : "Clique numa carta da sua mão."}</p>${state.handSize === 1 ? '<button id="blind-play">JOGAR MINHA CARTA</button>' : ""}${turnClockHtml()}`;
-    $("#blind-play")?.addEventListener("click", () => socket.emit("play-card", null));
+    if (state.handSize === 1) {
+      // Rodada na testa: joga sozinha, sem botão (a carta está na testa).
+      panel.innerHTML = `<div class="panel-title">RODADA NA TESTA</div><h3>JOGUE NO ESCURO</h3><p>Sua carta vai sozinha — todo mundo vê, menos você.</p>`;
+      return;
+    }
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>Clique numa carta da sua mão.</p>${turnClockHtml()}`;
     return;
   }
   if (state.phase === "trick_reveal") {
@@ -1087,7 +1092,19 @@ function renderAction() {
     const list = losers.length
       ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
       : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
-    panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${isHost() ? '<button id="next">PRÓXIMA MÃO</button>' : "<p>Esperando o dono da sala continuar.</p>"}`;
+    const hasBots = state.players.some((player) => player.isBot);
+    // Dono pode tirar da mesa quem está no automático (bot ativo) ou caiu.
+    const removable = (isHost() && !state.solo && !state.tournament)
+      ? state.players.filter((player) => player.id !== state.hostId && (player.isBot || !player.connected || player.auto))
+      : [];
+    const kickHtml = removable.length
+      ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : !player.connected ? "caiu" : "automático"}</small></button>`).join("")}</div>`
+      : "";
+    const nextControl = hasBots
+      ? (isHost() ? '<button id="next">PRÓXIMA MÃO</button>' : "<p>Esperando o dono da sala continuar.</p>")
+      : '<p class="auto-next">Próxima mão começando…</p>';
+    panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${kickHtml}${nextControl}`;
+    panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
     return;
   }

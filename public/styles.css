@@ -191,6 +191,7 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-body { display:grid; grid-template-columns:2rem 1fr; gap:.45rem; align-items:center; }
 .seat .avatar { position:relative; width:2rem; height:2rem; font-size:.9rem; }
 .seat .dealer { position:absolute; right:-6px; bottom:-6px; width:1.05rem; height:1.05rem; border-radius:50%; background:var(--paper); color:var(--ink); font:.6rem/1.05rem "Archivo Black"; text-align:center; box-shadow:0 1px 3px #0008; transform:none; }
+.seat .host-star { position:absolute; left:-6px; top:-6px; width:1.1rem; height:1.1rem; border-radius:50%; background:#ffd700; color:#4a3800; font:.72rem/1.1rem "DM Sans"; font-weight:900; text-align:center; box-shadow:0 1px 3px #0008; }
 .seat-info { min-width:0; }
 .seat-info b { display:block; font-size:.76rem; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .seat-meta { font-size:.6rem; color:#a7a396; margin:.06rem 0; }
@@ -306,6 +307,7 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .auto-bar button { border:0; background:var(--acid); color:var(--ink); font-weight:900; font-size:.7rem; letter-spacing:.05em; padding:.4rem .8rem; border-radius:6px; }
 .seat-tag.auto { background:#3b3a16; color:var(--acid); border:1px solid #d8ff4455; }
 .spectator-bar { display:flex; align-items:center; justify-content:center; text-align:center; gap:.8rem; flex-wrap:wrap; background:#122630; border:1px solid #5fd0ff44; color:#8fe0ff; padding:.5rem .8rem; font-size:.8rem; font-weight:700; margin-top:.6rem; border-radius:8px; }
+.auto-next { color:#9d998c; font-size:.82rem; font-weight:700; margin-top:.6rem; }
 .kick-list { display:flex; flex-direction:column; gap:.4rem; margin:.6rem 0; }
 .kick-title { font-size:.68rem; font-weight:900; letter-spacing:.08em; color:#b9b4a4; }
 .kick-btn { display:flex; align-items:center; gap:.4rem; background:#3a1717; border:1px solid #ff6b6b55; color:#ff9d9d; font-weight:800; font-size:.78rem; padding:.45rem .7rem; border-radius:7px; text-align:left; }
