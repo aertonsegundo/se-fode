@@ -241,7 +241,7 @@ function tournamentStandings(room) {
       const player = playerById(room, id);
       const score = room.tournament.scores[id];
       // Bots continuam na mesa, mas nunca entram no ranking do torneio.
-      return player?.userId && !player.quit && score ? { id, userId: player.userId, name: player.name, ...score } : null;
+      return player?.userId && score ? { id, userId: player.userId, name: player.name, ...score } : null;
     })
     .filter(Boolean));
 }
@@ -647,7 +647,9 @@ function startRound(room) {
 
 function startGame(room) {
   refreshWeeklyChampion(); // mantém o banner de campeão fresco quando um jogo começa
-  room.players = room.players.filter((player) => !player.expelled); // expulsos não voltam
+  // Expulsos e quem quitou já foram contabilizados na partida anterior, mas não
+  // voltam para uma nova partida.
+  room.players = room.players.filter((player) => !player.expelled && !player.quit);
   const entrants = seatedPlayers(room);
   if (room.tournament && room.tournament.playerIds.length === 0) {
     room.tournament.playerIds = entrants.map((player) => player.id);
@@ -805,10 +807,12 @@ function scoreRound(room) {
   room.message = losers.length
     ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
     : "Ninguém se fodeu dessa vez — todo mundo cravou.";
-  // Quem saiu de propósito no meio da mão: o bot terminou a mão, agora o jogador sai de vez.
-  if (room.players.some((player) => player.quit)) {
-    room.players = room.players.filter((player) => !player.quit);
-    transferHost(room);
+  // Quem quitou deixa o bot fechar a mão, mas a saída vale como eliminação. A
+  // pessoa continua na classificação desta partida para contabilizar jogo e pontos.
+  for (const player of room.players.filter((item) => item.quit && !item.spectator)) {
+    player.eliminated = true;
+    player.eliminatedAtRound ??= room.round;
+    player.lives = 0;
   }
   if (activePlayers(room).length <= 1) return endGame(room);
   broadcast(room);
@@ -859,13 +863,13 @@ function endGame(room) {
   }
   // Bots não contam: posição, pontos e histórico usam apenas contas humanas.
   const isTournament = Boolean(room.tournament);
-  // Quem quitou no meio da mão pode ser controlado pelo bot só até a rodada
-  // terminar, mas não entra no resultado, histórico, pontos ou torneio.
-  const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId && !player.quit));
+  // Quem quitou no meio da partida fica como eliminado na classificação: conta
+  // jogo, derrota e a pontuação correspondente à posição final.
+  const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
   const humanCount = humanStandings.length;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const humanPlayers = seatedPlayers(room)
-    .filter((player) => player.userId && !player.quit)
+    .filter((player) => player.userId)
     .map((player) => {
       const position = positionById.get(player.id) || humanCount;
       return {
@@ -1190,14 +1194,21 @@ io.on("connection", (socket) => {
     player.socketId = null;
     player.resumeToken = null; // saiu de propósito: não reconecta mais nesta sala
     const activeHand = ["bidding", "playing", "trick_reveal"].includes(room.phase);
-    if (!activeHand || player.spectator) {
-      // Lobby, entre-mãos, fim de jogo ou espectador: não há mão em andamento → sai na hora.
+    const gameInProgress = !["lobby", "game_over"].includes(room.phase);
+    if (!gameInProgress || player.spectator) {
+      // Lobby, fim de jogo ou espectador: não há partida para registrar → sai na hora.
       room.players = room.players.filter((item) => item.id !== player.id);
-    } else {
-      // Saiu no meio da mão: um bot só TERMINA a mão atual por ele; ao fim dela (scoreRound)
-      // o jogador é removido de vez — não vira bot permanente.
+    } else if (activeHand) {
+      // Saiu no meio da mão: um bot a termina por ele. Ao fechar a mão, a saída
+      // vira eliminação e a partida conta normalmente nas estatísticas.
       player.auto = true;
       player.quit = true;
+    } else {
+      // Entre mãos, não há bot para jogar: a desistência já é uma eliminação.
+      player.quit = true;
+      player.eliminated = true;
+      player.eliminatedAtRound ??= room.round;
+      player.lives = 0;
     }
     transferHost(room);
     if (room.autoTurnId === player.id && room.botTimer) {
@@ -1215,6 +1226,7 @@ io.on("connection", (socket) => {
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
     }
+    if (gameInProgress && !activeHand && activePlayers(room).length <= 1) return endGame(room);
     broadcast(room);
   });
 
