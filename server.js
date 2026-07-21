@@ -240,8 +240,13 @@ function tournamentStandings(room) {
     .map((id) => {
       const player = playerById(room, id);
       const score = room.tournament.scores[id];
+      // Quem quitou sai da mesa na partida seguinte, mas continua com a
+      // pontuação já conquistada no torneio e pode receber sua premiação final.
+      const participant = player?.userId
+        ? { userId: player.userId, name: player.name }
+        : room.tournament.participants?.[id];
       // Bots continuam na mesa, mas nunca entram no ranking do torneio.
-      return player?.userId && score ? { id, userId: player.userId, name: player.name, ...score } : null;
+      return participant?.userId && score ? { id, userId: participant.userId, name: participant.name, ...score } : null;
     })
     .filter(Boolean));
 }
@@ -654,6 +659,9 @@ function startGame(room) {
   if (room.tournament && room.tournament.playerIds.length === 0) {
     room.tournament.playerIds = entrants.map((player) => player.id);
     room.tournament.scores = Object.fromEntries(entrants.map((player) => [player.id, { points: 0, wins: 0, lastPosition: null }]));
+    room.tournament.participants = Object.fromEntries(entrants
+      .filter((player) => player.userId)
+      .map((player) => [player.id, { userId: player.userId, name: player.name }]));
   }
   const tournamentPlayers = room.tournament ? new Set(room.tournament.playerIds) : null;
   // Espectadores que estavam esperando entram como jogadores de verdade nesta partida.
@@ -687,6 +695,7 @@ function startGame(room) {
       // o servidor ao tentar escolher um dealer inexistente.
       room.tournament.playerIds = [];
       room.tournament.scores = {};
+      room.tournament.participants = {};
       room.tournament.completedGames = 0;
       room.tournament.finished = false;
     }
@@ -902,15 +911,16 @@ function endGame(room) {
     }
     room.tournament.completedGames += 1;
     room.tournament.finished = room.tournament.completedGames >= room.tournament.totalGames;
-    const leader = tournamentStandings(room)[0];
+    const finalTournamentStandings = tournamentStandings(room);
+    const leader = finalTournamentStandings[0];
     // Pontos de ranking do torneio: só na classificação final, top 5 (10/6/4/2/1),
     // com 3+ humanos. Bots não participam nem do cálculo.
-    if (room.tournament.finished && humanCount >= 3 && !room.tournament.rankingAwarded) {
+    if (room.tournament.finished && finalTournamentStandings.length >= 3 && !room.tournament.rankingAwarded) {
       room.tournament.rankingAwarded = true;
-      awardTournamentResult(tournamentStandings(room).map((entry) => ({
+      awardTournamentResult(finalTournamentStandings.map((entry) => ({
         userId: entry.userId,
         position: entry.position,
-        rankPoints: tournamentRankPoints(entry.position, humanCount),
+        rankPoints: tournamentRankPoints(entry.position, finalTournamentStandings.length),
       })));
     }
     room.message = room.tournament.finished
@@ -1021,7 +1031,7 @@ io.on("connection", (socket) => {
     const code = roomCode();
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
-    room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {} };
+    room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {}, participants: {} };
     room.message = `Torneio Rankeado de ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
     rooms.set(code, room);
     sendSession(socket, room, player);
@@ -1070,6 +1080,7 @@ io.on("connection", (socket) => {
     if (room.tournament && room.tournament.completedGames === 0) {
       room.tournament.playerIds = [];
       room.tournament.scores = {};
+      room.tournament.participants = {};
       room.tournament.finished = false;
       room.tournament.rankingAwarded = false;
     }
