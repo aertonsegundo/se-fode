@@ -480,14 +480,28 @@ $("#photo-upload")?.addEventListener("change", (event) => {
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
 let rankingMode = "casual";
-const RANKING_EMPTY = {
-  casual: "Ninguém pontuou em partida rápida ainda. Chame 3+ pra valer ponto. 🏆",
-  tournament: "Nenhum torneio pontuado ainda. Complete um com 3+ jogadores. ⚡",
-  weekly: "Ainda não há pontos nesta semana.",
-};
+const RANKING_EMPTY = "Ainda não há resultados suficientes para o ranking.";
 
 // Regras completas por aba (abrem no modal da lâmpada) — copy humanizada + exemplos.
 const RANKING_RULES = {
+  points: {
+    title: "🏆 Por Pontos",
+    intro: "A classificação geral de quem mais acumulou pontos, somando partidas rápidas e torneios.",
+    base: "Em caso de empate, quem tem mais vitórias fica na frente.",
+    examples: [],
+  },
+  wins: {
+    title: "🏆 Por Vitórias",
+    intro: "Aqui o que vale é ganhar: quem venceu mais partidas fica no topo.",
+    base: "Em caso de empate, quem acumulou mais pontos fica na frente.",
+    examples: [],
+  },
+  "points-per-game": {
+    title: "🏆 Pontos por Jogo",
+    intro: "Mostra quem rende mais a cada partida disputada.",
+    base: "O cálculo é pontos totais divididos pelo número de partidas. Em caso de empate, mais pontos acumulados ficam na frente.",
+    examples: [],
+  },
   casual: {
     title: "🏆 Partida Rápida",
     intro: "Terminou no pódio de uma partida com gente de verdade? Levou ponto. E quanto mais cheia a mesa, mais doce a vitória — ganhar entre muitos vale mais do que ganhar entre poucos.",
@@ -521,8 +535,8 @@ const RANKING_RULES = {
 };
 
 $("#ranking-tabs")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-ranking-mode]");
-  if (button) loadRanking(button.dataset.rankingMode);
+  const button = event.target.closest("[data-ranking-sort]");
+  if (button) loadRanking(button.dataset.rankingSort);
 });
 
 // Lâmpada: abre o modal com a regra completa da aba atual.
@@ -530,7 +544,7 @@ $("#ranking-rules-btn")?.addEventListener("click", () => openRulesModal(rankingM
 $("#ranking-rules-close")?.addEventListener("click", () => $("#ranking-rules-modal").close());
 
 function openRulesModal(mode) {
-  const rules = RANKING_RULES[mode] || RANKING_RULES.casual;
+  const rules = RANKING_RULES[mode] || RANKING_RULES.points;
   $("#rules-title").textContent = rules.title;
   const examples = (rules.examples || []).map((example) =>
     `<div class="rule-ex"><span class="rule-ex-label">${escapeHtml(example.label)}</span><span class="rule-ex-value">${escapeHtml(example.value)}</span></div>`).join("");
@@ -543,48 +557,45 @@ function openRulesModal(mode) {
 
 async function openRanking() {
   $("#ranking").showModal();
-  loadRanking("casual");
+  loadRanking("points");
 }
 
-async function loadRanking(mode) {
-  rankingMode = ["casual", "tournament", "weekly"].includes(mode) ? mode : "casual";
+async function loadRanking(sort) {
+  rankingMode = ["points", "wins", "points-per-game"].includes(sort) ? sort : "points";
   const body = $("#ranking-body");
-  $("#ranking-tabs").querySelectorAll("[data-ranking-mode]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.rankingMode === rankingMode);
-    button.setAttribute("aria-selected", String(button.dataset.rankingMode === rankingMode));
+  $("#ranking-tabs").querySelectorAll("[data-ranking-sort]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.rankingSort === rankingMode);
+    button.setAttribute("aria-selected", String(button.dataset.rankingSort === rankingMode));
   });
   body.innerHTML = '<p class="ranking-loading">Carregando…</p>';
   try {
-    const data = await api(`/api/leaderboard?mode=${rankingMode}`);
+    const data = await api(`/api/leaderboard?sort=${rankingMode}`);
     bannerCatalog = data.banners || bannerCatalog;
-    const rows = (data.leaderboard || []).filter((user) => (user.points || 0) > 0 || (user.wins || 0) > 0 || (user.tournamentTitles || 0) > 0 || (user.gamesPlayed || 0) > 0);
+    const rows = (data.leaderboard || []).filter((user) => (user.points || 0) > 0 || (user.wins || 0) > 0 || (user.gamesPlayed || 0) > 0);
     if (!rows.length) {
-      body.innerHTML = `<p class="ranking-loading">${RANKING_EMPTY[rankingMode]}</p>`;
+      body.innerHTML = `<p class="ranking-loading">${RANKING_EMPTY}</p>`;
       return;
     }
     body.innerHTML = rows.map((user, index) => {
       const medal = ["🥇", "🥈", "🥉"][index] || `${index + 1}º`;
       const mine = user.id === data.meId ? "mine" : "";
-      // O líder do ranking semanal é o Campeão da Semana (usa o banner especial).
-      const bannerTag = rankingMode === "weekly" && index === 0
-        ? `<span class="banner-pill banner-campeao">👑 Campeão da Semana</span>`
-        : user.banner && user.banner !== "novato"
-          ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
-      // Coluna principal + duas secundárias, por modo.
-      const main = user.points || 0;
-      const mainLabel = rankingMode === "weekly" ? "PTS SEM" : "PTS";
-      const secondary = rankingMode === "tournament"
-        ? [[user.tournamentTitles || 0, "TÍT"], [user.wins || 0, "VIT"]]
-        : rankingMode === "weekly"
-          ? [[user.scoringGames || 0, "JOGOS"], [user.tournamentTitles || 0, "TÍT"]]
-          : [[user.wins || 0, "VIT"], [user.tournamentTitles || 0, "TÍT"]];
+      const bannerTag = user.banner && user.banner !== "novato"
+        ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
+      const pointsPerGame = Number(user.pointsPerGame || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+      const stats = {
+        points: [user.points || 0, "PTS"],
+        wins: [user.wins || 0, "VIT"],
+        "points-per-game": [pointsPerGame, "PTS/JOGO"],
+      };
+      const main = stats[rankingMode];
+      const secondary = ["points", "wins", "points-per-game"].filter((key) => key !== rankingMode).map((key) => stats[key]);
       return `<div class="lb-row ${mine}">
         <span class="lb-pos">${medal}</span>
         <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
         <span class="lb-name">${escapeHtml(user.displayName)}${bannerTag}</span>
-        <span class="lb-stat points"><b>${main}</b><small>${mainLabel}</small></span>
+        <span class="lb-stat points"><b>${main[0]}</b><small>${main[1]}</small></span>
         <span class="lb-stat"><b>${secondary[0][0]}</b><small>${secondary[0][1]}</small></span>
-        <span class="lb-stat titles"><b>${secondary[1][0]}</b><small>${secondary[1][1]}</small></span>
+        <span class="lb-stat"><b>${secondary[1][0]}</b><small>${secondary[1][1]}</small></span>
       </div>`;
     }).join("");
   } catch (err) {

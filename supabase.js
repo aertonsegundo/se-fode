@@ -188,9 +188,10 @@ function leaderboardRow(row) {
   };
 }
 
-// Geral = total acumulado; por partida = eficiência (mín. 3 jogos); semanal
-// = somente pontos conquistados desde a segunda-feira atual.
-export async function leaderboard(limit = 50, mode = "casual") {
+// Geral = pontos acumulados das partidas rápidas e torneios. A ordenação pode
+// ser por pontos, vitórias ou eficiência (pontos por partida). O semanal segue
+// existindo para definir o Campeão da Semana dentro das salas.
+export async function leaderboard(limit = 50, mode = "casual", sort = "points") {
   if (!admin) return [];
   if (mode === "weekly") {
     const { data, error } = await admin.rpc("weekly_leaderboard", { p_limit: limit });
@@ -207,6 +208,23 @@ export async function leaderboard(limit = 50, mode = "casual") {
       scoringGames: Number(row.scoring_games) || 0,
       tournamentTitles: Number(row.tournament_titles) || 0,
     }));
+  }
+
+  if (mode === "general") {
+    const { data } = await admin
+      .from("profiles")
+      .select("id, display_name, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles")
+      .limit(1000);
+    const rows = (data || []).map(leaderboardRow).map((row) => {
+      const points = row.casualPoints + row.tournamentPoints;
+      return { ...row, points, pointsPerGame: row.gamesPlayed ? points / row.gamesPlayed : 0 };
+    });
+    const compare = {
+      points: (a, b) => b.points - a.points || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed,
+      wins: (a, b) => b.wins - a.wins || b.points - a.points || b.gamesPlayed - a.gamesPlayed,
+      "points-per-game": (a, b) => b.pointsPerGame - a.pointsPerGame || b.points - a.points || b.wins - a.wins,
+    }[sort] || ((a, b) => b.points - a.points || b.wins - a.wins);
+    return rows.sort(compare).slice(0, limit);
   }
 
   // Ranking por bolso: Partida Rápida (casual_points) ou Torneio (tournament_points).
