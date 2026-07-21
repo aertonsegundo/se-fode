@@ -241,7 +241,7 @@ function tournamentStandings(room) {
       const player = playerById(room, id);
       const score = room.tournament.scores[id];
       // Bots continuam na mesa, mas nunca entram no ranking do torneio.
-      return player?.userId && score ? { id, userId: player.userId, name: player.name, ...score } : null;
+      return player?.userId && !player.quit && score ? { id, userId: player.userId, name: player.name, ...score } : null;
     })
     .filter(Boolean));
 }
@@ -859,11 +859,13 @@ function endGame(room) {
   }
   // Bots não contam: posição, pontos e histórico usam apenas contas humanas.
   const isTournament = Boolean(room.tournament);
-  const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
+  // Quem quitou no meio da mão pode ser controlado pelo bot só até a rodada
+  // terminar, mas não entra no resultado, histórico, pontos ou torneio.
+  const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId && !player.quit));
   const humanCount = humanStandings.length;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const humanPlayers = seatedPlayers(room)
-    .filter((player) => player.userId)
+    .filter((player) => player.userId && !player.quit)
     .map((player) => {
       const position = positionById.get(player.id) || humanCount;
       return {
