@@ -200,6 +200,53 @@ create index if not exists game_history_player_played_at_idx
 
 alter table public.game_history enable row level security;
 
+-- Ranking por período: usa o histórico para partidas/vitórias e os eventos para
+-- pontos. A semana começa na segunda-feira; o mês começa no primeiro dia.
+drop function if exists public.ranking_period_leaderboard(text, integer);
+create or replace function public.ranking_period_leaderboard(p_period text default 'weekly', p_limit integer default 50)
+returns table (
+  id uuid,
+  display_name text,
+  photo text,
+  banner text,
+  points bigint,
+  games_played bigint,
+  wins bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with period_start as (
+    select case p_period
+      when 'monthly' then date_trunc('month', now())
+      else date_trunc('week', now())
+    end as starts_at
+  ), game_stats as (
+    select h.player_id, count(*)::bigint as games_played,
+      count(*) filter (where h.won)::bigint as wins
+    from public.game_history h cross join period_start s
+    where h.played_at >= s.starts_at
+    group by h.player_id
+  ), point_stats as (
+    select e.player_id, coalesce(sum(e.points), 0)::bigint as points
+    from public.ranking_events e cross join period_start s
+    where e.created_at >= s.starts_at
+    group by e.player_id
+  )
+  select p.id, p.display_name, p.photo, p.banner,
+    coalesce(ps.points, 0)::bigint as points,
+    coalesce(gs.games_played, 0)::bigint as games_played,
+    coalesce(gs.wins, 0)::bigint as wins
+  from public.profiles p
+  join (select player_id from game_stats union select player_id from point_stats) active on active.player_id = p.id
+  left join game_stats gs on gs.player_id = p.id
+  left join point_stats ps on ps.player_id = p.id
+  order by points desc, wins desc, games_played desc
+  limit greatest(1, least(coalesce(p_limit, 50), 100));
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Figurinhas (emotes) gerenciáveis pelo admin no dashboard.
 -- image_url null => usa a imagem estática /emotes/<key>.png (built-in) ou o emoji.

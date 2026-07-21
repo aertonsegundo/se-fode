@@ -479,7 +479,8 @@ $("#photo-upload")?.addEventListener("change", (event) => {
 // ===== Ranking geral =====
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
-let rankingMode = "casual";
+let rankingMode = "points";
+let rankingPeriod = "all";
 const RANKING_EMPTY = "Ainda não há resultados suficientes para o ranking.";
 
 // Regras completas por aba (abrem no modal da lâmpada) — copy humanizada + exemplos.
@@ -536,7 +537,12 @@ const RANKING_RULES = {
 
 $("#ranking-tabs")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-ranking-sort]");
-  if (button) loadRanking(button.dataset.rankingSort);
+  if (button) loadRanking(button.dataset.rankingSort, rankingPeriod);
+});
+
+$("#ranking-period-tabs")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ranking-period]");
+  if (button) loadRanking(rankingMode, button.dataset.rankingPeriod);
 });
 
 // Lâmpada: abre o modal com a regra completa da aba atual.
@@ -557,19 +563,24 @@ function openRulesModal(mode) {
 
 async function openRanking() {
   $("#ranking").showModal();
-  loadRanking("points");
+  loadRanking("points", "all");
 }
 
-async function loadRanking(sort) {
+async function loadRanking(sort, period) {
   rankingMode = ["points", "wins", "points-per-game"].includes(sort) ? sort : "points";
+  rankingPeriod = ["weekly", "monthly", "all"].includes(period) ? period : "all";
   const body = $("#ranking-body");
   $("#ranking-tabs").querySelectorAll("[data-ranking-sort]").forEach((button) => {
     button.classList.toggle("active", button.dataset.rankingSort === rankingMode);
     button.setAttribute("aria-selected", String(button.dataset.rankingSort === rankingMode));
   });
+  $("#ranking-period-tabs").querySelectorAll("[data-ranking-period]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.rankingPeriod === rankingPeriod);
+    button.setAttribute("aria-selected", String(button.dataset.rankingPeriod === rankingPeriod));
+  });
   body.innerHTML = '<p class="ranking-loading">Carregando…</p>';
   try {
-    const data = await api(`/api/leaderboard?sort=${rankingMode}`);
+    const data = await api(`/api/leaderboard?sort=${rankingMode}&period=${rankingPeriod}`);
     bannerCatalog = data.banners || bannerCatalog;
     const rows = (data.leaderboard || []).filter((user) => (user.points || 0) > 0 || (user.wins || 0) > 0 || (user.gamesPlayed || 0) > 0);
     if (!rows.length) {
@@ -586,9 +597,10 @@ async function loadRanking(sort) {
         points: [user.points || 0, "PTS"],
         wins: [user.wins || 0, "VIT"],
         "points-per-game": [pointsPerGame, "PTS/JOGO"],
+        games: [user.gamesPlayed || 0, "JOGOS"],
       };
       const main = stats[rankingMode];
-      const secondary = ["points", "wins", "points-per-game"].filter((key) => key !== rankingMode).map((key) => stats[key]);
+      const secondary = ["points", "wins", "points-per-game", "games"].filter((key) => key !== rankingMode).map((key) => stats[key]);
       return `<div class="lb-row ${mine}">
         <span class="lb-pos">${medal}</span>
         <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
@@ -596,6 +608,7 @@ async function loadRanking(sort) {
         <span class="lb-stat points"><b>${main[0]}</b><small>${main[1]}</small></span>
         <span class="lb-stat"><b>${secondary[0][0]}</b><small>${secondary[0][1]}</small></span>
         <span class="lb-stat"><b>${secondary[1][0]}</b><small>${secondary[1][1]}</small></span>
+        <span class="lb-stat"><b>${secondary[2][0]}</b><small>${secondary[2][1]}</small></span>
       </div>`;
     }).join("");
   } catch (err) {

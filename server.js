@@ -127,7 +127,8 @@ app.get("/api/leaderboard", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
   const sort = ["points", "wins", "points-per-game"].includes(req.query.sort) ? req.query.sort : "points";
-  res.json({ leaderboard: await leaderboard(50, "general", sort), sort, banners: BANNERS, meId: profile.id });
+  const period = ["weekly", "monthly", "all"].includes(req.query.period) ? req.query.period : "all";
+  res.json({ leaderboard: await leaderboard(50, "general", sort, period), sort, period, banners: BANNERS, meId: profile.id });
 });
 
 // Perfil público que abre ao clicar em alguém na mesa. O perfil autenticado

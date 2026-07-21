@@ -191,7 +191,7 @@ function leaderboardRow(row) {
 // Geral = pontos acumulados das partidas rápidas e torneios. A ordenação pode
 // ser por pontos, vitórias ou eficiência (pontos por partida). O semanal segue
 // existindo para definir o Campeão da Semana dentro das salas.
-export async function leaderboard(limit = 50, mode = "casual", sort = "points") {
+export async function leaderboard(limit = 50, mode = "casual", sort = "points", period = "all") {
   if (!admin) return [];
   if (mode === "weekly") {
     const { data, error } = await admin.rpc("weekly_leaderboard", { p_limit: limit });
@@ -211,6 +211,33 @@ export async function leaderboard(limit = 50, mode = "casual", sort = "points") 
   }
 
   if (mode === "general") {
+    if (period !== "all") {
+      const { data, error } = await admin.rpc("ranking_period_leaderboard", { p_period: period, p_limit: limit });
+      if (error) {
+        console.warn("[supabase] rode o schema.sql para ativar ranking por período:", error.message);
+        return [];
+      }
+      const rows = (data || []).map((row) => {
+        const points = Number(row.points) || 0;
+        const gamesPlayed = Number(row.games_played) || 0;
+        return {
+          id: row.id,
+          displayName: row.display_name || "Jogador",
+          photo: row.photo || null,
+          banner: row.banner || "novato",
+          points,
+          wins: Number(row.wins) || 0,
+          gamesPlayed,
+          pointsPerGame: gamesPlayed ? points / gamesPlayed : 0,
+        };
+      });
+      const compare = {
+        points: (a, b) => b.points - a.points || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed,
+        wins: (a, b) => b.wins - a.wins || b.points - a.points || b.gamesPlayed - a.gamesPlayed,
+        "points-per-game": (a, b) => b.pointsPerGame - a.pointsPerGame || b.points - a.points || b.wins - a.wins,
+      }[sort] || ((a, b) => b.points - a.points || b.wins - a.wins);
+      return rows.sort(compare).slice(0, limit);
+    }
     const { data } = await admin
       .from("profiles")
       .select("id, display_name, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles")
