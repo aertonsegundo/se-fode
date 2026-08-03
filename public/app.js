@@ -72,6 +72,7 @@ function leaveRoom() {
   game.classList.add("hidden");
   home.classList.remove("hidden");
   history.replaceState(null, "", location.pathname);
+  watchLobby(); // voltou pra home: reassina a lista de salas
 }
 
 function confirmLeave() {
@@ -103,7 +104,11 @@ $("#create").onclick = () => {
   $("#create-modal").showModal();
 };
 $("#create-close").onclick = () => $("#create-modal").close();
-$("#create-private").onchange = (e) => $("#create-pass-row").classList.toggle("hidden", !e.target.checked);
+$("#create-private").onchange = (e) => {
+  $("#create-pass-row").classList.toggle("hidden", !e.target.checked);
+  // Marcou privada com o campo vazio: já gera a senha — sala privada nunca fica sem senha.
+  if (e.target.checked && !$("#create-password").value.trim()) $("#create-password").value = genRoomPassword();
+};
 $("#create-tourney").onchange = (e) => $("#create-tourney-row").classList.toggle("hidden", !e.target.checked);
 $("#create-genpass").onclick = () => { $("#create-password").value = genRoomPassword(); };
 $("#create-start").onclick = () => {
@@ -119,18 +124,45 @@ $("#create-start").onclick = () => {
   });
 };
 
-// Entrar por código: se a sala for privada, o servidor pede senha; então perguntamos e repetimos.
+// Entrar por código/lista: se a sala for privada, o servidor pede senha (modal próprio).
 let pendingJoin = null;
-$("#join").onclick = () => {
-  const code = $("#code").value.trim();
+function joinRoomByCode(code) {
+  code = (code || "").trim().toUpperCase();
   if (!code) return;
   pendingJoin = { code };
   join("join-room", { code });
-};
+}
+$("#join").onclick = () => joinRoomByCode($("#code").value);
+
+// Lista de salas ao vivo na home (canal "lobby").
+function watchLobby() { if (socket.connected) socket.emit("watch-lobby"); }
+socket.on("rooms", (list) => renderRoomList(list));
+function renderRoomList(list) {
+  const el = $("#room-list");
+  if (!el) return;
+  if (!list || !list.length) { el.innerHTML = '<div class="room-empty">Nenhuma sala aberta ainda. Crie a sua!</div>'; return; }
+  el.innerHTML = list.map((r) => {
+    const full = r.count >= r.max;
+    return `
+    <button type="button" class="room-row ${r.inProgress ? "in-progress" : ""}" data-code="${r.code}" ${full ? "disabled" : ""}>
+      <span class="room-row-main">
+        <span class="room-row-name">${r.isPrivate ? '<span class="room-lock" title="Sala privada">🔒</span>' : ""}${escapeHtml(r.name)}${r.isTournament ? ' <span class="room-badge">⚡ TORNEIO</span>' : ""}</span>
+        <span class="room-row-status">${full ? "sala cheia" : r.inProgress ? "em jogo · entre para assistir" : "aguardando jogadores"}</span>
+      </span>
+      <span class="room-row-count">${r.count}/${r.max}</span>
+    </button>`;
+  }).join("");
+  el.querySelectorAll("[data-code]").forEach((btn) => { btn.onclick = () => joinRoomByCode(btn.dataset.code); });
+}
 $("#code").addEventListener("input", (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 $("#rules-open").onclick = () => $("#rules").showModal();
 $("#rules-close").onclick = () => $("#rules").close();
-$("#copy-code").onclick = async () => { await navigator.clipboard.writeText(state.code); showToast("Código copiado!"); };
+$("#copy-code").onclick = async () => {
+  // Sala privada: copia o link de CONVITE (entra sem senha). Pública: link normal da sala.
+  const url = roomUrl(state.code) + (state.isPrivate && state.inviteToken ? `&convite=${state.inviteToken}` : "");
+  await navigator.clipboard.writeText(url);
+  showToast(state.isPrivate ? "Link de convite copiado!" : "Link da sala copiado!");
+};
 $("#leave").onclick = confirmLeave;
 $(".mini-brand").addEventListener("click", (event) => { if (state) { event.preventDefault(); confirmLeave(); } });
 
@@ -138,11 +170,21 @@ $(".mini-brand").addEventListener("click", (event) => { if (state) { event.preve
 document.addEventListener("gesturestart", (event) => event.preventDefault());
 document.addEventListener("touchmove", (event) => { if (event.touches.length > 1) event.preventDefault(); }, { passive: false });
 
-// Link compartilhado: ?sala=CODIGO já preenche o campo de código.
-const sharedCode = (new URLSearchParams(location.search).get("sala") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+// Link: ?sala=CODIGO preenche o código. Com &convite=TOKEN, entra direto (sem senha).
+const linkParams = new URLSearchParams(location.search);
+const sharedCode = (linkParams.get("sala") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+const linkInvite = linkParams.get("convite") || "";
+let pendingInvite = null;
 if (sharedCode) {
   $("#code").value = sharedCode;
-  setTimeout(() => $("#code").focus(), 0);
+  if (linkInvite) pendingInvite = { code: sharedCode, invite: linkInvite };
+  else setTimeout(() => $("#code").focus(), 0);
+}
+// Convite por link: assim que estiver logado (e fora de uma sala), entra direto.
+function maybeAutoJoinInvite() {
+  if (!pendingInvite || state || localStorage.getItem(SESSION_KEY)) return;
+  const inv = pendingInvite; pendingInvite = null;
+  join("join-room", { code: inv.code, invite: inv.invite });
 }
 
 socket.on("connect", () => {
@@ -153,6 +195,7 @@ socket.on("connect", () => {
   }
   if (connectedBefore) showToast("Conexão recuperada.");
   connectedBefore = true;
+  if (!state) watchLobby(); // na home: assina a lista de salas ao vivo
 });
 socket.on("disconnect", () => { if (state) showToast("Conexão perdida. Tentando voltar…"); });
 socket.on("session", (session) => {
@@ -306,6 +349,8 @@ function showLoggedIn() {
   authScreen.classList.add("hidden");
   if (!state) home.classList.remove("hidden");
   renderAccountBar();
+  if (!state) watchLobby();
+  maybeAutoJoinInvite();
 }
 
 function renderAccountBar() {
@@ -1201,11 +1246,13 @@ function turnClockHtml() {
 function renderAction() {
   const panel = $("#action-panel");
   if (state.phase === "lobby") {
-    const url = roomUrl(state.code);
+    // Sala privada: o link compartilhado já leva o convite (entra sem digitar a senha).
+    const url = roomUrl(state.code) + (state.isPrivate && state.inviteToken ? `&convite=${state.inviteToken}` : "");
     const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
     const tournament = state.tournament;
     panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO DE MEDALHAS" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
       <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. Com 5 ou mais jogadores, cada pódio vale medalhas; o campeão leva um troféu.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}</p>
+      ${state.isPrivate ? `<div class="lobby-pass"><span class="lobby-pass-label">🔒 SALA PRIVADA · SENHA</span><span class="lobby-pass-value">${escapeHtml(state.password || "—")}</span><button id="copy-pass" type="button" class="ghost">COPIAR</button></div>` : ""}
       <div class="share">
         <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />
         <div class="share-actions">
@@ -1221,7 +1268,8 @@ function renderAction() {
       ${rankingHtml()}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
     $("#share-url").onclick = (event) => event.target.select();
-    $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast("Link copiado!"); };
+    $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast(state.isPrivate ? "Link de convite copiado!" : "Link copiado!"); };
+    $("#copy-pass")?.addEventListener("click", async () => { await navigator.clipboard.writeText(state.password || ""); showToast("Senha copiada!"); });
     $("#lobby-emote-toggle").onclick = () => setEmoteOpen(!emoteOpen);
     $("#lobby-chat-toggle")?.addEventListener("click", () => setChatOpen(!chatOpen));
     return;

@@ -47,20 +47,28 @@
           <button id="logout" class="account-btn ghost">SAIR</button>
         </div>
       </div>
-      <header class="brand">
-        <div class="kicker">UM JOGO PARA AMIGOS</div>
-        <h1>SE<br />FO<span>DE</span></h1>
-        <p>Aposte. Blefe. Mele o jogo.<br />Tente não se foder.</p>
-      </header>
-      <form class="entry-card" onsubmit="return false">
-        <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
-        <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
-        <div class="or"><span>OU ENTRE NUMA</span></div>
-        <div class="join-row">
-          <input id="code" maxlength="5" placeholder="CÓDIGO" aria-label="Código da sala" />
-          <button id="join">ENTRAR</button>
+      <header class="brand brand-compact">
+        <div class="brand-mark">SE<span>FO</span>DE</div>
+        <div class="brand-tag">
+          <div class="kicker">UM JOGO PARA AMIGOS</div>
+          <p>Aposte. Blefe. Mele o jogo. Tente não se foder.</p>
         </div>
-      </form>
+      </header>
+      <div class="home-cols">
+        <section class="room-list-card">
+          <div class="room-list-head"><span>SALAS ABERTAS</span></div>
+          <div id="room-list" class="room-list"><div class="room-empty">Procurando salas…</div></div>
+        </section>
+        <form class="entry-card" onsubmit="return false">
+          <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
+          <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
+          <div class="or"><span>OU ENTRE POR CÓDIGO</span></div>
+          <div class="join-row">
+            <input id="code" maxlength="5" placeholder="CÓDIGO" aria-label="Código da sala" />
+            <button id="join">ENTRAR</button>
+          </div>
+        </form>
+      </div>
       <button id="rules-open" class="rules-link">COMO JOGA? <span>↗</span></button>
     </section>
 

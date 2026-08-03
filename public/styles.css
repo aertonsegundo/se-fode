@@ -7,12 +7,19 @@ button,input,select { font:inherit; }
 button { cursor:pointer; }
 .noise { position:fixed; inset:0; pointer-events:none; opacity:.08; z-index:10; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E"); }
 .hidden { display:none!important; }
-.home { min-height:100vh; min-height:100dvh; display:grid; grid-template-columns:1.3fr .7fr; gap:8vw; align-items:center; padding:6vw 8vw; position:relative; overflow:hidden; }
+.home { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; align-items:center; gap:1.8rem; padding:4.6rem 2rem 5rem; position:relative; overflow:hidden; }
 .home::after { content:"♣"; position:absolute; right:-7vw; bottom:-22vw; font:60vw/1 "Archivo Black"; color:#211f1b; z-index:-1; transform:rotate(12deg); }
 .kicker { font-size:.72rem; font-weight:700; letter-spacing:.22em; color:var(--acid); }
-.brand h1 { font:clamp(6rem,14vw,12rem)/.73 "Archivo Black"; letter-spacing:-.1em; margin:.18em 0 .2em -.08em; transform:skew(-5deg); }
-.brand h1 span { color:var(--red); }
-.brand p { font-size:clamp(1.2rem,2vw,2rem); line-height:1.25; margin:0; }
+/* Logo compacta em cima, ao lado do texto */
+.brand-compact { display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap; width:100%; max-width:1040px; }
+.brand-mark { font:clamp(2.1rem,5vw,3.2rem)/.82 "Archivo Black"; letter-spacing:-.06em; transform:skew(-5deg); color:var(--paper); }
+.brand-mark span { color:var(--red); }
+.brand-tag { min-width:0; }
+.brand-tag p { font-size:clamp(.85rem,1.5vw,1.05rem); line-height:1.2; margin:.15rem 0 0; color:#c7c2b4; }
+/* Duas colunas: lista de salas (esquerda) + ações (direita) */
+.home-cols { display:grid; grid-template-columns:1.12fr .88fr; gap:2.2rem; align-items:start; width:100%; max-width:1040px; }
+.room-list-card { background:var(--paper); color:var(--ink); padding:1.4rem 1.5rem; box-shadow:12px 12px 0 var(--red); transform:rotate(-1deg); }
+.room-list-card .room-list { max-height:min(52vh,380px); }
 .entry-card { background:var(--paper); color:var(--ink); padding:2.2rem; box-shadow:12px 12px 0 var(--red); transform:rotate(1deg); }
 .entry-card label { display:block; font-size:.68rem; font-weight:700; letter-spacing:.16em; margin-bottom:.5rem; }
 .entry-card input { width:100%; border:2px solid var(--ink); background:transparent; padding:1rem; font-size:1rem; outline:none; border-radius:0; }
@@ -28,6 +35,23 @@ button { cursor:pointer; }
 .tournament-setup label { margin:0; color:#7f211c; }
 .tournament-setup select { border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:.45rem .65rem; font-weight:800; border-radius:0; }
 .entry-card .tournament { grid-column:1/-1; width:100%; margin:0; background:var(--red); color:#fff; display:flex; justify-content:space-between; }
+/* Lista de salas ao vivo na home (dentro do entry-card claro) */
+.room-list-wrap { margin:1.2rem 0 .3rem; }
+.room-list-head { font-size:.64rem; font-weight:800; letter-spacing:.18em; color:#6a6357; margin-bottom:.55rem; display:flex; align-items:center; gap:.6rem; }
+.room-list-head::after { content:""; flex:1; height:2px; background:#00000018; }
+.room-list { display:flex; flex-direction:column; gap:.45rem; max-height:210px; overflow-y:auto; }
+.room-list .room-row { display:flex; align-items:center; justify-content:space-between; gap:.8rem; width:100%; margin:0; text-align:left; border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:.6rem .8rem; font:inherit; cursor:pointer; transition:transform .07s, box-shadow .1s, background .12s, color .12s; }
+.room-list .room-row:hover:not([disabled]) { background:var(--ink); color:var(--paper); box-shadow:5px 5px 0 var(--red); transform:translate(-1px,-1px); }
+.room-list .room-row[disabled] { opacity:.45; cursor:not-allowed; }
+.room-row-main { display:flex; flex-direction:column; gap:.12rem; min-width:0; }
+.room-row-name { font-weight:800; font-size:.92rem; display:flex; align-items:center; gap:.35rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.room-lock { font-size:.82rem; }
+.room-badge { font-size:.54rem; font-weight:800; letter-spacing:.05em; border:1.5px solid currentColor; padding:.05rem .3rem; border-radius:3px; white-space:nowrap; }
+.room-row-status { font-size:.64rem; font-weight:600; opacity:.65; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.room-row.in-progress .room-row-status { color:var(--red); opacity:1; }
+.room-list .room-row:hover:not([disabled]) .room-row-status { color:inherit; opacity:.85; }
+.room-row-count { font-weight:900; font-size:.88rem; white-space:nowrap; flex:0 0 auto; }
+.room-empty { font-size:.78rem; color:#6a6357; padding:.7rem .2rem; text-align:center; }
 .join-row { display:grid; grid-template-columns:1fr auto; gap:.6rem; }
 .join-row input { text-transform:uppercase; letter-spacing:.16em; }
 .or { text-align:center; margin:1.25rem 0; border-top:1px solid #bcb7aa; height:1px; }
@@ -123,8 +147,13 @@ dialog .card-order .trumps { color:#9a241c; }
 dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; line-height:1.45; }
 .close { position:absolute; right:1rem; top:1rem; border:0; background:none; font-size:2rem; }
 @media (max-width:850px) {
-  .home { grid-template-columns:1fr; padding:3rem 1.3rem 6rem; gap:3rem; }
-  .brand h1 { font-size:25vw; }
+  .home { padding:4rem 1.1rem 5rem; gap:1.2rem; }
+  .brand-compact { gap:.7rem; }
+  .brand-mark { font-size:2.3rem; }
+  .home-cols { grid-template-columns:1fr; gap:1.2rem; }
+  /* No mobile a lista de salas vem primeiro (é a primeira vista) e a logo fica pequena em cima */
+  .room-list-card { transform:none; box-shadow:7px 7px 0 var(--red); padding:1.1rem 1.2rem; }
+  .room-list-card .room-list { max-height:42vh; }
   .entry-card { box-shadow:7px 7px 0 var(--red); }
   .solo-options { grid-template-columns:1fr; gap:.4rem; }
   .solo-options select { width:100%; }
@@ -315,6 +344,12 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .ghost:hover { background:var(--acid); color:var(--ink); }
 .wa { background:#25d366; color:#0b3b1e; }
 .wa:hover { background:#1fbe5a; }
+/* Senha da sala privada exposta na sala de espera (pra quem está dentro compartilhar) */
+.lobby-pass { display:flex; align-items:center; gap:.6rem .8rem; flex-wrap:wrap; margin:.1rem 0 .9rem; padding:.7rem .85rem; border:1px dashed var(--acid); border-radius:9px; background:#d8ff4514; }
+.lobby-pass-label { font-size:.58rem; font-weight:800; letter-spacing:.12em; color:var(--acid); width:100%; }
+.lobby-pass-value { font:900 1.25rem "Archivo Black",sans-serif; letter-spacing:.16em; color:var(--paper); }
+.lobby-pass .ghost { margin:0 0 0 auto; background:transparent; border:1px solid var(--acid); color:var(--acid); box-shadow:none; padding:.45rem .75rem; font-size:.64rem; font-weight:800; border-radius:6px; }
+.lobby-pass .ghost:hover { background:var(--acid); color:var(--ink); }
 
 .auto-bar { display:flex; align-items:center; justify-content:center; gap:.8rem; flex-wrap:wrap; background:#2c2a12; border:1px solid #d8ff4544; color:var(--acid); padding:.5rem .8rem; font-size:.8rem; font-weight:700; margin-top:.6rem; border-radius:8px; }
 .auto-bar button { border:0; background:var(--acid); color:var(--ink); font-weight:900; font-size:.7rem; letter-spacing:.05em; padding:.4rem .8rem; border-radius:6px; }

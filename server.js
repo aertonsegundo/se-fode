@@ -310,6 +310,7 @@ function sendSession(socket, room, player) {
   socket.data.playerId = player.id;
   player.socketId = socket.id;
   player.connected = true;
+  socket.leave("lobby"); // entrou numa sala: para de receber a lista da home
   socket.emit("session", { code: room.code, playerId: player.id, resumeToken: player.resumeToken });
   socket.emit("chat-history", room.chat);
 }
@@ -411,6 +412,36 @@ function broadcast(room) {
     if (!player.isBot && player.connected && player.socketId) io.to(player.socketId).emit("state", publicState(room, player.id));
   }
   scheduleAutomaticTurn(room);
+  broadcastRoomList();
+}
+
+// Lista de salas para a home (canal "lobby"). Nunca expõe a senha.
+function roomListDTO() {
+  const list = [];
+  for (const room of rooms.values()) {
+    if (room.solo) continue; // partidas solo não aparecem
+    const seated = room.players.filter((player) => !player.spectator);
+    if (!seated.some((player) => !player.isBot)) continue; // sala sem humanos sentados não lista
+    list.push({
+      code: room.code,
+      name: room.name || `Mesa ${room.code}`,
+      isPrivate: Boolean(room.isPrivate),
+      isTournament: Boolean(room.tournament),
+      count: seated.length,
+      max: 8,
+      inProgress: room.phase !== "lobby" && room.phase !== "game_over",
+    });
+  }
+  // lobby primeiro, depois em andamento; dentro de cada grupo, mais cheias primeiro
+  return list.sort((a, b) => Number(a.inProgress) - Number(b.inProgress) || b.count - a.count);
+}
+let lastRoomListSig = "";
+function broadcastRoomList() {
+  const list = roomListDTO();
+  const sig = JSON.stringify(list);
+  if (sig === lastRoomListSig) return; // só emite quando a lista muda de fato
+  lastRoomListSig = sig;
+  io.to("lobby").emit("rooms", list);
 }
 
 function newRoom(code, host) {
@@ -562,7 +593,7 @@ function expelPlayer(room, player) {
   if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
   transferHost(room);
   if (!room.players.some((item) => !item.isBot && item.connected)) {
-    room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+    room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
   }
 }
 
@@ -975,6 +1006,12 @@ async function refreshUser(socket) {
 }
 
 io.on("connection", (socket) => {
+  // Home aberta: assina a lista de salas ao vivo (sai do canal ao entrar numa sala).
+  socket.on("watch-lobby", () => {
+    socket.join("lobby");
+    socket.emit("rooms", roomListDTO());
+  });
+
   socket.on("resume-session", ({ code, playerId, resumeToken } = {}) => {
     const room = rooms.get(cleanCode(code));
     const player = room && playerById(room, String(playerId || ""));
@@ -1248,10 +1285,11 @@ io.on("connection", (socket) => {
       if (room.revealTimer) clearTimeout(room.revealTimer);
       if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
       rooms.delete(room.code);
+      broadcastRoomList();
       return;
     }
     if (!room.players.some((item) => !item.isBot && item.connected)) {
-      room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+      room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
     if (gameInProgress && !activeHand && activePlayers(room).length <= 1) return endGame(room);
     broadcast(room);
@@ -1273,7 +1311,7 @@ io.on("connection", (socket) => {
         if (player.connected || (room.phase !== "lobby" && !player.spectator)) return;
         room.players = room.players.filter((item) => item.id !== player.id);
         transferHost(room);
-        if (!room.players.length) rooms.delete(room.code);
+        if (!room.players.length) { rooms.delete(room.code); broadcastRoomList(); }
         else broadcast(room);
       }, 30000);
     } else if (room.phase !== "game_over") {
@@ -1287,7 +1325,7 @@ io.on("connection", (socket) => {
       }, RECONNECT_GRACE_MS);
     }
     if (!room.players.some((item) => !item.isBot && item.connected)) {
-      room.cleanupTimer = setTimeout(() => rooms.delete(room.code), 5 * 60 * 1000);
+      room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
     broadcast(room);
   });
