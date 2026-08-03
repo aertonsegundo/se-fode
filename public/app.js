@@ -1,6 +1,8 @@
 import { createClient } from "/vendor/supabase.js";
 
-const socket = io({ autoConnect: false });
+// O callback é executado em CADA handshake/reconexão. Assim o Socket.IO nunca
+// reaproveita um access token antigo depois de o Supabase renová-lo.
+const socket = io({ autoConnect: false, auth: (callback) => callback({ token: accountToken || undefined }) });
 const SESSION_KEY = "fode-session";
 let supabase = null;
 let accountProfile = null; // { id, email, displayName, role, isAdmin, photo, banner, ... }
@@ -36,7 +38,15 @@ function showToast(text) {
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
-function join(kind) {
+async function join(kind) {
+  // Atualiza o token antes de enfileirar a ação. Isso cobre o intervalo em que
+  // a tela já abriu, mas o socket ainda está reconectando após um deploy.
+  const { data } = supabase ? await supabase.auth.getSession() : { data: null };
+  if (!data?.session?.access_token) {
+    showToast("Sua sessão expirou. Entre de novo.");
+    return logout();
+  }
+  accountToken = data.session.access_token;
   // O nome agora vem da conta (editável no perfil), não mais de um campo no menu.
   socket.emit(kind, {
     name: accountProfile?.displayName || "",
@@ -125,8 +135,19 @@ socket.on("state", (next) => {
   render();
 });
 socket.on("auth-required", () => {
-  showToast("Sua sessão expirou. Entre de novo.");
-  logout();
+  // O socket pode chegar antes de a renovação do token terminar. Não derruba a
+  // conta por isso: confirma a sessão no Supabase e força um novo handshake.
+  (async () => {
+    const { data } = supabase ? await supabase.auth.getSession() : { data: null };
+    if (data?.session?.access_token) {
+      accountToken = data.session.access_token;
+      socket.disconnect().connect();
+      showToast("Conexão atualizada. Tente criar a sala novamente.");
+      return;
+    }
+    showToast("Sua sessão expirou. Entre de novo.");
+    logout();
+  })();
 });
 socket.on("expelled", (message) => {
   showToast(message || "Você foi expulso da partida por inatividade.");
@@ -189,7 +210,6 @@ async function applySession(session) {
     showAuthScreen();
     return;
   }
-  socket.auth = { token }; // toda reconexão do socket usa o token atual
   try {
     const me = await api("/api/me");
     accountProfile = me.profile;
