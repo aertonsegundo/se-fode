@@ -965,15 +965,11 @@ function render() {
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
-  // Na sala de espera, os atalhos flutuantes cobriam o botão de começar no
-  // celular. Chat e figurinhas entram em cena só depois que a partida começa.
-  const roomInProgress = state.phase !== "lobby";
-  $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo) || !roomInProgress);
-  $("#emote-toggle").classList.toggle("hidden", !roomInProgress); // figurinhas valem também no solo (offline)
-  if (!roomInProgress) {
-    setChatOpen(false);
-    setEmoteOpen(false);
-  }
+  // Na sala de espera, os atalhos ganham botões dentro do painel para não
+  // cobrir o "começar" no celular. Durante a partida, seguem flutuantes.
+  const lobbyTools = state.phase === "lobby";
+  $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo) || lobbyTools);
+  $("#emote-toggle").classList.toggle("hidden", lobbyTools); // figurinhas valem também no solo (offline)
   renderAutoBar();
   renderSpectatorBar();
   renderWatchers();
@@ -1152,11 +1148,17 @@ function renderAction() {
           <a id="wa-share" class="wa" href="https://wa.me/?text=${waText}" target="_blank" rel="noopener">WHATSAPP</a>
         </div>
       </div>
+      <div class="lobby-tools">
+        <button id="lobby-emote-toggle" type="button">😄 FIGURINHAS</button>
+        ${state.solo ? "" : '<button id="lobby-chat-toggle" type="button">💬 CHAT DA SALA</button>'}
+      </div>
       ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS"}</button>` : "<p>O dono da sala começa a partida.</p>"}
       ${rankingHtml()}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
     $("#share-url").onclick = (event) => event.target.select();
     $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast("Link copiado!"); };
+    $("#lobby-emote-toggle").onclick = () => setEmoteOpen(!emoteOpen);
+    $("#lobby-chat-toggle")?.addEventListener("click", () => setChatOpen(!chatOpen));
     return;
   }
   if (state.phase === "bidding" && state.turnId === state.me.id) {
