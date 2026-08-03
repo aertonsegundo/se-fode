@@ -19,7 +19,7 @@ const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 // Catálogo de banners:
 //  - `wins`: liberado pelo nº de vitórias ONLINE (auto-selecionável no perfil).
 //  - `exclusive: true`: só o admin concede (maldito, rei).
-//  - `auto: true`: concedido pelo jogo (Campeão da Semana), não atribuível.
+//  - `auto: true`: reservado para banners concedidos automaticamente pelo jogo.
 export const BANNERS = [
   { key: "novato", title: "Novato", wins: 0 },
   { key: "pato", title: "Pato do Baralho", wins: 2 },
@@ -28,7 +28,6 @@ export const BANNERS = [
   { key: "zap", title: "O Zap", wins: 25 },
   { key: "maldito", title: "O Maldito", exclusive: true },
   { key: "rei", title: "Rei do Baralho", exclusive: true },
-  { key: "campeao", title: "Campeão da Semana", auto: true },
 ];
 // Atribuíveis manualmente pelo admin (tudo menos os automáticos).
 export const BANNER_KEYS = BANNERS.filter((banner) => !banner.auto).map((banner) => banner.key);
@@ -115,6 +114,9 @@ function shapeProfile(profile, authUser) {
     casualPoints: profile.casual_points || 0,
     tournamentPoints: profile.tournament_points || 0,
     tournamentTitles: profile.tournament_titles || 0,
+    goldMedals: profile.gold_medals || 0,
+    silverMedals: profile.silver_medals || 0,
+    bronzeMedals: profile.bronze_medals || 0,
     createdAt: profile.created_at || null,
     lastSignInAt: authUser?.last_sign_in_at ?? null,
   };
@@ -185,94 +187,26 @@ function leaderboardRow(row) {
     casualPoints: row.casual_points || 0,
     tournamentPoints: row.tournament_points || 0,
     tournamentTitles: row.tournament_titles || 0,
+    goldMedals: row.gold_medals || 0,
+    silverMedals: row.silver_medals || 0,
+    bronzeMedals: row.bronze_medals || 0,
   };
 }
 
-// Geral = pontos acumulados das partidas rápidas e torneios. A ordenação pode
-// ser por pontos, vitórias ou eficiência (pontos por partida). O semanal segue
-// existindo para definir o Campeão da Semana dentro das salas.
-export async function leaderboard(limit = 50, mode = "casual", sort = "points", period = "all") {
+// Quadro geral: ouro, prata, bronze; vitórias e partidas só resolvem empates.
+export async function leaderboard(limit = 50) {
   if (!admin) return [];
-  if (mode === "weekly") {
-    const { data, error } = await admin.rpc("weekly_leaderboard", { p_limit: limit });
-    if (error) {
-      console.warn("[supabase] rode o schema.sql para ativar ranking semanal:", error.message);
-      return [];
-    }
-    return (data || []).map((row) => ({
-      id: row.id,
-      displayName: row.display_name || "Jogador",
-      photo: row.photo || null,
-      banner: row.banner || "novato",
-      points: Number(row.points) || 0,
-      scoringGames: Number(row.scoring_games) || 0,
-      tournamentTitles: Number(row.tournament_titles) || 0,
-    }));
-  }
-
-  if (mode === "general") {
-    if (period !== "all") {
-      const { data, error } = await admin.rpc("ranking_period_leaderboard", { p_period: period, p_limit: limit });
-      if (error) {
-        console.warn("[supabase] rode o schema.sql para ativar ranking por período:", error.message);
-        return [];
-      }
-      const rows = (data || []).map((row) => {
-        const points = Number(row.points) || 0;
-        const gamesPlayed = Number(row.games_played) || 0;
-        return {
-          id: row.id,
-          displayName: row.display_name || "Jogador",
-          photo: row.photo || null,
-          banner: row.banner || "novato",
-          points,
-          wins: Number(row.wins) || 0,
-          gamesPlayed,
-          pointsPerGame: gamesPlayed ? points / gamesPlayed : 0,
-        };
-      });
-      const compare = {
-        points: (a, b) => b.points - a.points || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed,
-        wins: (a, b) => b.wins - a.wins || b.points - a.points || b.gamesPlayed - a.gamesPlayed,
-        "points-per-game": (a, b) => b.pointsPerGame - a.pointsPerGame || b.points - a.points || b.wins - a.wins,
-      }[sort] || ((a, b) => b.points - a.points || b.wins - a.wins);
-      return rows.sort(compare).slice(0, limit);
-    }
-    const { data } = await admin
-      .from("profiles")
-      .select("id, display_name, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles")
-      .limit(1000);
-    const rows = (data || []).map(leaderboardRow).map((row) => {
-      const points = row.casualPoints + row.tournamentPoints;
-      return { ...row, points, pointsPerGame: row.gamesPlayed ? points / row.gamesPlayed : 0 };
-    });
-    const compare = {
-      points: (a, b) => b.points - a.points || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed,
-      wins: (a, b) => b.wins - a.wins || b.points - a.points || b.gamesPlayed - a.gamesPlayed,
-      "points-per-game": (a, b) => b.pointsPerGame - a.pointsPerGame || b.points - a.points || b.wins - a.wins,
-    }[sort] || ((a, b) => b.points - a.points || b.wins - a.wins);
-    return rows.sort(compare).slice(0, limit);
-  }
-
-  // Ranking por bolso: Partida Rápida (casual_points) ou Torneio (tournament_points).
-  const pointsColumn = mode === "tournament" ? "tournament_points" : "casual_points";
   const { data, error } = await admin
     .from("profiles")
-    .select("id, display_name, role, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles")
-    .order(pointsColumn, { ascending: false })
-    .order("tournament_titles", { ascending: false })
+    .select("id, display_name, photo, banner, wins, games_played, gold_medals, silver_medals, bronze_medals, tournament_titles")
+    .order("gold_medals", { ascending: false })
+    .order("silver_medals", { ascending: false })
+    .order("bronze_medals", { ascending: false })
     .order("wins", { ascending: false })
     .order("games_played", { ascending: false })
     .limit(limit);
-  // O deploy do servidor pode chegar antes de o admin rodar o schema (colunas novas).
-  const rows = data || (error
-    ? (await admin.from("profiles")
-      .select("id, display_name, role, photo, banner, wins, games_played")
-      .order("wins", { ascending: false })
-      .order("games_played", { ascending: false })
-      .limit(limit)).data || []
-    : []);
-  return rows.map(leaderboardRow).map((row) => ({ ...row, points: mode === "tournament" ? row.tournamentPoints : row.casualPoints }));
+  if (error) console.warn("[supabase] rode o schema.sql para ativar o quadro de medalhas:", error.message);
+  return (data || []).map(leaderboardRow);
 }
 
 // Perfil público para abrir a partir da cadeira na mesa. Nunca devolve e-mail,
@@ -281,12 +215,12 @@ export async function publicPlayerProfile(id) {
   if (!admin || !/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
   const { data, error: profileError } = await admin
     .from("profiles")
-    .select("id, display_name, photo, banner, wins, games_played, rank_points, casual_points, tournament_points, tournament_titles, created_at")
+    .select("id, display_name, photo, banner, wins, games_played, gold_medals, silver_medals, bronze_medals, tournament_titles, created_at")
     .eq("id", id)
     .maybeSingle();
   const row = data || (profileError
     ? (await admin.from("profiles")
-      .select("id, display_name, photo, banner, wins, games_played, created_at")
+      .select("id, display_name, photo, banner, wins, games_played, gold_medals, silver_medals, bronze_medals, tournament_titles, created_at")
       .eq("id", id)
       .maybeSingle()).data
     : null);
@@ -312,6 +246,9 @@ export async function publicPlayerProfile(id) {
     casualPoints: row.casual_points || 0,
     tournamentPoints: row.tournament_points || 0,
     tournamentTitles: row.tournament_titles || 0,
+    goldMedals: row.gold_medals || 0,
+    silverMedals: row.silver_medals || 0,
+    bronzeMedals: row.bronze_medals || 0,
     createdAt: row.created_at || null,
     historyAvailable: !error,
     recentGames: matches || [],
@@ -446,48 +383,26 @@ export async function deleteEmote(key) {
   return !error;
 }
 
-async function recordRankingEvents(events) {
-  if (!events.length) return;
-  const { error } = await admin.from("ranking_events").insert(events);
-  if (error && !/does not exist|relation/i.test(error.message || "")) {
-    console.error("[supabase] ranking_events falhou:", error.message);
-  }
-}
-
-// Registra o resultado de uma partida: +1 games_played para todos, +1 win para o vencedor.
+// Registra o resultado de uma partida e as medalhas já apuradas pelo servidor.
 export async function recordGame(players, winnerId, mode = "Partida", online = false) {
   if (!admin || !players?.length) return;
   try {
     const playerIds = players.map((player) => typeof player === "string" ? player : player.userId).filter(Boolean);
-    const rankPoints = Object.fromEntries(players
-      .filter((player) => typeof player === "object" && player.userId)
-      .map((player) => [player.userId, Math.max(0, Number(player.rankPoints) || 0)]));
-    let { error: resultError } = await admin.rpc("record_game_result", {
+    const medals = Object.fromEntries(players
+      .filter((player) => typeof player === "object" && player.userId && player.medal)
+      .map((player) => [player.userId, player.medal]));
+    let { error: resultError } = await admin.rpc("record_game_medals", {
       p_players: playerIds,
       p_winner: winnerId || null,
-      p_rank_points: rankPoints,
+      p_medals: medals,
       p_online: Boolean(online),
     });
-    // Schema anterior (sem p_online): tenta a versão de 3 parâmetros — ainda dá
-    // pontos casuais, só não conta a vitória online até rodar o schema novo.
-    if (resultError) {
-      ({ error: resultError } = await admin.rpc("record_game_result", { p_players: playerIds, p_winner: winnerId || null, p_rank_points: rankPoints }));
-    }
-    // Schema bem antigo: mantém ao menos vitórias/partidas.
+    // Enquanto a migração não foi aplicada, preserva ao menos partidas e vitórias.
     if (resultError) {
       const { error: fallbackError } = await admin.rpc("record_game", { p_players: playerIds, p_winner: winnerId || null });
       if (fallbackError) throw fallbackError;
-      console.warn("[supabase] rode o schema.sql para ativar pontos/vitórias online:", resultError.message);
+      console.warn("[supabase] rode o schema.sql para ativar as medalhas:", resultError.message);
     }
-
-    // Pontos por partida só existem no modo casual; kind 'casual' alimenta o semanal.
-    await recordRankingEvents(players
-      .filter((player) => typeof player === "object" && player.userId && player.rankPoints > 0)
-      .map((player) => ({
-        player_id: player.userId,
-        points: player.rankPoints,
-        kind: "casual",
-      })));
 
     // O histórico é complementar às estatísticas. Se a migration ainda não
     // tiver sido executada, a partida continua contabilizando normalmente.
@@ -511,20 +426,10 @@ export async function recordGame(players, winnerId, mode = "Partida", online = f
   }
 }
 
-// Bônus final do torneio. O servidor passa somente contas humanas.
-export async function awardTournamentResult(entries) {
-  if (!admin || !entries?.length) return;
-  const champion = entries.find((entry) => entry.position === 1)?.userId || null;
-  const rewards = Object.fromEntries(entries.map((entry) => [entry.userId, Math.max(0, Number(entry.rankPoints) || 0)]));
-  const { error } = await admin.rpc("award_tournament_result", { p_rewards: rewards, p_champion: champion });
-  if (error) console.warn("[supabase] rode o schema.sql para ativar bônus de torneio:", error.message);
-  await recordRankingEvents(entries
-    .filter((entry) => entry.rankPoints > 0)
-    .map((entry) => ({
-      player_id: entry.userId,
-      points: entry.rankPoints,
-      kind: entry.position === 1 ? "tournament_champion" : "tournament",
-    })));
+export async function awardTournamentTrophy(championId) {
+  if (!admin || !championId) return;
+  const { error } = await admin.rpc("award_tournament_trophy", { p_champion: championId });
+  if (error) console.warn("[supabase] rode o schema.sql para ativar o troféu de torneio:", error.message);
 }
 
 export { isUrl };

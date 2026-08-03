@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
 
 const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
 
@@ -141,26 +141,26 @@ test("streak conta só as vitórias seguidas mais recentes do mesmo nome", () =>
   assert.equal(winStreak([], "Ana"), 0);
 });
 
-test("pontos casuais escalam com a mesa (N−pos+1), top 3, 3+ humanos", () => {
-  assert.equal(casualPoints(1, 3), 3);
-  assert.equal(casualPoints(3, 3), 1);
-  assert.equal(casualPoints(1, 4), 4); // mesa maior, vitória vale mais
-  assert.equal(casualPoints(2, 4), 3);
-  assert.equal(casualPoints(1, 8), 8);
-  assert.equal(casualPoints(3, 8), 6);
-  assert.equal(casualPoints(4, 8), 0); // fora do top 3
-  assert.equal(casualPoints(1, 2), 0); // menos de 3 humanos não pontua
-  assert.equal(casualPoints(1, 1), 0); // solo não pontua
+test("medalhas só valem no pódio de partidas com 5+ humanos", () => {
+  assert.equal(medalForPosition(1, 5), "gold");
+  assert.equal(medalForPosition(2, 5), "silver");
+  assert.equal(medalForPosition(3, 8), "bronze");
+  assert.equal(medalForPosition(4, 8), null);
+  assert.equal(medalForPosition(1, 4), null);
+  assert.equal(medalForPosition(3, 4), null);
 });
 
-test("pontos de torneio escalam ((N−pos+1)×3), top 5, 3+ humanos", () => {
-  assert.equal(tournamentRankPoints(1, 3), 9);
-  assert.equal(tournamentRankPoints(3, 3), 3);
-  assert.equal(tournamentRankPoints(1, 8), 24);
-  assert.equal(tournamentRankPoints(2, 8), 21);
-  assert.equal(tournamentRankPoints(5, 8), 12);
-  assert.equal(tournamentRankPoints(6, 8), 0); // fora do top 5
-  assert.equal(tournamentRankPoints(1, 2), 0); // menos de 3 humanos não pontua
+test("jogador que saiu após ser eliminado em terceiro mantém a medalha", () => {
+  const standings = finalStandingsFrom([
+    { id: "a", name: "Ana", lives: 2, eliminated: false },
+    { id: "b", name: "Bia", lives: 0, eliminated: true, eliminatedAtRound: 5 },
+    { id: "c", name: "Caio", lives: 0, eliminated: true, eliminatedAtRound: 4, quit: true },
+    { id: "d", name: "Duda", lives: 0, eliminated: true, eliminatedAtRound: 3 },
+    { id: "e", name: "Enzo", lives: 0, eliminated: true, eliminatedAtRound: 2 },
+  ]);
+  const caio = standings.find((entry) => entry.id === "c");
+  assert.equal(caio.position, 3);
+  assert.equal(medalForPosition(caio.position, standings.length), "bronze");
 });
 
 test("banners liberam por vitórias online; exclusivos/auto não entram", () => {

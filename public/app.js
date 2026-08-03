@@ -273,7 +273,7 @@ function renderPlayerCard(profile, currentPlayer = null) {
     </div>
     ${now}
     <div class="player-stat-grid"><div><b>${stats.games}</b><span>PARTIDAS</span></div><div><b>${stats.wins}</b><span>VITÓRIAS</span></div><div><b>${stats.rate}%</b><span>APROVEITAMENTO</span></div></div>
-    <div class="player-points-grid"><div><b>${profile.casualPoints || 0}</b><span>🏆 PARTIDA RÁPIDA</span></div><div><b>${profile.tournamentPoints || 0}</b><span>⚡ TORNEIO</span></div><div><b>${profile.tournamentTitles || 0}</b><span>TÍTULOS</span></div></div>
+    <div class="player-points-grid"><div><b>${profile.goldMedals || 0}</b><span>🥇 OURO</span></div><div><b>${profile.silverMedals || 0}</b><span>🥈 PRATA</span></div><div><b>${profile.bronzeMedals || 0}</b><span>🥉 BRONZE</span></div><div><b>${profile.tournamentTitles || 0}</b><span>🏆 TROFÉUS</span></div></div>
     <section class="player-history"><div class="player-history-title">HISTÓRICO RECENTE</div>${profile.historyAvailable === false ? '<p class="player-history-empty">O histórico começa a ser salvo nas próximas partidas.</p>' : games ? `<ul>${games}</ul>` : '<p class="player-history-empty">Ainda não terminou uma partida.</p>'}</section>`;
 }
 
@@ -476,81 +476,25 @@ $("#photo-upload")?.addEventListener("change", (event) => {
   reader.readAsDataURL(file);
 });
 
-// ===== Ranking geral =====
+// ===== Quadro geral de medalhas =====
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
-let rankingMode = "points";
-let rankingPeriod = "all";
-const RANKING_EMPTY = "Ainda não há resultados suficientes para o ranking.";
+const RANKING_EMPTY = "Ainda não há medalhas no quadro.";
 
-// Regras completas por aba (abrem no modal da lâmpada) — copy humanizada + exemplos.
 const RANKING_RULES = {
-  points: {
-    title: "🏆 Por Pontos",
-    intro: "A classificação geral de quem mais acumulou pontos, somando partidas rápidas e torneios.",
-    base: "Em caso de empate, quem tem mais vitórias fica na frente.",
+  medals: {
+    title: "🏅 Quadro de Medalhas",
+    intro: "O ranking mostra as medalhas conquistadas no pódio de cada partida.",
+    base: "Só partidas com 5 ou mais jogadores humanos valem: 1º leva ouro, 2º prata e 3º bronze. O campeão de um torneio válido ganha um troféu.",
     examples: [],
-  },
-  wins: {
-    title: "🏆 Por Vitórias",
-    intro: "Aqui o que vale é ganhar: quem venceu mais partidas fica no topo.",
-    base: "Em caso de empate, quem acumulou mais pontos fica na frente.",
-    examples: [],
-  },
-  "points-per-game": {
-    title: "🏆 Pontos por Jogo",
-    intro: "Mostra quem rende mais a cada partida disputada.",
-    base: "O cálculo é pontos totais divididos pelo número de partidas. Em caso de empate, mais pontos acumulados ficam na frente.",
-    examples: [],
-  },
-  casual: {
-    title: "🏆 Partida Rápida",
-    intro: "Terminou no pódio de uma partida com gente de verdade? Levou ponto. E quanto mais cheia a mesa, mais doce a vitória — ganhar entre muitos vale mais do que ganhar entre poucos.",
-    base: "Pontua o pódio (1º, 2º e 3º). O valor acompanha o tamanho da mesa: numa mesa de N pessoas, o campeão leva N, o vice N−1 e o terceiro N−2.",
-    examples: [
-      { label: "Solo ou menos de 3 pessoas", value: "Não vale ponto — farmar contra bot não cola. 🙂" },
-      { label: "Mesa pequena · 3 pessoas", value: "3 · 2 · 1 para 1º, 2º e 3º" },
-      { label: "Mesa cheia · 8 pessoas", value: "8 · 7 · 6 para 1º, 2º e 3º" },
-    ],
-  },
-  tournament: {
-    title: "⚡ Torneio",
-    intro: "No torneio o que conta é como você termina no geral. Só a classificação final rende pontos — e eles pesam bem mais que os da partida rápida.",
-    base: "Pontua o top 5 da classificação final, escalando com o número de jogadores (cerca de 3× a partida rápida). Dentro do torneio, vencer cada jogo com mais vidas na mão te empurra pra cima na tabela.",
-    examples: [
-      { label: "Torneio com menos de 3 pessoas", value: "Não rende ponto de ranking." },
-      { label: "Torneio pequeno · 3 pessoas", value: "9 · 6 · 3 para 1º, 2º e 3º" },
-      { label: "Torneio cheio · 8 pessoas", value: "24 · 21 · 18 · 15 · 12 do 1º ao 5º" },
-    ],
-  },
-  weekly: {
-    title: "🔥 Semanal",
-    intro: "A foto de quem está voando alto AGORA. Junta tudo que você conquistou — partida rápida e torneio — desde a última segunda-feira.",
-    base: "Cada ponto ganho na semana entra aqui. Zera toda segunda. Quem termina em 1º vira o Campeão da Semana e desfila com o banner dourado na mesa.",
-    examples: [
-      { label: "Venceu 2 rápidas numa mesa de 4", value: "+4 e +4 na semana (8 pontos)" },
-      { label: "Ficou em 2º num torneio de 6", value: "+15 na semana" },
-      { label: "Total da semana", value: "8 + 15 = 23 pontos somados aqui" },
-    ],
   },
 };
 
-$("#ranking-tabs")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-ranking-sort]");
-  if (button) loadRanking(button.dataset.rankingSort, rankingPeriod);
-});
-
-$("#ranking-period-tabs")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-ranking-period]");
-  if (button) loadRanking(rankingMode, button.dataset.rankingPeriod);
-});
-
-// Lâmpada: abre o modal com a regra completa da aba atual.
-$("#ranking-rules-btn")?.addEventListener("click", () => openRulesModal(rankingMode));
+$("#ranking-rules-btn")?.addEventListener("click", () => openRulesModal("medals"));
 $("#ranking-rules-close")?.addEventListener("click", () => $("#ranking-rules-modal").close());
 
 function openRulesModal(mode) {
-  const rules = RANKING_RULES[mode] || RANKING_RULES.points;
+  const rules = RANKING_RULES[mode] || RANKING_RULES.medals;
   $("#rules-title").textContent = rules.title;
   const examples = (rules.examples || []).map((example) =>
     `<div class="rule-ex"><span class="rule-ex-label">${escapeHtml(example.label)}</span><span class="rule-ex-value">${escapeHtml(example.value)}</span></div>`).join("");
@@ -563,26 +507,16 @@ function openRulesModal(mode) {
 
 async function openRanking() {
   $("#ranking").showModal();
-  loadRanking("points", "all");
+  loadRanking();
 }
 
-async function loadRanking(sort, period) {
-  rankingMode = ["points", "wins", "points-per-game"].includes(sort) ? sort : "points";
-  rankingPeriod = ["weekly", "monthly", "all"].includes(period) ? period : "all";
+async function loadRanking() {
   const body = $("#ranking-body");
-  $("#ranking-tabs").querySelectorAll("[data-ranking-sort]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.rankingSort === rankingMode);
-    button.setAttribute("aria-selected", String(button.dataset.rankingSort === rankingMode));
-  });
-  $("#ranking-period-tabs").querySelectorAll("[data-ranking-period]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.rankingPeriod === rankingPeriod);
-    button.setAttribute("aria-selected", String(button.dataset.rankingPeriod === rankingPeriod));
-  });
   body.innerHTML = '<p class="ranking-loading">Carregando…</p>';
   try {
-    const data = await api(`/api/leaderboard?sort=${rankingMode}&period=${rankingPeriod}`);
+    const data = await api("/api/leaderboard");
     bannerCatalog = data.banners || bannerCatalog;
-    const rows = (data.leaderboard || []).filter((user) => (user.points || 0) > 0 || (user.wins || 0) > 0 || (user.gamesPlayed || 0) > 0);
+    const rows = (data.leaderboard || []).filter((user) => (user.goldMedals || 0) + (user.silverMedals || 0) + (user.bronzeMedals || 0) + (user.tournamentTitles || 0) > 0);
     if (!rows.length) {
       body.innerHTML = `<p class="ranking-loading">${RANKING_EMPTY}</p>`;
       return;
@@ -592,23 +526,14 @@ async function loadRanking(sort, period) {
       const mine = user.id === data.meId ? "mine" : "";
       const bannerTag = user.banner && user.banner !== "novato"
         ? `<span class="banner-pill banner-${user.banner}">${escapeHtml(bannerTitle(user.banner))}</span>` : "";
-      const pointsPerGame = Number(user.pointsPerGame || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-      const stats = {
-        points: [user.points || 0, "PTS"],
-        wins: [user.wins || 0, "VIT"],
-        "points-per-game": [pointsPerGame, "PTS/JOGO"],
-        games: [user.gamesPlayed || 0, "JOGOS"],
-      };
-      const main = stats[rankingMode];
-      const secondary = ["points", "wins", "points-per-game", "games"].filter((key) => key !== rankingMode).map((key) => stats[key]);
       return `<div class="lb-row ${mine}">
         <span class="lb-pos">${medal}</span>
         <span class="lb-photo ${photoUrlFor(user.photo) ? "has-img" : ""}">${photoMarkup(user.photo, user.displayName)}</span>
         <span class="lb-name">${escapeHtml(user.displayName)}${bannerTag}</span>
-        <span class="lb-stat points"><b>${main[0]}</b><small>${main[1]}</small></span>
-        <span class="lb-stat"><b>${secondary[0][0]}</b><small>${secondary[0][1]}</small></span>
-        <span class="lb-stat"><b>${secondary[1][0]}</b><small>${secondary[1][1]}</small></span>
-        <span class="lb-stat"><b>${secondary[2][0]}</b><small>${secondary[2][1]}</small></span>
+        <span class="lb-stat gold"><b>${user.goldMedals || 0}</b><small>🥇 OURO</small></span>
+        <span class="lb-stat silver"><b>${user.silverMedals || 0}</b><small>🥈 PRATA</small></span>
+        <span class="lb-stat bronze"><b>${user.bronzeMedals || 0}</b><small>🥉 BRONZE</small></span>
+        <span class="lb-stat trophies"><b>${user.tournamentTitles || 0}</b><small>🏆 TROFÉUS</small></span>
       </div>`;
     }).join("");
   } catch (err) {
@@ -849,6 +774,17 @@ function matchStandingsHtml() {
     return `<div class="match-rank-row ${entry.survived ? "survivor" : ""} ${mine ? "mine" : ""}"><span class="match-rank-pos">${position}</span><span class="match-rank-name">${escapeHtml(entry.name)}</span><span class="match-rank-detail">${detail}</span></div>`;
   }).join("");
   return `<section class="match-ranking"><div class="match-rank-title">CLASSIFICAÇÃO DA PARTIDA</div>${rows}</section>`;
+}
+
+function matchPodiumHtml() {
+  if (!state.medalMatch) return '<p class="medal-note">Esta partida teve menos de 5 jogadores humanos e não distribuiu medalhas.</p>';
+  const entries = (state.medalStandings || []).slice(0, 3);
+  if (entries.length < 3) return "";
+  return `<section class="match-podium"><div class="match-rank-title">PÓDIO DA PARTIDA</div><div class="podium-places">${entries.map((entry) => {
+    const medal = ["🥇", "🥈", "🥉"][entry.position - 1];
+    const mine = entry.id === state.me?.id ? "mine" : "";
+    return `<div class="podium-place place-${entry.position} ${mine}"><span>${medal}</span><b>${escapeHtml(entry.name)}</b><small>${entry.position}º lugar</small></div>`;
+  }).join("")}</div></section>`;
 }
 
 let celebratedKey = null;
@@ -1194,7 +1130,7 @@ function renderAction() {
         : (isHost() ? `<button id="next-tournament">PRÓXIMA PARTIDA · ${tournament.completedGames + 1}/${tournament.totalGames}</button>` : "<p>Esperando o dono da sala iniciar a próxima partida.</p>"))
       : (isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "");
     const panelTitle = tournamentFinished ? "TORNEIO ENCERRADO" : "FIM DE JOGO";
-    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#next-tournament")?.addEventListener("click", () => socket.emit("next-tournament-game"));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));

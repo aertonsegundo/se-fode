@@ -14,6 +14,9 @@ create table if not exists public.profiles (
   games_played  integer not null default 0,
   rank_points   integer not null default 0,
   tournament_titles integer not null default 0,
+  gold_medals   integer not null default 0,
+  silver_medals integer not null default 0,
+  bronze_medals integer not null default 0,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
@@ -26,6 +29,9 @@ alter table public.profiles add column if not exists casual_points integer not n
 alter table public.profiles add column if not exists tournament_points integer not null default 0;
 -- Sprint 3: vitórias ONLINE (exclui solo) para desbloquear banners.
 alter table public.profiles add column if not exists online_wins integer not null default 0;
+alter table public.profiles add column if not exists gold_medals integer not null default 0;
+alter table public.profiles add column if not exists silver_medals integer not null default 0;
+alter table public.profiles add column if not exists bronze_medals integer not null default 0;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security.
@@ -111,6 +117,34 @@ begin
 end;
 $$;
 
+-- Registro atômico do novo ranking. A posição é decidida pelo servidor ao fim
+-- da partida; p_medals contém apenas "gold", "silver" ou "bronze" para o pódio
+-- de partidas com cinco ou mais contas humanas.
+create or replace function public.record_game_medals(p_players uuid[], p_winner uuid, p_medals jsonb, p_online boolean default false)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles set games_played = games_played + 1
+  where id = any(p_players);
+
+  update public.profiles set wins = wins + 1
+  where p_winner is not null and id = p_winner;
+
+  update public.profiles set online_wins = online_wins + 1
+  where p_online and p_winner is not null and id = p_winner;
+
+  update public.profiles p
+  set gold_medals = p.gold_medals + case when reward.medal = 'gold' then 1 else 0 end,
+      silver_medals = p.silver_medals + case when reward.medal = 'silver' then 1 else 0 end,
+      bronze_medals = p.bronze_medals + case when reward.medal = 'bronze' then 1 else 0 end
+  from (select key, value as medal from jsonb_each_text(coalesce(p_medals, '{}'::jsonb))) reward
+  where p.id::text = reward.key;
+end;
+$$;
+
 -- Resultado final do torneio: pontos vão para o bolso de Torneio (tournament_points)
 -- e o campeão ganha +1 título.
 create or replace function public.award_tournament_result(p_rewards jsonb, p_champion uuid)
@@ -128,6 +162,17 @@ begin
   update public.profiles set tournament_titles = tournament_titles + 1
   where p_champion is not null and id = p_champion;
 end;
+$$;
+
+-- O campeão de um torneio válido recebe um troféu; não há pontos envolvidos.
+create or replace function public.award_tournament_trophy(p_champion uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.profiles set tournament_titles = tournament_titles + 1
+  where p_champion is not null and id = p_champion;
 $$;
 
 -- Eventos de pontos para rankings por período. Só há eventos de contas humanas:
@@ -148,6 +193,31 @@ create index if not exists ranking_events_weekly_idx
   on public.ranking_events (created_at desc, player_id);
 
 alter table public.ranking_events enable row level security;
+
+-- Migração única para o quadro de medalhas. Os pontos e títulos antigos são
+-- zerados uma única vez; reexecutar este schema depois não apaga medalhas novas.
+create table if not exists public.schema_migrations (
+  key text primary key,
+  applied_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from public.schema_migrations where key = 'medal_ranking_v1') then
+    update public.profiles
+    set rank_points = 0,
+        casual_points = 0,
+        tournament_points = 0,
+        tournament_titles = 0,
+        gold_medals = 0,
+        silver_medals = 0,
+        bronze_medals = 0;
+    update public.profiles set banner = 'novato' where banner = 'campeao';
+    delete from public.ranking_events;
+    insert into public.schema_migrations (key) values ('medal_ranking_v1');
+  end if;
+end;
+$$;
 
 -- Ranking semanal COMBINADO (segunda-feira até agora): soma de pontos de todos os
 -- modos + títulos de torneio conquistados na semana. Lido com service_role.
@@ -211,7 +281,8 @@ returns table (
   banner text,
   points bigint,
   games_played bigint,
-  wins bigint
+  wins bigint,
+  tournament_titles bigint
 )
 language sql
 stable
@@ -234,15 +305,22 @@ as $$
     from public.ranking_events e cross join period_start s
     where e.created_at >= s.starts_at
     group by e.player_id
+  ), title_stats as (
+    select e.player_id, count(*)::bigint as tournament_titles
+    from public.ranking_events e cross join period_start s
+    where e.created_at >= s.starts_at and e.kind = 'tournament_champion'
+    group by e.player_id
   )
   select p.id, p.display_name, p.photo, p.banner,
     coalesce(ps.points, 0)::bigint as points,
     coalesce(gs.games_played, 0)::bigint as games_played,
-    coalesce(gs.wins, 0)::bigint as wins
+    coalesce(gs.wins, 0)::bigint as wins,
+    coalesce(ts.tournament_titles, 0)::bigint as tournament_titles
   from public.profiles p
-  join (select player_id from game_stats union select player_id from point_stats) active on active.player_id = p.id
+  join (select player_id from game_stats union select player_id from point_stats union select player_id from title_stats) active on active.player_id = p.id
   left join game_stats gs on gs.player_id = p.id
   left join point_stats ps on ps.player_id = p.id
+  left join title_stats ts on ts.player_id = p.id
   order by points desc, wins desc, games_played desc
   limit greatest(1, least(coalesce(p_limit, 50), 100));
 $$;
