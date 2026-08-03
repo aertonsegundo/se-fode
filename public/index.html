@@ -180,26 +180,17 @@
   <dialog id="ranking" class="ranking-dialog">
     <button id="ranking-close" class="close">×</button>
     <div class="kicker">HALL DA FAMA</div>
-    <h2>RANKING GERAL</h2>
+    <h2>QUADRO DE MEDALHAS</h2>
     <div class="ranking-tabrow">
-      <div id="ranking-tabs" class="ranking-tabs" role="tablist" aria-label="Critério de ordenação do ranking">
-        <button type="button" data-ranking-sort="points" class="active" role="tab" aria-selected="true">PONTOS</button>
-        <button type="button" data-ranking-sort="wins" role="tab" aria-selected="false">VITÓRIAS</button>
-        <button type="button" data-ranking-sort="points-per-game" role="tab" aria-selected="false">PONTOS POR JOGO</button>
-      </div>
-      <button type="button" id="ranking-rules-btn" class="ranking-rules-btn" aria-label="Como pontua" title="Como pontua">💡</button>
-    </div>
-    <div id="ranking-period-tabs" class="ranking-period-tabs" role="tablist" aria-label="Período do ranking">
-      <button type="button" data-ranking-period="weekly" role="tab" aria-selected="false">SEMANAL</button>
-      <button type="button" data-ranking-period="monthly" role="tab" aria-selected="false">MENSAL</button>
-      <button type="button" data-ranking-period="all" class="active" role="tab" aria-selected="true">DESDE SEMPRE</button>
+      <p class="ranking-summary">🥇 Ouro · 🥈 Prata · 🥉 Bronze · 🏆 Troféus</p>
+      <button type="button" id="ranking-rules-btn" class="ranking-rules-btn" aria-label="Como funcionam as medalhas" title="Como funcionam as medalhas">💡</button>
     </div>
     <div id="ranking-body" class="ranking-body"></div>
   </dialog>
 
   <dialog id="ranking-rules-modal" class="rules-modal">
     <button id="ranking-rules-close" class="close">×</button>
-    <div class="kicker">COMO PONTUA</div>
+    <div class="kicker">COMO FUNCIONA</div>
     <h2 id="rules-title"></h2>
     <div id="rules-body" class="rules-body"></div>
   </dialog>
@@ -226,14 +217,14 @@
       <p>Manilhas fixas — da maior força → à menor força</p>
       <div class="trumps">4♣ · 7♥ · A♠ · 7♦</div>
     </section>
-    <section class="ranking-rules" aria-label="Pontuação e ranking">
-      <b>RANKING E TORNEIOS</b>
+    <section class="ranking-rules" aria-label="Medalhas e ranking">
+      <b>MEDALHAS E RANKING</b>
       <ul>
-        <li><b>Partida:</b> quem vence ganha <b>+3 pontos</b>; o 2º humano ganha <b>+1</b>.</li>
-        <li><b>Torneio:</b> cada partida segue essa regra. No final, campeão ganha <b>+15</b> e 1 título; vice <b>+8</b>; 3º <b>+5</b>.</li>
-        <li>O bônus final só vale com <b>3 ou mais humanos</b>. Bots jogam, mas não contam para posições, vitórias, pontos ou títulos.</li>
-        <li>O ranking ordena: <b>pontos → títulos → vitórias</b>.</li>
-        <li>O <b>ranking semanal</b> mostra só os pontos conquistados desde segunda-feira.</li>
+        <li>O pódio entrega <b>ouro, prata e bronze</b> para 1º, 2º e 3º.</li>
+        <li>Só vale em partidas com <b>5 ou mais jogadores humanos</b>. Bots não contam.</li>
+        <li>O campeão de um torneio válido ganha <b>1 troféu</b>.</li>
+        <li>O quadro geral ordena: <b>ouro → prata → bronze</b>.</li>
+        <li>Saiu da sala depois de garantir uma colocação? A medalha continua valendo.</li>
       </ul>
     </section>
     <p class="fine">Uma <b>mão</b> tem várias <b>rodadas</b> — uma para cada carta. Na mão de uma carta, a sua fica na testa: todos veem, menos você. Em toda mão, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>

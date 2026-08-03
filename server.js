@@ -5,8 +5,8 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, casualPoints, tournamentRankPoints, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
-import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentResult, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, supabaseEnabled, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
+import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -30,19 +30,6 @@ async function reloadAndBroadcastEmotes() {
   io.emit("emotes", activeEmotes()); // atualiza a barra de todo mundo na hora
 }
 
-// Campeão da Semana: o 1º do ranking semanal (dinâmico) usa um banner especial na
-// mesa. Recarregado periodicamente; quando muda, reemite o estado das salas.
-let weeklyChampionId = null;
-async function refreshWeeklyChampion() {
-  if (!supabaseEnabled) return;
-  try {
-    const top = await leaderboard(1, "weekly");
-    const next = top[0]?.points > 0 ? top[0].id : null;
-    if (next === weeklyChampionId) return;
-    weeklyChampionId = next;
-    for (const room of rooms.values()) broadcast(room); // atualiza os banners na mesa
-  } catch { /* mantém o campeão atual */ }
-}
 
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
 // deploy nunca fica preso numa versao antiga em cache no cliente.
@@ -122,13 +109,11 @@ app.post("/api/me/banner", async (req, res) => {
   res.json({ ok: true, banner });
 });
 
-// Ranking geral por pontos, vitórias ou pontos por partida — qualquer usuário logado vê.
+// Quadro geral de medalhas — sem recortes semanal ou mensal.
 app.get("/api/leaderboard", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
-  const sort = ["points", "wins", "points-per-game"].includes(req.query.sort) ? req.query.sort : "points";
-  const period = ["weekly", "monthly", "all"].includes(req.query.period) ? req.query.period : "all";
-  res.json({ leaderboard: await leaderboard(50, "general", sort, period), sort, period, banners: BANNERS, meId: profile.id });
+  res.json({ leaderboard: await leaderboard(50), banners: BANNERS, meId: profile.id });
 });
 
 // Perfil público que abre ao clicar em alguém na mesa. O perfil autenticado
@@ -346,6 +331,10 @@ function publicState(room, viewerId) {
   return {
     ranking,
     matchStandings: room.phase === "game_over" ? finalStandingsFrom(seatedPlayers(room)) : [],
+    medalStandings: room.phase === "game_over"
+      ? finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId))
+      : [],
+    medalMatch: room.phase === "game_over" && seatedPlayers(room).filter((player) => player.userId).length >= 5,
     tournament: tournamentState(room),
     lastResult,
     code: room.code,
@@ -378,8 +367,7 @@ function publicState(room, viewerId) {
       isBot: Boolean(player.isBot),
       avatarKey: player.avatarKey || null,
       photoUrl: player.photoUrl || null,
-      // O Campeão da Semana (líder do ranking semanal) usa o banner especial na mesa.
-      banner: player.userId && player.userId === weeklyChampionId ? "campeao" : (player.banner || "novato"),
+      banner: player.banner || "novato",
       cardCount: player.hand.length,
       foreheadCard: forehead && player.id !== viewerId ? player.hand[0] : null,
     })),
@@ -651,7 +639,6 @@ function startRound(room) {
 }
 
 function startGame(room) {
-  refreshWeeklyChampion(); // mantém o banner de campeão fresco quando um jogo começa
   // Expulsos e quem quitou já foram contabilizados na partida anterior, mas não
   // voltam para uma nova partida.
   room.players = room.players.filter((player) => !player.expelled && !player.quit);
@@ -817,7 +804,7 @@ function scoreRound(room) {
     ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
     : "Ninguém se fodeu dessa vez — todo mundo cravou.";
   // Quem quitou deixa o bot fechar a mão, mas a saída vale como eliminação. A
-  // pessoa continua na classificação desta partida para contabilizar jogo e pontos.
+  // pessoa continua na classificação desta partida para contabilizar jogo e medalha.
   for (const player of room.players.filter((item) => item.quit && !item.spectator)) {
     player.eliminated = true;
     player.eliminatedAtRound ??= room.round;
@@ -870,10 +857,10 @@ function endGame(room) {
     room.lastWinnerName = null; // ninguém venceu: não conta pro ranking
     room.message = "Todo mundo se fodeu. Impressionante.";
   }
-  // Bots não contam: posição, pontos e histórico usam apenas contas humanas.
+  // Bots não contam: posição, medalhas e histórico usam apenas contas humanas.
   const isTournament = Boolean(room.tournament);
   // Quem quitou no meio da partida fica como eliminado na classificação: conta
-  // jogo, derrota e a pontuação correspondente à posição final.
+  // jogo, derrota e a medalha correspondente à posição final.
   const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
   const humanCount = humanStandings.length;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
@@ -886,9 +873,7 @@ function endGame(room) {
         position,
         playerCount: humanCount,
         won: player.id === winner?.id,
-        // Partida Rápida: top 3 pontua (3/2/1) só com 3+ humanos. Torneio não pontua
-        // por jogo — os pontos vêm só da classificação final do torneio.
-        rankPoints: isTournament ? 0 : casualPoints(position, humanCount),
+        medal: medalForPosition(position, humanCount),
       };
     });
   const online = !room.solo; // solo (contra bots) não conta vitória online
@@ -913,18 +898,12 @@ function endGame(room) {
     room.tournament.finished = room.tournament.completedGames >= room.tournament.totalGames;
     const finalTournamentStandings = tournamentStandings(room);
     const leader = finalTournamentStandings[0];
-    // Pontos de ranking do torneio: só na classificação final, top 5 (10/6/4/2/1),
-    // com 3+ humanos. Bots não participam nem do cálculo.
-    if (room.tournament.finished && finalTournamentStandings.length >= 3 && !room.tournament.rankingAwarded) {
+    if (room.tournament.finished && finalTournamentStandings.length >= 5 && !room.tournament.rankingAwarded) {
       room.tournament.rankingAwarded = true;
-      awardTournamentResult(finalTournamentStandings.map((entry) => ({
-        userId: entry.userId,
-        position: entry.position,
-        rankPoints: tournamentRankPoints(entry.position, finalTournamentStandings.length),
-      })));
+      awardTournamentTrophy(leader?.userId);
     }
     room.message = room.tournament.finished
-      ? `${leader?.name || "Alguém"} venceu o Torneio Rankeado!`
+      ? `${leader?.name || "Alguém"} venceu o Torneio Rankeado${finalTournamentStandings.length >= 5 ? " e ganhou um troféu!" : "!"}`
       : `Partida ${room.tournament.completedGames}/${room.tournament.totalGames} encerrada. ${leader?.name || "—"} lidera o torneio.`;
   }
   broadcast(room);
@@ -1282,6 +1261,4 @@ server.listen(port, "0.0.0.0", async () => {
   console.log(`Se Fode rodando em http://localhost:${port}`);
   selfTest();
   try { await seedEmotes(); await loadEmotes(); } catch (error) { console.error("[emotes] carga inicial falhou:", error.message); }
-  refreshWeeklyChampion();
-  setInterval(refreshWeeklyChampion, 2 * 60 * 1000); // reavalia o campeão da semana a cada 2 min
 });
