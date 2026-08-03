@@ -670,3 +670,117 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
   .account-name { max-width:8rem; overflow:hidden; text-overflow:ellipsis; }
   .lb-row { grid-template-columns:1.6rem 2rem 1fr repeat(3,auto); gap:.35rem; }
 }
+
+/* ===================== JOGO: EXPERIÊNCIA MOBILE =====================
+   Durante a mão, não há motivo para empurrar a mesa e as cartas para fora da
+   tela. A área central cresce até o espaço disponível e a mão fica sempre
+   ancorada no rodapé. Painéis de resultado continuam sendo modais de propósito. */
+@media (max-width:850px) {
+  .game[data-phase="bidding"],
+  .game[data-phase="playing"],
+  .game[data-phase="trick_reveal"] {
+    height:100dvh;
+    min-height:100dvh;
+    padding:.55rem .7rem calc(.35rem + env(safe-area-inset-bottom, 0px));
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  .game[data-phase="bidding"] .game-layout,
+  .game[data-phase="playing"] .game-layout,
+  .game[data-phase="trick_reveal"] .game-layout {
+    flex:1 1 auto;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+
+  .game[data-phase="bidding"] .table-stage,
+  .game[data-phase="playing"] .table-stage,
+  .game[data-phase="trick_reveal"] .table-stage {
+    flex:1 1 auto;
+    min-height:0;
+  }
+
+  .game[data-phase="bidding"] .poker,
+  .game[data-phase="playing"] .poker,
+  .game[data-phase="trick_reveal"] .poker {
+    width:min(100%, 72dvh);
+    max-width:560px;
+  }
+
+  .game[data-phase="bidding"] .hand,
+  .game[data-phase="playing"] .hand,
+  .game[data-phase="trick_reveal"] .hand {
+    flex:0 0 auto;
+    min-height:6.2rem;
+    height:clamp(6.2rem, 16dvh, 8rem);
+    padding:.2rem 0 0;
+  }
+
+  .game[data-phase="bidding"] .hand .card,
+  .game[data-phase="playing"] .hand .card,
+  .game[data-phase="trick_reveal"] .hand .card {
+    width:clamp(52px, 15vw, 65px);
+    height:clamp(76px, 22vw, 94px);
+  }
+
+  /* Ao esperar outra pessoa ou escolher uma carta, a mesa já comunica a vez.
+     Tiramos o painel textual da pilha para não criar rolagem desnecessária. */
+  .game[data-phase="bidding"]:not([data-acting="1"]) .action-panel,
+  .game[data-phase="playing"]:not([data-acting="1"]) .action-panel { display:none; }
+
+  /* Controles ficam fora da mão; quando a aposta abre, a regra existente os
+     esconde para evitar toque acidental no painel de decisão. */
+  .game[data-phase="bidding"] .fab,
+  .game[data-phase="playing"] .fab,
+  .game[data-phase="trick_reveal"] .fab {
+    left:auto;
+    right:.7rem;
+    width:2.8rem;
+    height:2.8rem;
+  }
+  .game[data-phase="bidding"] .emote-toggle,
+  .game[data-phase="playing"] .emote-toggle,
+  .game[data-phase="trick_reveal"] .emote-toggle { bottom:10rem; }
+  .game[data-phase="bidding"] .chat-toggle,
+  .game[data-phase="playing"] .chat-toggle,
+  .game[data-phase="trick_reveal"] .chat-toggle { bottom:6.6rem; }
+
+  .game[data-phase="bidding"] .emote-bar,
+  .game[data-phase="playing"] .emote-bar,
+  .game[data-phase="trick_reveal"] .emote-bar {
+    left:auto;
+    right:4rem;
+    bottom:10rem;
+    max-width:calc(100vw - 5.2rem);
+    max-height:7rem;
+    overflow-y:auto;
+  }
+
+  /* O chat passa a ser uma tela de foco: nunca cobre apenas metade da mesa ou
+     deixa as cartas clicáveis por baixo. Fechar no × devolve exatamente ao jogo. */
+  .game.chat-open::after {
+    content:"";
+    position:fixed;
+    inset:0;
+    z-index:38;
+    background:#000c;
+  }
+  .game.chat-open .chat {
+    top:max(.7rem, env(safe-area-inset-top, 0px));
+    right:.7rem;
+    bottom:max(.7rem, env(safe-area-inset-bottom, 0px));
+    left:.7rem;
+    z-index:39;
+    width:auto;
+    height:auto;
+    max-height:none;
+    border-radius:16px;
+  }
+  .game.chat-open .chat-head { padding:.8rem 1rem; }
+  .game.chat-open .chat-form { padding:.7rem; }
+  .game.chat-open .chat-form input { min-height:2.8rem; font-size:1rem; }
+}

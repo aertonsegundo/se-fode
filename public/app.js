@@ -816,6 +816,7 @@ function appendChat(message) {
 
 function setChatOpen(open) {
   chatOpen = open;
+  game.classList.toggle("chat-open", open);
   $("#chat").classList.toggle("hidden", !open);
   $("#chat-toggle").classList.toggle("active", open);
   if (open) {
