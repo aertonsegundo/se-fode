@@ -925,9 +925,18 @@ io.use(async (socket, next) => {
   next();
 });
 
-// Login obrigatório para criar/entrar em salas.
-function requireUser(socket) {
+// Login obrigatório para criar/entrar em salas. Em uma reconexão logo após um
+// deploy o handshake pode chegar sem auth; nesse caso valida o token trazido
+// pela própria ação em vez de derrubar a sessão já válida no navegador.
+async function requireUser(socket, token) {
   if (socket.data.user) return true;
+  if (token) {
+    const user = await profileFromToken(token);
+    if (user) {
+      socket.data.user = user;
+      return true;
+    }
+  }
   socket.emit("auth-required");
   notice(socket, "Faça login para entrar em uma sala.");
   return false;
@@ -968,8 +977,8 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("solo-game", async ({ name, botCount, botDifficulty } = {}) => {
-    if (!requireUser(socket)) return;
+  socket.on("solo-game", async ({ name, botCount, botDifficulty, token } = {}) => {
+    if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
@@ -988,8 +997,8 @@ io.on("connection", (socket) => {
     startGame(room);
   });
 
-  socket.on("create-room", async ({ name } = {}) => {
-    if (!requireUser(socket)) return;
+  socket.on("create-room", async ({ name, token } = {}) => {
+    if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
@@ -1001,8 +1010,8 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("create-tournament", async ({ name, tournamentGames } = {}) => {
-    if (!requireUser(socket)) return;
+  socket.on("create-tournament", async ({ name, tournamentGames, token } = {}) => {
+    if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
@@ -1017,8 +1026,8 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("join-room", async ({ name, code } = {}) => {
-    if (!requireUser(socket)) return;
+  socket.on("join-room", async ({ name, code, token } = {}) => {
+    if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     code = cleanCode(code);
