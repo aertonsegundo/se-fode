@@ -38,7 +38,7 @@ function showToast(text) {
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
-async function join(kind) {
+async function join(kind, extra = {}) {
   // Atualiza o token antes de enfileirar a ação. Isso cobre o intervalo em que
   // a tela já abriu, mas o socket ainda está reconectando após um deploy.
   const { data } = supabase ? await supabase.auth.getSession() : { data: null };
@@ -53,10 +53,10 @@ async function join(kind) {
     code: $("#code").value,
     botCount: Number($("#bot-count").value),
     botDifficulty: $("#bot-difficulty").value,
-    tournamentGames: Number($("#tournament-games").value),
     // Fallback para um socket que acabou de reconectar após deploy. O servidor
     // valida este token da mesma forma que valida as chamadas /api/me.
     token: accountToken,
+    ...extra,
   });
 }
 
@@ -88,9 +88,45 @@ function confirmLeave() {
 $("#solo").onclick = () => $("#solo-modal").showModal();
 $("#solo-close").onclick = () => $("#solo-modal").close();
 $("#solo-start").onclick = () => { $("#solo-modal").close(); join("solo-game"); };
-$("#create").onclick = () => join("create-room");
-$("#tournament").onclick = () => join("create-tournament");
-$("#join").onclick = () => join("join-room");
+// Criar sala: um modal único (nome + senha opcional + torneio opcional).
+function genRoomPassword() {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+}
+$("#create").onclick = () => {
+  $("#create-name").value = "";
+  $("#create-private").checked = false;
+  $("#create-password").value = "";
+  $("#create-tourney").checked = false;
+  $("#create-pass-row").classList.add("hidden");
+  $("#create-tourney-row").classList.add("hidden");
+  $("#create-modal").showModal();
+};
+$("#create-close").onclick = () => $("#create-modal").close();
+$("#create-private").onchange = (e) => $("#create-pass-row").classList.toggle("hidden", !e.target.checked);
+$("#create-tourney").onchange = (e) => $("#create-tourney-row").classList.toggle("hidden", !e.target.checked);
+$("#create-genpass").onclick = () => { $("#create-password").value = genRoomPassword(); };
+$("#create-start").onclick = () => {
+  const isPrivate = $("#create-private").checked;
+  const isTournament = $("#create-tourney").checked;
+  $("#create-modal").close();
+  join("create-room", {
+    roomName: $("#create-name").value,
+    isPrivate,
+    password: isPrivate ? $("#create-password").value : "",
+    isTournament,
+    tournamentGames: Number($("#create-games").value),
+  });
+};
+
+// Entrar por código: se a sala for privada, o servidor pede senha; então perguntamos e repetimos.
+let pendingJoin = null;
+$("#join").onclick = () => {
+  const code = $("#code").value.trim();
+  if (!code) return;
+  pendingJoin = { code };
+  join("join-room", { code });
+};
 $("#code").addEventListener("input", (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 $("#rules-open").onclick = () => $("#rules").showModal();
 $("#rules-close").onclick = () => $("#rules").close();
@@ -130,7 +166,36 @@ socket.on("session-expired", () => {
   home.classList.remove("hidden");
   showToast("A sala anterior não existe mais.");
 });
-socket.on("notice", showToast);
+socket.on("notice", (text) => {
+  // Entrou por código numa sala privada: o servidor recusou por senha → abre o modal próprio.
+  if (text === "Senha incorreta." && pendingJoin) {
+    if ($("#password-modal").open) {
+      // já estava tentando: mostra o erro dentro do modal, sem fechá-lo
+      $("#password-error").classList.remove("hidden");
+      $("#password-input").select();
+    } else {
+      $("#password-input").value = "";
+      $("#password-error").classList.add("hidden");
+      $("#password-modal").showModal();
+      setTimeout(() => $("#password-input").focus(), 60);
+    }
+    return; // não mostra o toast do sistema
+  }
+  if (text === "Você entrou na sala." || text?.startsWith("Partida em andamento")) {
+    pendingJoin = null;
+    if ($("#password-modal").open) $("#password-modal").close();
+  }
+  showToast(text);
+});
+// Modal de senha próprio (substitui o prompt do sistema) ao entrar numa sala privada.
+$("#password-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const password = $("#password-input").value.trim();
+  if (!password || !pendingJoin) return;
+  $("#password-error").classList.add("hidden");
+  join("join-room", { code: pendingJoin.code, password });
+});
+$("#password-close").onclick = () => { pendingJoin = null; $("#password-modal").close(); };
 socket.on("state", (next) => {
   state = next;
   home.classList.add("hidden");

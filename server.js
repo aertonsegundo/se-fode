@@ -198,6 +198,15 @@ app.delete("/api/admin/emotes/:key", async (req, res) => {
 app.get("/dashboard", (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
 
 const cleanName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);
+const cleanRoomName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 28);
+const cleanPassword = (value) => String(value || "").trim().slice(0, 24);
+// Senha gerada legível (sem caracteres ambíguos como 0/O, 1/I).
+const genPassword = () => {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
+};
 const cleanChat = (value) => String(value || "").replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 const cleanCode = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
 const roomCode = () => {
@@ -340,6 +349,11 @@ function publicState(room, viewerId) {
     tournament: tournamentState(room),
     lastResult,
     code: room.code,
+    roomName: room.name,
+    isPrivate: room.isPrivate,
+    // senha e convite só interessam a quem já está dentro (para convidar/compartilhar).
+    password: room.password || null,
+    inviteToken: room.inviteToken,
     phase: room.phase,
     hostId: room.hostId,
     dealerId: room.dealerId,
@@ -402,6 +416,11 @@ function broadcast(room) {
 function newRoom(code, host) {
   const room = {
     code,
+    name: null,          // nome da sala (definido ao criar); cai pra "Mesa de <dono>" se vazio
+    isPrivate: false,    // sala privada exige senha (ou convite) pra entrar
+    password: null,      // senha da sala privada (nunca vai pro publicState de quem está fora)
+    inviteToken: randomUUID(), // link de convite entra direto, sem senha
+    quickMatch: false,   // sala pública de "partida rápida"
     hostId: host.id,
     players: [],
     phase: "lobby",
@@ -1002,7 +1021,8 @@ io.on("connection", (socket) => {
     startGame(room);
   });
 
-  socket.on("create-room", async ({ name, token } = {}) => {
+  // Criação unificada: nome da sala, privada (com senha ou gerada) e, opcionalmente, torneio.
+  socket.on("create-room", async ({ name, roomName, isPrivate, password, isTournament, tournamentGames, token } = {}) => {
     if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
@@ -1010,28 +1030,22 @@ io.on("connection", (socket) => {
     const code = roomCode();
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
+    room.name = cleanRoomName(roomName) || `Mesa de ${name}`;
+    if (isPrivate) {
+      room.isPrivate = true;
+      room.password = cleanPassword(password) || genPassword();
+    }
+    if (isTournament) {
+      const totalGames = [3, 5].includes(Number(tournamentGames)) ? Number(tournamentGames) : 3;
+      room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {}, participants: {} };
+      room.message = `Torneio de Medalhas com ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
+    }
     rooms.set(code, room);
     sendSession(socket, room, player);
     broadcast(room);
   });
 
-  socket.on("create-tournament", async ({ name, tournamentGames, token } = {}) => {
-    if (!await requireUser(socket, token)) return;
-    await refreshUser(socket);
-    name = cleanName(name) || cleanName(socket.data.user.displayName);
-    if (!name) return notice(socket, "Digite seu nome.");
-    const totalGames = [3, 5].includes(Number(tournamentGames)) ? Number(tournamentGames) : 3;
-    const code = roomCode();
-    const player = createPlayer(socket, name);
-    const room = newRoom(code, player);
-    room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {}, participants: {} };
-    room.message = `Torneio de Medalhas com ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
-    rooms.set(code, room);
-    sendSession(socket, room, player);
-    broadcast(room);
-  });
-
-  socket.on("join-room", async ({ name, code, token } = {}) => {
+  socket.on("join-room", async ({ name, code, password, invite, token } = {}) => {
     if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
@@ -1039,6 +1053,13 @@ io.on("connection", (socket) => {
     const room = rooms.get(code);
     if (!name) return notice(socket, "Digite seu nome.");
     if (!room) return notice(socket, "Sala não encontrada.");
+    // Sala privada: entra com o link de convite (token) OU com a senha certa.
+    if (room.isPrivate) {
+      const invited = invite && invite === room.inviteToken;
+      if (!invited && cleanPassword(password) !== room.password) {
+        return notice(socket, "Senha incorreta.");
+      }
+    }
     if (room.players.length >= 8) return notice(socket, "A sala já está cheia.");
     // Mesmo nome na mesa: se for um "fantasma" desconectado que dá pra liberar (fora de mão
     // ativa, ou já eliminado/espectador), remove pra deixar a pessoa voltar. Se for alguém

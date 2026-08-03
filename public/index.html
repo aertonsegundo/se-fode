@@ -55,14 +55,6 @@
       <form class="entry-card" onsubmit="return false">
         <button id="solo" class="solo">JOGAR SOZINHO <b>♠</b></button>
         <button id="create" class="primary">CRIAR UMA SALA <b>→</b></button>
-        <div class="tournament-setup">
-          <label for="tournament-games">TORNEIO DE MEDALHAS</label>
-          <select id="tournament-games" aria-label="Quantidade de partidas no torneio">
-            <option value="3" selected>3 partidas</option>
-            <option value="5">5 partidas</option>
-          </select>
-          <button id="tournament" class="tournament">CRIAR TORNEIO <b>⚡</b></button>
-        </div>
         <div class="or"><span>OU ENTRE NUMA</span></div>
         <div class="join-row">
           <input id="code" maxlength="5" placeholder="CÓDIGO" aria-label="Código da sala" />
@@ -141,6 +133,43 @@
       <option value="hard">Difícil — cruel</option>
     </select>
     <button id="solo-start" class="primary">COMEÇAR PARTIDA <b>♠</b></button>
+  </dialog>
+
+  <dialog id="create-modal" class="solo-dialog">
+    <button id="create-close" class="close">×</button>
+    <div class="kicker">NOVA SALA</div>
+    <h2>CRIAR SALA</h2>
+    <label class="profile-label" for="create-name">NOME DA SALA</label>
+    <input id="create-name" class="modal-input" maxlength="28" placeholder="Ex.: Mesa da firma" autocomplete="off" />
+    <label class="modal-check"><input type="checkbox" id="create-private" /> <span>Sala privada (só entra com senha ou convite)</span></label>
+    <div id="create-pass-row" class="hidden">
+      <label class="profile-label" for="create-password">SENHA</label>
+      <div class="pass-row">
+        <input id="create-password" class="modal-input" maxlength="24" placeholder="Defina uma senha" autocomplete="off" />
+        <button type="button" id="create-genpass" class="account-btn">GERAR</button>
+      </div>
+    </div>
+    <label class="modal-check"><input type="checkbox" id="create-tourney" /> <span>Torneio de Medalhas</span></label>
+    <div id="create-tourney-row" class="hidden">
+      <label class="profile-label" for="create-games">QUANTAS PARTIDAS?</label>
+      <select id="create-games" aria-label="Quantidade de partidas no torneio">
+        <option value="3" selected>3 partidas</option>
+        <option value="5">5 partidas</option>
+      </select>
+    </div>
+    <button id="create-start" class="primary">CRIAR SALA <b>→</b></button>
+  </dialog>
+
+  <dialog id="password-modal" class="solo-dialog">
+    <button id="password-close" class="close">×</button>
+    <div class="kicker">SALA PRIVADA</div>
+    <h2 id="password-title">DIGITE A SENHA</h2>
+    <form id="password-form" onsubmit="return false">
+      <label class="profile-label" for="password-input">SENHA DA SALA</label>
+      <input id="password-input" class="modal-input" maxlength="24" placeholder="Senha da sala" autocomplete="off" />
+      <div id="password-error" class="auth-error hidden">Senha incorreta. Tenta de novo.</div>
+      <button id="password-submit" class="primary">ENTRAR <b>→</b></button>
+    </form>
   </dialog>
 
   <dialog id="profile" class="profile-dialog">
