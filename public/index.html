@@ -175,6 +175,16 @@
     <div id="avatar-choices" class="avatar-choices"></div>
     <label class="profile-label" for="photo-upload">OU ENVIE UMA FOTO</label>
     <input id="photo-upload" type="file" accept="image/png,image/jpeg,image/webp" />
+    <div id="photo-crop" class="photo-crop hidden" aria-live="polite">
+      <label class="profile-label">ESCOLHA A PROPORÇÃO</label>
+      <div class="photo-ratio-choices" role="group" aria-label="Proporção da foto">
+        <button class="photo-ratio-choice active" type="button" data-photo-ratio="1:1">QUADRADA<br><span>1:1</span></button>
+        <button class="photo-ratio-choice" type="button" data-photo-ratio="4:5">RETRATO<br><span>4:5</span></button>
+        <button class="photo-ratio-choice" type="button" data-photo-ratio="16:9">PAISAGEM<br><span>16:9</span></button>
+      </div>
+      <div id="photo-crop-preview" class="photo-crop-preview"></div>
+      <button id="photo-upload-save" class="photo-upload-save" type="button">SALVAR FOTO</button>
+    </div>
   </dialog>
 
   <dialog id="ranking" class="ranking-dialog">
