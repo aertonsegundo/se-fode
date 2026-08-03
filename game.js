@@ -227,14 +227,6 @@ export function finalStandingsFrom(players) {
   }));
 }
 
-// Pontos do Torneio Rankeado: a vitória vale um ponto extra, e ninguém sai
-// de uma partida sem pontuar. Ex.: 4 jogadores → 5, 3, 2 e 1 ponto.
-// (Usado só para decidir a classificação DENTRO do torneio.)
-export function tournamentPoints(position, playerCount) {
-  if (!Number.isInteger(position) || position < 1 || position > playerCount) return 0;
-  return position === 1 ? playerCount + 1 : Math.max(1, playerCount - position + 1);
-}
-
 // ===== Ranking global por medalhas =====
 // Só partidas com cinco ou mais contas humanas valem pódio. Bots não entram na
 // contagem nem recebem medalha. A colocação já é calculada no fim da partida,
@@ -252,8 +244,10 @@ export function unlockedBannerKeys(onlineWins, banners) {
 
 export function tournamentStandingsFrom(entries) {
   return [...entries]
-    .sort((a, b) => b.points - a.points
-      || b.wins - a.wins
+    .sort((a, b) => (b.goldMedals || 0) - (a.goldMedals || 0)
+      || (b.silverMedals || 0) - (a.silverMedals || 0)
+      || (b.bronzeMedals || 0) - (a.bronzeMedals || 0)
+      || (b.wins || 0) - (a.wins || 0)
       || (a.lastPosition ?? Infinity) - (b.lastPosition ?? Infinity)
       || a.name.localeCompare(b.name, "pt-BR"))
     .map((entry, index) => ({ ...entry, position: index + 1 }));

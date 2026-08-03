@@ -849,9 +849,9 @@ function tournamentStandingsHtml({ podium = false } = {}) {
   const rows = tournament.standings.map((entry) => {
     const medal = podium ? (["🥇", "🥈", "🥉"][entry.position - 1] || `${entry.position}º`) : `${entry.position}º`;
     const mine = entry.id === state.me?.id;
-    return `<div class="tournament-row ${mine ? "mine" : ""}"><span>${medal}</span><b>${escapeHtml(entry.name)}</b><small>${entry.points} pts · ${entry.wins} vitória${entry.wins === 1 ? "" : "s"}</small></div>`;
+    return `<div class="tournament-row ${mine ? "mine" : ""}"><span>${medal}</span><b>${escapeHtml(entry.name)}</b><small>🥇 ${entry.goldMedals || 0} · 🥈 ${entry.silverMedals || 0} · 🥉 ${entry.bronzeMedals || 0}</small></div>`;
   }).join("");
-  return `<section class="tournament-standings"><div>⚡ PLACAR DO TORNEIO</div>${rows}</section>`;
+  return `<section class="tournament-standings"><div>⚡ QUADRO DO TORNEIO</div>${rows}</section>`;
 }
 
 function renderTournamentBar() {
@@ -865,7 +865,7 @@ function renderTournamentBar() {
       ? `RESULTADO ${tournament.completedGames}/${tournament.totalGames}`
       : `${Math.min(tournament.completedGames + 1, tournament.totalGames)}/${tournament.totalGames}`;
   const leader = tournament.standings[0];
-  bar.innerHTML = `<b>⚡ TORNEIO ${current}</b><span>${leader && tournament.completedGames ? `LÍDER: ${escapeHtml(leader.name)} · ${leader.points} PTS` : "A PONTUAÇÃO COMEÇA NA 1ª PARTIDA"}</span>`;
+  bar.innerHTML = `<b>⚡ TORNEIO ${current}</b><span>${leader && tournament.completedGames ? `LÍDER: ${escapeHtml(leader.name)} · 🥇 ${leader.goldMedals || 0} · 🥈 ${leader.silverMedals || 0} · 🥉 ${leader.bronzeMedals || 0}` : "AS MEDALHAS COMEÇAM NA 1ª PARTIDA VÁLIDA"}</span>`;
 }
 
 function matchStandingsHtml() {
@@ -1139,8 +1139,8 @@ function renderAction() {
     const url = roomUrl(state.code);
     const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
     const tournament = state.tournament;
-    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO RANKEADO" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
-      <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. A classificação de cada uma vale pontos.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}</p>
+    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO DE MEDALHAS" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
+      <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. Com 5 ou mais jogadores, cada pódio vale medalhas; o campeão leva um troféu.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}</p>
       <div class="share">
         <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />
         <div class="share-actions">

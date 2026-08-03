@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
 
 const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
 
@@ -120,13 +120,11 @@ test("classificação final põe sobrevivente primeiro e o último eliminado aci
   ]);
 });
 
-test("torneio rankeado pontua a classificação e desempata por vitórias", () => {
-  assert.deepEqual([1, 2, 3, 4].map((position) => tournamentPoints(position, 4)), [5, 3, 2, 1]);
-  assert.equal(tournamentPoints(0, 4), 0);
+test("torneio usa o quadro de medalhas e desempata por vitórias", () => {
   assert.deepEqual(tournamentStandingsFrom([
-    { name: "Bia", points: 8, wins: 1, lastPosition: 2 },
-    { name: "Ana", points: 8, wins: 2, lastPosition: 3 },
-    { name: "Caio", points: 5, wins: 1, lastPosition: 1 },
+    { name: "Bia", goldMedals: 1, silverMedals: 1, bronzeMedals: 0, wins: 1, lastPosition: 2 },
+    { name: "Ana", goldMedals: 1, silverMedals: 1, bronzeMedals: 0, wins: 2, lastPosition: 3 },
+    { name: "Caio", goldMedals: 1, silverMedals: 0, bronzeMedals: 3, wins: 3, lastPosition: 1 },
   ]).map(({ name, position }) => ({ name, position })), [
     { name: "Ana", position: 1 },
     { name: "Bia", position: 2 },

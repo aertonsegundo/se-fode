@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentPoints, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -227,8 +227,8 @@ function tournamentStandings(room) {
     .map((id) => {
       const player = playerById(room, id);
       const score = room.tournament.scores[id];
-      // Quem quitou sai da mesa na partida seguinte, mas continua com a
-      // pontuação já conquistada no torneio e pode receber sua premiação final.
+      // Quem quitou sai da mesa na partida seguinte, mas continua com as
+      // medalhas já conquistadas no torneio e pode receber sua premiação final.
       const participant = player?.userId
         ? { userId: player.userId, name: player.name }
         : room.tournament.participants?.[id];
@@ -647,7 +647,9 @@ function startGame(room) {
   const entrants = seatedPlayers(room);
   if (room.tournament && room.tournament.playerIds.length === 0) {
     room.tournament.playerIds = entrants.map((player) => player.id);
-    room.tournament.scores = Object.fromEntries(entrants.map((player) => [player.id, { points: 0, wins: 0, lastPosition: null }]));
+    room.tournament.scores = Object.fromEntries(entrants.map((player) => [player.id, {
+      goldMedals: 0, silverMedals: 0, bronzeMedals: 0, wins: 0, lastPosition: null,
+    }]));
     room.tournament.participants = Object.fromEntries(entrants
       .filter((player) => player.userId)
       .map((player) => [player.id, { userId: player.userId, name: player.name }]));
@@ -879,7 +881,7 @@ function endGame(room) {
       };
     });
   const online = !room.solo; // solo (contra bots) não conta vitória online
-  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio rankeado" : "Partida", online);
+  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio de Medalhas" : "Partida", online);
   // Só o vencedor de partida ONLINE ganha vitória online — pode desbloquear banner.
   if (online && winner?.userId) {
     winner.onlineWins = (winner.onlineWins || 0) + 1;
@@ -890,9 +892,10 @@ function endGame(room) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
       if (!score) continue;
-      // Classificação interna do torneio = pontos de posição + vidas restantes ao
-      // fim do jogo (premia vitórias mais folgadas). Não afeta os pontos de ranking.
-      score.points += tournamentPoints(entry.position, humanCount) + entry.lives;
+      const medal = medalForPosition(entry.position, humanCount);
+      if (medal === "gold") score.goldMedals += 1;
+      if (medal === "silver") score.silverMedals += 1;
+      if (medal === "bronze") score.bronzeMedals += 1;
       score.wins += entry.survived ? 1 : 0;
       score.lastPosition = entry.position;
     }
@@ -900,12 +903,12 @@ function endGame(room) {
     room.tournament.finished = room.tournament.completedGames >= room.tournament.totalGames;
     const finalTournamentStandings = tournamentStandings(room);
     const leader = finalTournamentStandings[0];
-    if (room.tournament.finished && finalTournamentStandings.length >= 5 && !room.tournament.rankingAwarded) {
-      room.tournament.rankingAwarded = true;
+    if (room.tournament.finished && finalTournamentStandings.length >= 5 && !room.tournament.trophyAwarded) {
+      room.tournament.trophyAwarded = true;
       awardTournamentTrophy(leader?.userId);
     }
     room.message = room.tournament.finished
-      ? `${leader?.name || "Alguém"} venceu o Torneio Rankeado${finalTournamentStandings.length >= 5 ? " e ganhou um troféu!" : "!"}`
+      ? `${leader?.name || "Alguém"} venceu o Torneio de Medalhas${finalTournamentStandings.length >= 5 ? " e ganhou um troféu!" : "!"}`
       : `Partida ${room.tournament.completedGames}/${room.tournament.totalGames} encerrada. ${leader?.name || "—"} lidera o torneio.`;
   }
   broadcast(room);
@@ -1022,7 +1025,7 @@ io.on("connection", (socket) => {
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
     room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {}, participants: {} };
-    room.message = `Torneio Rankeado de ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
+    room.message = `Torneio de Medalhas com ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
     rooms.set(code, room);
     sendSession(socket, room, player);
     broadcast(room);
@@ -1072,7 +1075,7 @@ io.on("connection", (socket) => {
       room.tournament.scores = {};
       room.tournament.participants = {};
       room.tournament.finished = false;
-      room.tournament.rankingAwarded = false;
+      room.tournament.trophyAwarded = false;
     }
     startGame(room);
   });
@@ -1135,9 +1138,11 @@ io.on("connection", (socket) => {
       if (!room.tournament.finished) return notice(socket, "Use Próxima Partida para continuar o torneio.");
       room.tournament.completedGames = 0;
       room.tournament.finished = false;
-      room.tournament.rankingAwarded = false;
+      room.tournament.trophyAwarded = false;
       room.tournament.scores = Object.fromEntries(room.tournament.playerIds
-        .map((id) => [id, { points: 0, wins: 0, lastPosition: null }]));
+        .map((id) => [id, {
+          goldMedals: 0, silverMedals: 0, bronzeMedals: 0, wins: 0, lastPosition: null,
+        }]));
     }
     startGame(room);
   });
