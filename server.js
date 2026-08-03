@@ -24,7 +24,9 @@ async function loadEmotes() {
   emoteList = await listEmotes(false);
   emoteMap = Object.fromEntries(emoteList.map((emote) => [emote.key, emote]));
 }
-const activeEmotes = () => emoteList.filter((emote) => emote.active);
+// A barra da mesa fica enxuta: mostra somente as oito primeiras ativas na ordem
+// configurada no dashboard. As demais continuam cadastradas para trocar depois.
+const activeEmotes = () => emoteList.filter((emote) => emote.active).slice(0, 8);
 async function reloadAndBroadcastEmotes() {
   await loadEmotes();
   io.emit("emotes", activeEmotes()); // atualiza a barra de todo mundo na hora
