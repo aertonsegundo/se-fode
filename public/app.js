@@ -898,6 +898,14 @@ function buildEmoteBar() {
     };
     bar.appendChild(button);
   }
+  const close = document.createElement("button");
+  close.className = "emote-close";
+  close.type = "button";
+  close.title = "Fechar figurinhas";
+  close.setAttribute("aria-label", "Fechar figurinhas");
+  close.textContent = "×";
+  close.onclick = () => setEmoteOpen(false);
+  bar.appendChild(close);
 }
 
 socket.on("emotes", (list) => setEmotes(list || [])); // atualiza a barra ao vivo

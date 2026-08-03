@@ -439,6 +439,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .emote-bar button { border:0; background:none; font-size:1.3rem; line-height:1; width:2.1rem; height:2.1rem; border-radius:50%; cursor:pointer; transition:transform .12s, background .12s; }
 .emote-bar button:hover { transform:scale(1.25); background:#ffffff14; }
 .emote-bar button:active { transform:scale(.9); }
+.emote-bar .emote-close { flex:0 0 auto; color:#d4d0c4; border:1px solid #514f47; font-size:1.5rem; font-weight:700; line-height:.8; }
+.emote-bar .emote-close:hover { color:#ff8a80; border-color:#ff8a80; background:#3a2320; transform:none; }
 .emote-layer { position:fixed; inset:0; z-index:29; pointer-events:none; overflow:hidden; }
 .emote-fly { position:absolute; bottom:9%; display:flex; flex-direction:column; align-items:center; animation:emote-fly 4.8s cubic-bezier(.25,.6,.3,1) forwards; will-change:transform,opacity; }
 .emote-emoji { font-size:5.8rem; filter:drop-shadow(0 6px 12px #000a); }
