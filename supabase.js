@@ -194,17 +194,17 @@ function leaderboardRow(row) {
 }
 
 // Quadro geral: inclui todas as contas, inclusive quem ainda está zerado.
-// Ouro, prata, bronze; vitórias e partidas só resolvem empates.
+// Critério: troféus, ouro, prata e bronze. Empate completo fica por nome.
 export async function leaderboard(limit = null) {
   if (!admin) return [];
   let query = admin
     .from("profiles")
     .select("id, display_name, photo, banner, wins, games_played, gold_medals, silver_medals, bronze_medals, tournament_titles")
+    .order("tournament_titles", { ascending: false })
     .order("gold_medals", { ascending: false })
     .order("silver_medals", { ascending: false })
     .order("bronze_medals", { ascending: false })
-    .order("wins", { ascending: false })
-    .order("games_played", { ascending: false });
+    .order("display_name", { ascending: true });
   if (Number.isInteger(limit) && limit > 0) query = query.limit(limit);
   const { data, error } = await query;
   if (error) console.warn("[supabase] rode o schema.sql para ativar o quadro de medalhas:", error.message);
