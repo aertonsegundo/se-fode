@@ -391,6 +391,9 @@ function bannerTitle(key) {
 }
 
 const AVATAR_OPTIONS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
+const PHOTO_RATIOS = { "1:1": 1, "4:5": 4 / 5, "16:9": 16 / 9 };
+let pendingPhotoSource = null;
+let selectedPhotoRatio = "1:1";
 
 function openProfile() {
   if (!accountProfile) return;
@@ -440,17 +443,24 @@ async function saveBanner(key) {
 
 // --- Modal de foto (aberto ao tocar na foto) ---
 $("#profile-photo-btn")?.addEventListener("click", openPhotoModal);
-$("#photo-close")?.addEventListener("click", () => $("#photo-modal").close());
+$("#photo-close")?.addEventListener("click", () => {
+  clearPendingPhoto();
+  $("#photo-modal").close();
+});
 
 function renderAvatarChoices() {
   $("#avatar-choices").innerHTML = AVATAR_OPTIONS.map((key) => {
     const active = accountProfile.photo === key ? "active" : "";
     return `<button class="avatar-choice ${active}" data-avatar="${key}"><img src="/avatars/players/${key}.webp" alt="${key}" /></button>`;
   }).join("");
-  $("#avatar-choices").querySelectorAll("[data-avatar]").forEach((btn) => btn.onclick = () => savePhoto({ avatarKey: btn.dataset.avatar }));
+  $("#avatar-choices").querySelectorAll("[data-avatar]").forEach((btn) => btn.onclick = () => {
+    clearPendingPhoto();
+    savePhoto({ avatarKey: btn.dataset.avatar });
+  });
 }
 function openPhotoModal() {
   if (!accountProfile) return;
+  clearPendingPhoto();
   renderAvatarChoices();
   $("#photo-modal").showModal();
 }
@@ -484,9 +494,59 @@ async function savePhoto(payload) {
     renderAccountBar();
     if ($("#photo-modal")?.open) renderAvatarChoices(); // atualiza o destaque do avatar escolhido
     showToast("Foto atualizada!");
+    return true;
   } catch (err) {
     showToast(err.message || "Não deu pra salvar a foto.");
+    return false;
   }
+}
+
+function clearPendingPhoto() {
+  pendingPhotoSource = null;
+  selectedPhotoRatio = "1:1";
+  $("#photo-crop")?.classList.add("hidden");
+  const preview = $("#photo-crop-preview");
+  if (preview) preview.innerHTML = "";
+  document.querySelectorAll(".photo-ratio-choice").forEach((button) => button.classList.toggle("active", button.dataset.photoRatio === selectedPhotoRatio));
+}
+
+function renderPendingPhoto() {
+  const crop = $("#photo-crop");
+  const preview = $("#photo-crop-preview");
+  if (!crop || !preview || !pendingPhotoSource) return;
+  crop.classList.remove("hidden");
+  preview.style.aspectRatio = PHOTO_RATIOS[selectedPhotoRatio];
+  preview.innerHTML = `<img src="${pendingPhotoSource}" alt="Prévia da foto" />`;
+  document.querySelectorAll(".photo-ratio-choice").forEach((button) => button.classList.toggle("active", button.dataset.photoRatio === selectedPhotoRatio));
+}
+
+function loadImage(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Não foi possível abrir essa imagem."));
+    image.src = source;
+  });
+}
+
+async function cropPhotoToRatio(source, ratioKey) {
+  const image = await loadImage(source);
+  const ratio = PHOTO_RATIOS[ratioKey] || 1;
+  const sourceRatio = image.naturalWidth / image.naturalHeight;
+  let cropWidth = image.naturalWidth;
+  let cropHeight = image.naturalHeight;
+  if (sourceRatio > ratio) cropWidth = Math.round(cropHeight * ratio);
+  else cropHeight = Math.round(cropWidth / ratio);
+  const sourceX = Math.round((image.naturalWidth - cropWidth) / 2);
+  const sourceY = Math.round((image.naturalHeight - cropHeight) / 2);
+  const maxDimension = 800;
+  const targetWidth = ratio >= 1 ? maxDimension : Math.round(maxDimension * ratio);
+  const targetHeight = ratio >= 1 ? Math.round(maxDimension / ratio) : maxDimension;
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  canvas.getContext("2d").drawImage(image, sourceX, sourceY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
+  return canvas.toDataURL("image/jpeg", 0.88);
 }
 
 $("#photo-upload")?.addEventListener("change", (event) => {
@@ -495,8 +555,31 @@ $("#photo-upload")?.addEventListener("change", (event) => {
   if (!file) return;
   if (file.size > 2_500_000) return showToast("Imagem muito grande (máx. ~2MB).");
   const reader = new FileReader();
-  reader.onload = () => savePhoto({ dataUrl: reader.result });
+  reader.onload = () => {
+    pendingPhotoSource = reader.result;
+    selectedPhotoRatio = "1:1";
+    renderPendingPhoto();
+  };
   reader.readAsDataURL(file);
+});
+
+document.querySelectorAll(".photo-ratio-choice").forEach((button) => button.addEventListener("click", () => {
+  selectedPhotoRatio = button.dataset.photoRatio;
+  renderPendingPhoto();
+}));
+
+$("#photo-upload-save")?.addEventListener("click", async () => {
+  if (!pendingPhotoSource) return;
+  const button = $("#photo-upload-save");
+  button.disabled = true;
+  try {
+    const dataUrl = await cropPhotoToRatio(pendingPhotoSource, selectedPhotoRatio);
+    if (await savePhoto({ dataUrl })) clearPendingPhoto();
+  } catch (err) {
+    showToast(err.message || "Não foi possível preparar essa imagem.");
+  } finally {
+    button.disabled = false;
+  }
 });
 
 // ===== Quadro geral de medalhas =====
