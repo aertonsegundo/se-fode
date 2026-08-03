@@ -115,7 +115,7 @@ app.post("/api/me/banner", async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   const profile = await authProfile(req);
   if (!profile) return res.status(401).json({ error: "Não autenticado." });
-  res.json({ leaderboard: await leaderboard(50), banners: BANNERS, meId: profile.id });
+  res.json({ leaderboard: await leaderboard(), banners: BANNERS, meId: profile.id });
 });
 
 // Perfil público que abre ao clicar em alguém na mesa. O perfil autenticado
@@ -345,7 +345,7 @@ function publicState(room, viewerId) {
     medalStandings: room.phase === "game_over"
       ? finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId))
       : [],
-    medalMatch: room.phase === "game_over" && seatedPlayers(room).filter((player) => player.userId).length >= 5,
+    medalMatch: room.phase === "game_over" && !room.solo && seatedPlayers(room).filter((player) => player.userId).length >= 5,
     tournament: tournamentState(room),
     lastResult,
     code: room.code,
@@ -887,6 +887,7 @@ function endGame(room) {
   const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
   const humanCount = humanStandings.length;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
+  const online = !room.solo; // solo (contra bots) não conta no quadro de medalhas
   const humanPlayers = seatedPlayers(room)
     .filter((player) => player.userId)
     .map((player) => {
@@ -896,10 +897,9 @@ function endGame(room) {
         position,
         playerCount: humanCount,
         won: player.id === winner?.id,
-        medal: medalForPosition(position, humanCount),
+        medal: online ? medalForPosition(position, humanCount) : null,
       };
     });
-  const online = !room.solo; // solo (contra bots) não conta vitória online
   if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio de Medalhas" : "Partida", online);
   // Só o vencedor de partida ONLINE ganha vitória online — pode desbloquear banner.
   if (online && winner?.userId) {

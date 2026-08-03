@@ -193,18 +193,20 @@ function leaderboardRow(row) {
   };
 }
 
-// Quadro geral: ouro, prata, bronze; vitórias e partidas só resolvem empates.
-export async function leaderboard(limit = 50) {
+// Quadro geral: inclui todas as contas, inclusive quem ainda está zerado.
+// Ouro, prata, bronze; vitórias e partidas só resolvem empates.
+export async function leaderboard(limit = null) {
   if (!admin) return [];
-  const { data, error } = await admin
+  let query = admin
     .from("profiles")
     .select("id, display_name, photo, banner, wins, games_played, gold_medals, silver_medals, bronze_medals, tournament_titles")
     .order("gold_medals", { ascending: false })
     .order("silver_medals", { ascending: false })
     .order("bronze_medals", { ascending: false })
     .order("wins", { ascending: false })
-    .order("games_played", { ascending: false })
-    .limit(limit);
+    .order("games_played", { ascending: false });
+  if (Number.isInteger(limit) && limit > 0) query = query.limit(limit);
+  const { data, error } = await query;
   if (error) console.warn("[supabase] rode o schema.sql para ativar o quadro de medalhas:", error.message);
   return (data || []).map(leaderboardRow);
 }

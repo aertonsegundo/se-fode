@@ -650,7 +650,7 @@ $("#photo-upload-save")?.addEventListener("click", async () => {
 // ===== Quadro geral de medalhas =====
 $("#ranking-open")?.addEventListener("click", openRanking);
 $("#ranking-close")?.addEventListener("click", () => $("#ranking").close());
-const RANKING_EMPTY = "Ainda não há medalhas no quadro.";
+const RANKING_EMPTY = "Ainda não há jogadores no quadro.";
 
 const RANKING_RULES = {
   medals: {
@@ -687,7 +687,7 @@ async function loadRanking() {
   try {
     const data = await api("/api/leaderboard");
     bannerCatalog = data.banners || bannerCatalog;
-    const rows = (data.leaderboard || []).filter((user) => (user.goldMedals || 0) + (user.silverMedals || 0) + (user.bronzeMedals || 0) + (user.tournamentTitles || 0) > 0);
+    const rows = data.leaderboard || [];
     if (!rows.length) {
       body.innerHTML = `<p class="ranking-loading">${RANKING_EMPTY}</p>`;
       return;
