@@ -54,6 +54,9 @@ async function join(kind) {
     botCount: Number($("#bot-count").value),
     botDifficulty: $("#bot-difficulty").value,
     tournamentGames: Number($("#tournament-games").value),
+    // Fallback para um socket que acabou de reconectar após deploy. O servidor
+    // valida este token da mesma forma que valida as chamadas /api/me.
+    token: accountToken,
   });
 }
 
