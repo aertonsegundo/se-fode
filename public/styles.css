@@ -267,7 +267,9 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .game-layout { grid-template-columns:1fr; gap:1rem; }
   .table-stage { order:1; }
   .action-panel { order:2; }
-  .poker { max-width:440px; aspect-ratio:5/6; --seat-rx:37%; --seat-ry:45%; --card-rx:20%; --card-ry:25%; }
+  /* Em celulares largos a mesa não fica travada em 440px: ela aproveita a
+     largura disponível e deixa cartas/assentos realmente legíveis. */
+  .poker { max-width:560px; aspect-ratio:5/6; --seat-rx:37%; --seat-ry:45%; --card-rx:20%; --card-ry:25%; }
   .seat { width:98px; padding:.4rem .45rem; border-radius:11px; }
   /* No mobile, encosta as manilhas à esquerda e empilha rótulo/símbolos: assim
      saem de baixo do assento do jogador do topo (que fica no centro). */
