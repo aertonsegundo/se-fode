@@ -965,8 +965,15 @@ function render() {
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
-  $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo));
-  $("#emote-toggle").classList.remove("hidden"); // figurinhas valem também no solo (offline)
+  // Na sala de espera, os atalhos flutuantes cobriam o botão de começar no
+  // celular. Chat e figurinhas entram em cena só depois que a partida começa.
+  const roomInProgress = state.phase !== "lobby";
+  $("#chat-toggle").classList.toggle("hidden", Boolean(state.solo) || !roomInProgress);
+  $("#emote-toggle").classList.toggle("hidden", !roomInProgress); // figurinhas valem também no solo (offline)
+  if (!roomInProgress) {
+    setChatOpen(false);
+    setEmoteOpen(false);
+  }
   renderAutoBar();
   renderSpectatorBar();
   renderWatchers();
