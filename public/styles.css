@@ -308,8 +308,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .share input { width:100%; border:1px solid #4a483f; background:#1b1a16; color:#d4d0c4; padding:.55rem .6rem; font-size:.72rem; border-radius:6px; }
 .share-actions { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:.5rem; }
 .share-actions .ghost, .share-actions .wa { text-align:center; padding:.62rem .5rem; font-weight:800; font-size:.72rem; border-radius:6px; text-decoration:none; box-shadow:none; margin:0; }
-.lobby-tools { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin:.15rem 0 .4rem; }
-.action-panel .lobby-tools button { margin:0; padding:.6rem .4rem; border:1px solid #4a483f; border-radius:6px; background:#25241e; color:#d4d0c4; box-shadow:none; font-size:.64rem; letter-spacing:.04em; }
+.lobby-tools { display:flex; justify-content:center; gap:.6rem; margin:.15rem 0 .45rem; }
+.action-panel .lobby-tools button { width:2.75rem; height:2.75rem; margin:0; padding:0; border:1px solid #4a483f; border-radius:50%; background:#25241e; color:#d4d0c4; box-shadow:none; font-size:1.1rem; }
 .action-panel .lobby-tools button:hover { border-color:var(--acid); color:var(--acid); }
 .ghost { background:transparent; border:1px solid var(--acid); color:var(--acid); }
 .ghost:hover { background:var(--acid); color:var(--ink); }

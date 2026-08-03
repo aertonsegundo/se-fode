@@ -1149,8 +1149,8 @@ function renderAction() {
         </div>
       </div>
       <div class="lobby-tools">
-        <button id="lobby-emote-toggle" type="button">😄 FIGURINHAS</button>
-        ${state.solo ? "" : '<button id="lobby-chat-toggle" type="button">💬 CHAT DA SALA</button>'}
+        <button id="lobby-emote-toggle" type="button" aria-label="Abrir figurinhas" title="Figurinhas">😄</button>
+        ${state.solo ? "" : '<button id="lobby-chat-toggle" type="button" aria-label="Abrir chat da sala" title="Chat da sala">💬</button>'}
       </div>
       ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS"}</button>` : "<p>O dono da sala começa a partida.</p>"}
       ${rankingHtml()}`;
