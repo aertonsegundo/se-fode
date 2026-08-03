@@ -55,7 +55,9 @@ do $$
 begin
   if not exists (select 1 from public.schema_migrations where key = 'medal_ranking_v1') then
     update public.profiles
-    set rank_points = 0,
+    set wins = 0,
+        online_wins = 0,
+        rank_points = 0,
         casual_points = 0,
         tournament_points = 0,
         tournament_titles = 0,
