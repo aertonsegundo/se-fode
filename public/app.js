@@ -29,6 +29,35 @@ const cardStrength = (card) => {
 const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? "red" : ""} ${state?.manilhas?.includes(card.id) ? "manilha" : ""} ${extra}"><span>${card.rank}${card.suit}</span><span class="big-suit">${card.suit}</span><span style="transform:rotate(180deg)">${card.rank}${card.suit}</span></div>` : "";
 const me = () => state?.players.find((player) => player.id === state.me?.id);
 const isHost = () => state?.hostId === state.me?.id;
+// Solo/privada: o host controla começar/recomeçar. Pública: é por votação (2/3).
+const hostControlled = () => state?.isPrivate || state?.solo;
+function lobbyStartControl(tournament) {
+  const label = tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS";
+  if (hostControlled()) {
+    return isHost()
+      ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${label}</button>`
+      : "<p>O dono da sala começa a partida.</p>";
+  }
+  const v = state.vote || {};
+  if (v.startCountdown != null) return `<div class="vote-count"><b>Começando em ${v.startCountdown}s…</b><span>Ainda dá pra mais gente entrar</span></div>`;
+  if ((v.voters || 0) < 2) return `<p class="vote-hint">Precisam de <b>2 jogadores</b> pra começar — chame mais gente!</p>`;
+  return `<button id="vote-start" class="vote-btn ${v.iVotedStart ? "voted" : ""}">${v.iVotedStart ? "✓ VOCÊ VOTOU" : "VOTAR PRA COMEÇAR"} <span class="vote-tally">${v.startCount}/${v.startNeeded}</span></button>`;
+}
+function gameOverControl(tournament, tournamentFinished) {
+  if (hostControlled()) {
+    if (tournament) {
+      return tournamentFinished
+        ? (isHost() ? '<button id="restart">RECOMEÇAR TORNEIO</button>' : "<p>O dono recomeça o torneio.</p>")
+        : (isHost() ? `<button id="next-tournament">PRÓXIMA PARTIDA · ${tournament.completedGames + 1}/${tournament.totalGames}</button>` : "<p>Esperando o dono iniciar a próxima partida.</p>");
+    }
+    return isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "<p>O dono da sala recomeça.</p>";
+  }
+  const v = state.vote || {};
+  const label = (tournament && !tournamentFinished)
+    ? `VOTAR PRÓXIMA · ${tournament.completedGames + 1}/${tournament.totalGames}`
+    : (tournament && tournamentFinished) ? "VOTAR RECOMEÇAR" : "VOTAR JOGAR DE NOVO";
+  return `<button id="vote-restart" class="vote-btn ${v.iVotedRestart ? "voted" : ""}">${v.iVotedRestart ? "✓ VOCÊ VOTOU" : label} <span class="vote-tally">${v.restartCount}/${v.restartNeeded}</span></button>`;
+}
 const iAmSpectator = () => Boolean(state?.me?.spectator);
 
 function showToast(text) {
@@ -94,6 +123,7 @@ function genRoomPassword() {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
 }
+$("#quick").onclick = () => join("quick-match");
 $("#create").onclick = () => {
   $("#create-name").value = "";
   $("#create-private").checked = false;
@@ -1264,9 +1294,10 @@ function renderAction() {
         <button id="lobby-emote-toggle" type="button" aria-label="Abrir figurinhas" title="Figurinhas">😄</button>
         ${state.solo ? "" : '<button id="lobby-chat-toggle" type="button" aria-label="Abrir chat da sala" title="Chat da sala">💬</button>'}
       </div>
-      ${isHost() ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS"}</button>` : "<p>O dono da sala começa a partida.</p>"}
+      ${lobbyStartControl(tournament)}
       ${rankingHtml()}`;
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
+    $("#vote-start")?.addEventListener("click", () => socket.emit("vote-start"));
     $("#share-url").onclick = (event) => event.target.select();
     $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast(state.isPrivate ? "Link de convite copiado!" : "Link copiado!"); };
     $("#copy-pass")?.addEventListener("click", async () => { await navigator.clipboard.writeText(state.password || ""); showToast("Senha copiada!"); });
@@ -1319,9 +1350,6 @@ function renderAction() {
     const list = losers.length
       ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
       : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
-    // Havendo bot, alguém no automático (AFK) ou caído entre os ativos, o dono decide;
-    // só começa sozinho quando todos os ativos são humanos conectados no controle.
-    const needsHost = state.players.some((player) => !player.eliminated && (player.isBot || !player.connected || player.auto));
     // Dono pode tirar da mesa quem está no automático (bot ativo) ou caiu.
     const removable = (isHost() && !state.solo && !state.tournament)
       ? state.players.filter((player) => player.id !== state.hostId && (player.isBot || !player.connected || player.auto))
@@ -1329,9 +1357,8 @@ function renderAction() {
     const kickHtml = removable.length
       ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : !player.connected ? "caiu" : "automático"}</small></button>`).join("")}</div>`
       : "";
-    const nextControl = needsHost
-      ? (isHost() ? '<button id="next">PRÓXIMA MÃO</button>' : "<p>Esperando o dono da sala continuar.</p>")
-      : '<p class="auto-next">Próxima mão começando…</p>';
+    // Sem host pra clicar: a próxima mão começa sozinha; qualquer um pode pular a espera.
+    const nextControl = '<p class="auto-next">Próxima mão começando…</p><button id="next" class="ghost">PULAR ESPERA</button>';
     panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${kickHtml}${nextControl}`;
     panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
@@ -1352,16 +1379,13 @@ function renderAction() {
       : "";
     const tournament = state.tournament;
     const tournamentFinished = tournament?.finished;
-    const tournamentControls = tournament
-      ? (tournamentFinished
-        ? (isHost() ? '<button id="restart">RECOMEÇAR TORNEIO</button>' : "")
-        : (isHost() ? `<button id="next-tournament">PRÓXIMA PARTIDA · ${tournament.completedGames + 1}/${tournament.totalGames}</button>` : "<p>Esperando o dono da sala iniciar a próxima partida.</p>"))
-      : (isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "");
+    const tournamentControls = gameOverControl(tournament, tournamentFinished);
     const panelTitle = tournamentFinished ? "TORNEIO ENCERRADO" : "FIM DE JOGO";
     panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
     $("#next-tournament")?.addEventListener("click", () => socket.emit("next-tournament-game"));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
+    $("#vote-restart")?.addEventListener("click", () => socket.emit("vote-restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);
     return;
   }

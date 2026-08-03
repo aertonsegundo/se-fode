@@ -30,6 +30,8 @@ button { cursor:pointer; }
 .entry-card button { border:2px solid var(--ink); padding:1rem; font-weight:800; background:var(--acid); }
 .entry-card .primary { width:100%; margin-top:.8rem; background:var(--ink); color:white; display:flex; justify-content:space-between; }
 .entry-card .primary b { color:var(--acid); }
+.entry-card .quick-match { width:100%; margin:0; background:var(--red); color:#fff; display:flex; justify-content:space-between; }
+.entry-card .quick-match b { color:var(--acid); }
 .entry-card .solo { width:100%; margin-top:.8rem; background:var(--acid); display:flex; justify-content:space-between; }
 .tournament-setup { display:grid; grid-template-columns:1fr auto; gap:.45rem .7rem; align-items:center; margin-top:.8rem; padding:.7rem; border:2px solid var(--red); background:#ffe6d8; }
 .tournament-setup label { margin:0; color:#7f211c; }
@@ -113,6 +115,14 @@ button { cursor:pointer; }
 .action-panel p { color:#aaa69a; font-size:.78rem; line-height:1.45; }
 .action-panel button { border:0; background:var(--acid); color:var(--ink); padding:.85rem 1rem; font-weight:900; margin-top:.4rem; box-shadow:4px 4px 0 var(--red); }
 .action-panel button:disabled { opacity:.3; cursor:not-allowed; box-shadow:none; }
+/* Botões e avisos de votação (sala pública) */
+.action-panel .vote-btn { display:flex; align-items:center; justify-content:center; gap:.6rem; background:var(--acid); color:var(--ink); box-shadow:4px 4px 0 var(--red); }
+.action-panel .vote-btn.voted { background:transparent; color:var(--acid); border:2px solid var(--acid); box-shadow:none; }
+.vote-tally { font:900 .95rem "Archivo Black",sans-serif; opacity:.85; }
+.vote-count { text-align:center; padding:.9rem; border:1px dashed var(--acid); border-radius:10px; margin-top:.5rem; background:#d8ff450f; }
+.vote-count b { display:block; font:1.4rem/1 "Archivo Black",sans-serif; color:var(--acid); margin-bottom:.25rem; }
+.vote-count span { font-size:.68rem; color:#aaa69a; }
+.vote-hint { color:#c7c2b4; font-size:.8rem; text-align:center; margin-top:.5rem; line-height:1.4; }
 .fodeu-list { display:flex; flex-direction:column; gap:.4rem; margin:.3rem 0 .8rem; }
 .fodeu-item { display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; padding:.5rem .65rem; background:#3a2320; border-left:3px solid var(--red); }
 .fodeu-item b { font-size:.9rem; }
