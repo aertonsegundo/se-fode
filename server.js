@@ -342,11 +342,10 @@ function publicState(room, viewerId) {
     : null;
   return {
     ranking,
-    matchStandings: room.phase === "game_over" ? finalStandingsFrom(seatedPlayers(room)) : [],
-    medalStandings: room.phase === "game_over"
-      ? finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId))
-      : [],
-    medalMatch: room.phase === "game_over" && !room.solo && seatedPlayers(room).filter((player) => player.userId).length >= 5,
+    // Classificação da partida é congelada no endGame (antes de promover espectadores).
+    matchStandings: room.phase === "game_over" ? (room.matchStandings || []) : [],
+    medalStandings: room.phase === "game_over" ? (room.medalStandings || []) : [],
+    medalMatch: room.phase === "game_over" ? Boolean(room.medalMatch) : false,
     tournament: tournamentState(room),
     lastResult,
     code: room.code,
@@ -601,6 +600,17 @@ function clearVotes(room) {
   room.startVotes?.clear();
   room.restartVotes?.clear();
 }
+function cancelStartCountdown(room) {
+  if (room.startCountdownTimer) { clearInterval(room.startCountdownTimer); room.startCountdownTimer = null; }
+  room.startCountdownEndsAt = null;
+}
+// Alguém saiu/caiu durante a contagem: se não dá mais pra começar (fase mudou ou < 2 jogadores),
+// cancela a contagem NA HORA (não espera os 10s acabarem).
+function maybeCancelStartCountdown(room) {
+  if (room.startCountdownTimer && (room.phase !== "lobby" || eligibleVoters(room).length < 2)) {
+    cancelStartCountdown(room);
+  }
+}
 // Ações reutilizadas pelo host (sala privada) e pela votação (sala pública).
 function doStartGame(room) {
   room.players = room.players.filter((player) => player.isBot || player.connected);
@@ -648,23 +658,21 @@ function evaluateStartVote(room) {
   if (enough && !room.startCountdownTimer) {
     room.startCountdownEndsAt = Date.now() + START_COUNTDOWN_MS;
     room.startCountdownTimer = setInterval(() => {
-      if (room.phase !== "lobby") { clearVotes(room); return; }
+      // Cancela na hora se a fase mudou ou caiu abaixo do mínimo de 2 jogadores.
+      if (room.phase !== "lobby" || eligibleVoters(room).length < 2) {
+        cancelStartCountdown(room);
+        broadcast(room);
+        return;
+      }
       if (room.startCountdownEndsAt - Date.now() <= 0) {
-        clearInterval(room.startCountdownTimer);
-        room.startCountdownTimer = null;
-        room.startCountdownEndsAt = null;
-        if (eligibleVoters(room).length >= 2) doStartGame(room);
-        else broadcast(room);
+        cancelStartCountdown(room);
+        doStartGame(room);
       } else {
         broadcast(room); // tique a cada segundo pra atualizar o contador
       }
     }, 1000);
   }
-  if (room.startCountdownTimer && voters.length < 2) {
-    clearInterval(room.startCountdownTimer);
-    room.startCountdownTimer = null;
-    room.startCountdownEndsAt = null;
-  }
+  maybeCancelStartCountdown(room);
 }
 
 // Expulsa um jogador da partida por inatividade repetida: um bot termina a mão dele
@@ -1047,6 +1055,17 @@ function endGame(room) {
       ? `${leader?.name || "Alguém"} venceu o Torneio de Medalhas${finalTournamentStandings.length >= 5 ? " e ganhou um troféu!" : "!"}`
       : `Partida ${room.tournament.completedGames}/${room.tournament.totalGames} encerrada. ${leader?.name || "—"} lidera o torneio.`;
   }
+  // Congela a classificação da partida ANTES de promover espectadores (senão eles entrariam
+  // como "sobreviventes"). Depois, no fim de partida (não-torneio), quem assistia entra na
+  // mesa: deixa de ser espectador e passa a poder votar/jogar a próxima partida.
+  room.matchStandings = finalStandingsFrom(seatedPlayers(room));
+  room.medalStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
+  room.medalMatch = !room.solo && seatedPlayers(room).filter((player) => player.userId).length >= 5;
+  if (!room.tournament) {
+    for (const player of room.players) {
+      if (player.spectator && !player.isBot && player.connected) player.spectator = false;
+    }
+  }
   broadcast(room);
 }
 
@@ -1224,7 +1243,15 @@ io.on("connection", (socket) => {
     if (clash) {
       const activeHand = ["bidding", "playing", "trick_reveal"].includes(room.phase);
       const busy = clash.connected || clash.isBot || (activeHand && !clash.eliminated && !clash.spectator);
-      if (busy) return notice(socket, "Esse nome já está na mesa.");
+      if (busy) {
+        // É a MESMA pessoa (mesmo login) que saiu e tem um bot jogando por ela? Não é conflito
+        // de nome: ela só pode voltar pra assistir (e aí o bot sai). Oferece a opção.
+        const sameUser = socket.data.user && clash.userId && clash.userId === socket.data.user.id;
+        if (sameUser && !clash.connected && !clash.isBot) {
+          return socket.emit("rejoin-spectate-offer", { code });
+        }
+        return notice(socket, "Esse nome já está na mesa.");
+      }
       if (clash.disconnectTimer) { clearTimeout(clash.disconnectTimer); clash.disconnectTimer = null; }
       room.players = room.players.filter((player) => player.id !== clash.id);
     }
@@ -1238,6 +1265,30 @@ io.on("connection", (socket) => {
     sendSession(socket, room, player);
     transferHost(room);
     notice(socket, midGame ? "Partida em andamento — você entrou como espectador e joga na próxima." : "Você entrou na sala.");
+    broadcast(room);
+  });
+
+  // A pessoa que saiu aceitou voltar pra assistir: o bot que jogava por ela sai (no fim da mão,
+  // se houver mão em andamento) e ela entra como espectadora.
+  socket.on("rejoin-spectate", async ({ name, code, token } = {}) => {
+    if (!await requireUser(socket, token)) return;
+    await refreshUser(socket);
+    name = cleanName(name) || cleanName(socket.data.user.displayName);
+    code = cleanCode(code);
+    const room = rooms.get(code);
+    if (!room) return notice(socket, "Sala não encontrada.");
+    const ghost = room.players.find((p) => !p.isBot && !p.connected && p.userId && p.userId === socket.data.user.id);
+    if (ghost) {
+      if (["bidding", "playing", "trick_reveal"].includes(room.phase)) ghost.quit = true; // bot termina a mão, aí sai
+      else room.players = room.players.filter((p) => p.id !== ghost.id);
+    }
+    const player = createPlayer(socket, name);
+    player.spectator = true;
+    assignRandomAvatar(room, player);
+    room.players.push(player);
+    sendSession(socket, room, player);
+    transferHost(room);
+    notice(socket, "Você voltou como espectador — o bot sai da mesa.");
     broadcast(room);
   });
 
@@ -1429,6 +1480,7 @@ io.on("connection", (socket) => {
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
+    maybeCancelStartCountdown(room); // saiu durante a contagem de início → cancela na hora
     if (gameInProgress && !activeHand && activePlayers(room).length <= 1) return endGame(room);
     broadcast(room);
   });
@@ -1465,6 +1517,7 @@ io.on("connection", (socket) => {
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
+    maybeCancelStartCountdown(room); // caiu durante a contagem de início → cancela na hora
     broadcast(room);
   });
 });

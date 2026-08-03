@@ -529,6 +529,7 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .solo-dialog .pass-row .modal-input { flex:1; }
 .solo-dialog .pass-row .account-btn { white-space:nowrap; border:2px solid #3a382f; background:#26241d; color:var(--acid); border-radius:8px; padding:0 .95rem; font-weight:800; letter-spacing:.05em; font-size:.75rem; }
 .solo-dialog .primary { width:100%; margin-top:1.2rem; border:2px solid var(--acid); background:var(--acid); color:var(--ink); padding:.95rem; font-weight:900; letter-spacing:.04em; border-radius:9px; display:flex; justify-content:center; gap:.5rem; }
+.solo-dialog .rejoin-text { color:#c7c2b4; font-size:.92rem; line-height:1.5; margin:.4rem 0 .2rem; }
 
 /* Editar nome no perfil */
 .name-edit { display:flex; gap:.5rem; }

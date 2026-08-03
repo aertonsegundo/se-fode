@@ -269,6 +269,20 @@ $("#password-form").addEventListener("submit", (event) => {
   join("join-room", { code: pendingJoin.code, password });
 });
 $("#password-close").onclick = () => { pendingJoin = null; $("#password-modal").close(); };
+
+// A pessoa saiu e um bot joga por ela: o servidor oferece voltar só pra assistir (o bot sai).
+let rejoinCode = null;
+socket.on("rejoin-spectate-offer", ({ code } = {}) => {
+  rejoinCode = code;
+  pendingJoin = null;
+  $("#rejoin-modal").showModal();
+});
+$("#rejoin-close").onclick = () => { rejoinCode = null; $("#rejoin-modal").close(); };
+$("#rejoin-spectate").onclick = () => {
+  $("#rejoin-modal").close();
+  if (rejoinCode) join("rejoin-spectate", { code: rejoinCode });
+  rejoinCode = null;
+};
 socket.on("state", (next) => {
   state = next;
   home.classList.add("hidden");
