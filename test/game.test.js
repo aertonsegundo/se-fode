@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
 
 const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
 
@@ -146,6 +146,21 @@ test("medalhas só valem no pódio de partidas com 5+ humanos", () => {
   assert.equal(medalForPosition(4, 8), null);
   assert.equal(medalForPosition(1, 4), null);
   assert.equal(medalForPosition(3, 4), null);
+});
+
+test("todos os modos usam a mesma regra de medalhas", () => {
+  const standings = ["ana", "bia", "caio", "duda", "enzo"].map((id, index) => ({ id, position: index + 1 }));
+  const awarded = (options) => Object.fromEntries(medalAwardsForStandings(standings, options));
+
+  // Solo, mesmo com cinco posições hipotéticas, não altera o quadro global.
+  assert.deepEqual(awarded({ online: false, humanCount: 5 }), {});
+  // Partida rápida, sala pública e sala privada são todas partidas online.
+  assert.deepEqual(awarded({ online: true, humanCount: 5 }), { ana: "gold", bia: "silver", caio: "bronze" });
+  // Mesa online abaixo do mínimo não premia ninguém.
+  assert.deepEqual(awarded({ online: true, humanCount: 4 }), {});
+  // No torneio, a escalação inicial válida continua definindo o pódio mesmo
+  // que só quatro participantes cheguem à próxima partida.
+  assert.deepEqual(awarded({ online: true, humanCount: 5 }), { ana: "gold", bia: "silver", caio: "bronze" });
 });
 
 test("torneio mantém a validade das medalhas pela escalação inicial", () => {

@@ -236,6 +236,19 @@ export function medalForPosition(position, humanCount) {
   return ["gold", "silver", "bronze"][position - 1] || null;
 }
 
+// Mantém a regra de premiação em um único lugar para todos os modos online.
+// `humanCount` pode ser a escalação inicial do torneio; nas partidas comuns é
+// a quantidade de humanos que terminou a partida. Solo nunca distribui nada.
+export function medalAwardsForStandings(standings, { online = false, humanCount = 0 } = {}) {
+  const awards = new Map();
+  if (!online) return awards;
+  for (const entry of standings || []) {
+    const medal = medalForPosition(entry.position, humanCount);
+    if (medal && entry.id) awards.set(entry.id, medal);
+  }
+  return awards;
+}
+
 // A escalação humana do torneio não muda entre as partidas. Além de definir
 // se o pódio é válido, ela permite recolocar quem saiu entre uma partida e a
 // próxima na mesma vaga — sem zerar suas medalhas já conquistadas.

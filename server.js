@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -1167,6 +1167,7 @@ function endGame(room) {
   const medalPlayerCount = isTournament ? tournamentHumanCount(room.tournament.participants) : humanCount;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const online = !room.solo; // solo (contra bots) não conta no quadro de medalhas
+  const medalById = medalAwardsForStandings(humanStandings, { online, humanCount: medalPlayerCount });
   const humanPlayers = seatedPlayers(room)
     .filter((player) => player.userId)
     .map((player) => {
@@ -1176,7 +1177,7 @@ function endGame(room) {
         position,
         playerCount: humanCount,
         won: player.id === winner?.id,
-        medal: online ? medalForPosition(position, medalPlayerCount) : null,
+        medal: medalById.get(player.id) || null,
       };
     });
   if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio de Medalhas" : "Partida", online);
@@ -1190,7 +1191,7 @@ function endGame(room) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
       if (!score) continue;
-      const medal = medalForPosition(entry.position, medalPlayerCount);
+      const medal = medalById.get(entry.id) || null;
       if (medal === "gold") score.goldMedals += 1;
       if (medal === "silver") score.silverMedals += 1;
       if (medal === "bronze") score.bronzeMedals += 1;
