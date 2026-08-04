@@ -1295,7 +1295,10 @@ function renderSeats() {
     };
   });
 
-  $("#empty-table").classList.toggle("hidden", state.phase === "lobby" || state.table.length > 0 || forehead);
+  // O aviso só faz sentido no lobby vazio. Durante aposta/jogo ele confundia
+  // quem assiste, pois aparecia sobre uma mesa que já está em andamento.
+  const showEmptyTable = state.phase === "lobby" && players.length < 2 && !forehead;
+  $("#empty-table").classList.toggle("hidden", !showEmptyTable);
 }
 
 function animateDeal() {

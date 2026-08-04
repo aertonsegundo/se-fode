@@ -730,10 +730,14 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
   .game[data-phase="bidding"] .poker,
   .game[data-phase="playing"] .poker,
   .game[data-phase="trick_reveal"] .poker {
-    /* Impede o flex de esmagar a mesa (especialmente no modo espectador). */
+    /* A mesa só tem filhos absolutos. Em um flex vertical, aspect-ratio por si
+       só pode resultar em altura zero no Safari. Uma altura explícita mantém
+       o feltro, cartas e assentos juntos tanto em retrato quanto em paisagem. */
     flex:0 0 auto;
-    width:min(100%, 57dvh);
-    max-width:560px;
+    width:auto;
+    height:min(60dvh, calc(120vw - 1.7rem), 42rem);
+    max-width:calc(100vw - 1.4rem);
+    aspect-ratio:5/6;
   }
 
   /* Quem está assistindo não tem cartas: remove a doca vazia e devolve esse
