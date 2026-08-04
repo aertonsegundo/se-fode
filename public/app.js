@@ -174,10 +174,10 @@ function renderRoomList(list) {
   el.innerHTML = list.map((r) => {
     const full = r.count >= r.max;
     return `
-    <button type="button" class="room-row ${r.inProgress ? "in-progress" : ""}" data-code="${r.code}" ${full ? "disabled" : ""}>
+    <button type="button" class="room-row ${r.inProgress ? "in-progress" : ""} ${full ? "full" : ""}" data-code="${r.code}">
       <span class="room-row-main">
         <span class="room-row-name">${r.isPrivate ? '<span class="room-lock" title="Sala privada">🔒</span>' : ""}${escapeHtml(r.name)}${r.isTournament ? ' <span class="room-badge">⚡ TORNEIO</span>' : ""}</span>
-        <span class="room-row-status">${full ? "sala cheia" : r.inProgress ? "em jogo · entre para assistir" : "aguardando jogadores"}</span>
+        <span class="room-row-status">${full ? "mesa cheia · entre para assistir" : r.inProgress ? "em jogo · entre para assistir" : "aguardando jogadores"}</span>
       </span>
       <span class="room-row-count">${r.count}/${r.max}</span>
     </button>`;

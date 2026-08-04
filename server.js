@@ -14,6 +14,8 @@ const io = new Server(server);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
+const MAX_SEATS = 8;
+const MAX_SPECTATORS = 32;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
 const RANDOM_AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
 // Figurinhas dinâmicas (gerenciadas no dashboard). Cache em memória, semeado com
@@ -228,6 +230,21 @@ function activePlayers(room) {
 function seatedPlayers(room) {
   // Quem ocupa cadeira na mesa (jogadores da partida, inclusive eliminados) — exclui só espectadores.
   return room.players.filter((player) => !player.spectator);
+}
+
+// A arquibancada pode ter mais pessoas que as oito cadeiras. Em sala comum,
+// quem estiver aguardando sobe para uma vaga assim que ela existir, mantendo a
+// ordem de chegada. Torneios têm escalação fechada e não promovem espectadores.
+function promoteSpectators(room) {
+  if (room.tournament) return;
+  let vacancies = MAX_SEATS - seatedPlayers(room).length;
+  for (const player of room.players) {
+    if (vacancies <= 0) break;
+    if (player.spectator && !player.isBot && player.connected) {
+      player.spectator = false;
+      vacancies -= 1;
+    }
+  }
 }
 
 function tournamentStandings(room) {
@@ -455,7 +472,7 @@ function roomListDTO() {
       isPrivate: Boolean(room.isPrivate),
       isTournament: Boolean(room.tournament),
       count: seated.length,
-      max: 8,
+      max: MAX_SEATS,
       inProgress: room.phase !== "lobby" && room.phase !== "game_over",
     });
   }
@@ -632,6 +649,7 @@ function maybeCancelStartCountdown(room) {
 // Ações reutilizadas pelo host (sala privada) e pela votação (sala pública).
 function doStartGame(room) {
   room.players = room.players.filter((player) => player.isBot || player.connected);
+  promoteSpectators(room);
   if (room.players.filter((p) => !p.spectator).length < 2) return "Chame pelo menos mais uma pessoa.";
   if (room.tournament && room.tournament.completedGames === 0) {
     room.tournament.playerIds = [];
@@ -1141,9 +1159,7 @@ function endGame(room) {
   room.medalStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
   room.medalMatch = !room.solo && seatedPlayers(room).filter((player) => player.userId).length >= 5;
   if (!room.tournament) {
-    for (const player of room.players) {
-      if (player.spectator && !player.isBot && player.connected) player.spectator = false;
-    }
+    promoteSpectators(room);
   }
   broadcast(room);
 }
@@ -1314,7 +1330,6 @@ io.on("connection", (socket) => {
         return notice(socket, "Senha incorreta.");
       }
     }
-    if (room.players.length >= 8) return notice(socket, "A sala já está cheia.");
     // Mesmo nome na mesa: se for um "fantasma" desconectado que dá pra liberar (fora de mão
     // ativa, ou já eliminado/espectador), remove pra deixar a pessoa voltar. Se for alguém
     // conectado, um bot, ou um jogador sendo jogado por bot numa mão em andamento, bloqueia.
@@ -1335,15 +1350,24 @@ io.on("connection", (socket) => {
       room.players = room.players.filter((player) => player.id !== clash.id);
     }
     const player = createPlayer(socket, name);
-    // Partida rolando: entra como espectador e vira jogador na próxima partida.
-    // No lobby ou no fim de jogo, entra direto para a próxima partida.
+    const tableFull = seatedPlayers(room).length >= MAX_SEATS;
     const midGame = (room.phase !== "lobby" && room.phase !== "game_over") || Boolean(room.tournament && room.phase !== "lobby");
-    player.spectator = midGame;
+    const shouldSpectate = midGame || tableFull;
+    const spectatorCount = room.players.filter((player) => player.spectator).length;
+    if (shouldSpectate && spectatorCount >= MAX_SPECTATORS) {
+      return notice(socket, "A arquibancada desta sala já está cheia.");
+    }
+    // Partida rolando OU mesa já completa: entra como espectador e vira jogador
+    // na próxima partida. Espectadores não ocupam uma das oito cadeiras.
+    // No lobby/fim de jogo com vaga, entra direto para a próxima partida.
+    player.spectator = shouldSpectate;
     assignRandomAvatar(room, player);
     room.players.push(player);
     sendSession(socket, room, player);
     transferHost(room);
-    notice(socket, midGame ? "Partida em andamento — você entrou como espectador e joga na próxima." : "Você entrou na sala.");
+    notice(socket, player.spectator ? (tableFull
+      ? "Mesa cheia — você entrou para assistir."
+      : "Partida em andamento — você entrou como espectador e joga na próxima.") : "Você entrou na sala.");
     broadcast(room);
   });
 
