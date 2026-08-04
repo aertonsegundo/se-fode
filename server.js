@@ -264,6 +264,12 @@ function tournamentStandings(room) {
     .filter(Boolean));
 }
 
+// A validade do pódio do torneio é definida pela escalação humana que começou
+// o torneio. Não pode mudar no meio dele quando alguém sai da mesa.
+function tournamentHumanCount(room) {
+  return Object.keys(room.tournament?.participants || {}).length;
+}
+
 function tournamentState(room) {
   if (!room.tournament) return null;
   return {
@@ -1108,6 +1114,9 @@ function endGame(room) {
   // jogo, derrota e a medalha correspondente à posição final.
   const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
   const humanCount = humanStandings.length;
+  // Numa partida comum vale a mesa atual. No torneio, a regra dos cinco usa a
+  // escalação original: uma desistência não invalida as medalhas das rodadas seguintes.
+  const medalPlayerCount = isTournament ? tournamentHumanCount(room) : humanCount;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const online = !room.solo; // solo (contra bots) não conta no quadro de medalhas
   const humanPlayers = seatedPlayers(room)
@@ -1119,7 +1128,7 @@ function endGame(room) {
         position,
         playerCount: humanCount,
         won: player.id === winner?.id,
-        medal: online ? medalForPosition(position, humanCount) : null,
+        medal: online ? medalForPosition(position, medalPlayerCount) : null,
       };
     });
   if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio de Medalhas" : "Partida", online);
@@ -1133,7 +1142,7 @@ function endGame(room) {
     for (const entry of humanStandings) {
       const score = room.tournament.scores[entry.id];
       if (!score) continue;
-      const medal = medalForPosition(entry.position, humanCount);
+      const medal = medalForPosition(entry.position, medalPlayerCount);
       if (medal === "gold") score.goldMedals += 1;
       if (medal === "silver") score.silverMedals += 1;
       if (medal === "bronze") score.bronzeMedals += 1;
@@ -1157,7 +1166,7 @@ function endGame(room) {
   // mesa: deixa de ser espectador e passa a poder votar/jogar a próxima partida.
   room.matchStandings = finalStandingsFrom(seatedPlayers(room));
   room.medalStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
-  room.medalMatch = !room.solo && seatedPlayers(room).filter((player) => player.userId).length >= 5;
+  room.medalMatch = !room.solo && medalPlayerCount >= 5;
   if (!room.tournament) {
     promoteSpectators(room);
   }
