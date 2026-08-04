@@ -1103,6 +1103,7 @@ function renderWatchers() {
   const el = $("#watchers");
   const list = (state.spectators || []).filter((watcher) => watcher.id !== state.me?.id);
   el.classList.toggle("hidden", list.length === 0);
+  el.classList.toggle("under-vote", Boolean(state.expel)); // no mobile some durante a votação (evita sobrepor a barra)
   el.innerHTML = list.length
     ? `👁️ ${list.length} assistindo: ${list.map((watcher) => escapeHtml(watcher.name)).join(", ")}`
     : "";
@@ -1151,6 +1152,34 @@ function renderExpel() {
   $("#expel-no")?.addEventListener("click", () => socket.emit("vote-expel", false));
 }
 
+// No DESKTOP a barra do topo some no scroll — então a votação vira um card na lateral direita
+// (dentro do action-panel), com um usuário por linha e o voto de cada um. Só aparece com votação.
+function expelSideHtml(e) {
+  const rows = e.tally.map((t) => `<div class="es-row ${t.vote}"><span class="es-name">${escapeHtml(t.name)}</span><span class="es-vote">${t.vote === "yes" ? "✓ expulsar" : t.vote === "no" ? "✗ manter" : "aguardando"}</span></div>`).join("");
+  let head = "", actions = "";
+  if (e.resolved === "approved") head = `<div class="es-result yes">✓ ${escapeHtml(e.targetName)} foi expulso</div>`;
+  else if (e.resolved === "failed") head = `<div class="es-result no">✗ Sem votos suficientes</div>`;
+  else if (e.amTarget) head = `<div class="es-title">A mesa vota pra te tirar <b class="es-timer">${e.countdown}s</b></div>`;
+  else {
+    head = `<div class="es-title">Expulsar <b>${escapeHtml(e.targetName)}</b>? <span class="es-count">${e.yesCount}/${e.needed}</span> <b class="es-timer">${e.countdown}s</b></div>`;
+    if (e.amEligible && !e.myVote) actions = `<div class="es-actions"><button class="es-btn yes" data-ev="yes">EXPULSAR</button><button class="es-btn no" data-ev="no">MANTER</button></div>`;
+    else if (e.myVote) actions = `<div class="es-mine">você votou <b>${e.myVote === "yes" ? "EXPULSAR" : "MANTER"}</b></div>`;
+  }
+  return `<div class="es-head">${head}</div><div class="es-list">${rows}</div>${actions}`;
+}
+function renderExpelSide() {
+  const panel = $("#action-panel");
+  if (!panel) return;
+  const e = state.expel;
+  if (!e) return; // renderAction já resetou o innerHTML; nada a fazer
+  const card = document.createElement("div");
+  card.className = `expel-side${e.resolved ? " resolved" : ""}`;
+  card.innerHTML = expelSideHtml(e);
+  panel.prepend(card);
+  card.querySelector('[data-ev="yes"]')?.addEventListener("click", () => socket.emit("vote-expel", true));
+  card.querySelector('[data-ev="no"]')?.addEventListener("click", () => socket.emit("vote-expel", false));
+}
+
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
@@ -1178,6 +1207,7 @@ function render() {
   renderSeats();
   maybeGuardBid();
   renderAction();
+  renderExpelSide();
   renderHand();
   maybeStartTurnClock();
   maybeCelebrate();

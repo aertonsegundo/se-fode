@@ -59,7 +59,7 @@ button { cursor:pointer; }
 .or { text-align:center; margin:1.25rem 0; border-top:1px solid #bcb7aa; height:1px; }
 .or span { background:var(--paper); position:relative; top:-.65em; padding:0 .8rem; font-size:.6rem; letter-spacing:.1em; }
 .rules-link { position:absolute; left:8vw; bottom:2rem; border:0; border-bottom:1px solid; color:var(--paper); background:none; padding:.4rem 0; font-weight:700; font-size:.72rem; letter-spacing:.12em; }
-.game { min-height:100vh; min-height:100dvh; padding:1.2rem 2rem 2rem; }
+.game { min-height:100vh; min-height:100dvh; padding:1.2rem 2rem 2rem; position:relative; }
 .game-top { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; border-bottom:1px solid #48463f; padding-bottom:.8rem; }
 .mini-brand { color:var(--paper); font:1.8rem "Archivo Black"; text-decoration:none; letter-spacing:-.08em; }
 .room-code { font-size:.65rem; letter-spacing:.15em; color:#aaa69a; }
@@ -390,6 +390,31 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .ev-chip.pending { color:#9d998c; }
 .player-nominate { width:100%; margin-top:1rem; border:2px solid var(--red); background:transparent; color:#ff6a5a; padding:.7rem; font-weight:800; border-radius:8px; cursor:pointer; }
 .player-nominate:hover { background:var(--red); color:#fff; }
+/* Card lateral da votação (desktop): lista vertical (um por linha), dentro do action-panel. */
+.expel-side { text-align:left; background:#2c1616; border:1px solid #ff5a4a55; border-radius:10px; padding:.7rem .8rem; margin-bottom:.8rem; display:flex; flex-direction:column; gap:.5rem; }
+.expel-side.resolved { background:#20220f; border-color:#d8ff4555; }
+.es-head { font-size:.82rem; line-height:1.35; }
+.es-title b { color:#ff9a90; }
+.es-count { font-weight:900; color:var(--acid); }
+.es-timer { color:#ffb3ab; font-weight:900; }
+.es-result.yes { color:var(--acid); font-weight:800; }
+.es-result.no { color:#ff9a90; font-weight:800; }
+.es-list { display:flex; flex-direction:column; gap:.25rem; }
+.es-row { display:flex; align-items:center; justify-content:space-between; gap:.6rem; font-size:.72rem; padding:.28rem .5rem; border-radius:6px; background:#0003; }
+.es-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.es-vote { font-weight:800; white-space:nowrap; }
+.es-row.yes .es-vote { color:#d8ff45; }
+.es-row.no .es-vote { color:#ff9a90; }
+.es-row.pending .es-vote { color:#9d998c; }
+.es-actions { display:flex; gap:.5rem; }
+.expel-side .es-btn { flex:1; margin:0; border:0; box-shadow:none; padding:.55rem; font-weight:900; font-size:.7rem; border-radius:7px; cursor:pointer; }
+.expel-side .es-btn.yes { background:var(--red); color:#fff; }
+.expel-side .es-btn.no { background:transparent; border:1.5px solid #6b675c; color:var(--paper); }
+.es-mine { font-size:.72rem; color:#c7c2b4; }
+.es-mine b { color:var(--acid); }
+/* barra do topo só no mobile; card lateral só no desktop */
+@media (max-width:850px) { .expel-side { display:none; } }
+@media (min-width:851px) { #expel-bar { display:none !important; } }
 .auto-next { color:#9d998c; font-size:.82rem; font-weight:700; margin-top:.6rem; }
 .kick-list { display:flex; flex-direction:column; gap:.4rem; margin:.6rem 0; }
 .kick-title { font-size:.68rem; font-weight:900; letter-spacing:.08em; color:#b9b4a4; }
@@ -423,7 +448,10 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .champion-name { font-size:1.15rem; font-weight:900; color:#ffe27a; letter-spacing:.02em; }
 .champion-streak { font-size:.82rem; font-weight:800; color:#ff9d6b; }
 @keyframes champ-pop { from { transform:scale(.85); opacity:0; } to { transform:scale(1); opacity:1; } }
-.watchers { text-align:center; padding:.1rem .5rem .3rem; color:#7fb8c9; font-size:.72rem; font-weight:700; letter-spacing:.02em; }
+/* Lista de quem assiste: flutua (absolute) — nunca empurra o layout (desktop nem mobile). */
+.watchers { position:absolute; top:4.3rem; left:1rem; z-index:14; margin:0; max-width:min(52%,360px); padding:.16rem .6rem; border-radius:20px; background:#122630cc; border:1px solid #5fd0ff33; color:#8fd6ea; font-size:.68rem; font-weight:700; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* No mobile fica mais embaixo, na faixa livre entre as manilhas e a mesa (não cobre o status). */
+@media (max-width:850px) { .watchers { top:6.7rem; left:.6rem; max-width:80%; font-size:.62rem; } .watchers.under-vote { display:none; } }
 
 .turn-timer { height:8px; background:#3a3931; border-radius:5px; overflow:hidden; margin-top:.9rem; }
 .turn-timer i { display:block; height:100%; width:100%; background:var(--acid); border-radius:5px; transition:width .15s linear; }
