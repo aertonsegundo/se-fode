@@ -730,9 +730,16 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
   .game[data-phase="bidding"] .poker,
   .game[data-phase="playing"] .poker,
   .game[data-phase="trick_reveal"] .poker {
-    width:min(100%, 72dvh);
+    /* Impede o flex de esmagar a mesa (especialmente no modo espectador). */
+    flex:0 0 auto;
+    width:min(100%, 57dvh);
     max-width:560px;
   }
+
+  /* Quem está assistindo não tem cartas: remove a doca vazia e devolve esse
+     espaço à mesa, mantendo os assentos e o feltro sempre visíveis. */
+  .game.spectating .hand { display:none; }
+  .game.spectating .table-stage { padding-bottom:.35rem; }
 
   .game[data-phase="bidding"] .hand,
   .game[data-phase="playing"] .hand,
