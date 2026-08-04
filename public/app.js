@@ -1276,7 +1276,8 @@ function renderSeats() {
       : "";
 
     const meta = player.bid == null
-      ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? "apostando…" : "—")
+      // "apostando…" só pra quem está escolhendo AGORA (a vez dele); quem ainda vai apostar fica neutro.
+      ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? (state.turnId === player.id ? "apostando…" : "—") : "—")
       : `aposta ${player.bid} · fez ${player.wins}`;
     const lives = player.lives > 0 ? player.lives : 0;
     const hearts = lives > 0 ? "♥".repeat(lives) : "×";
@@ -1300,9 +1301,10 @@ function renderSeats() {
         <div class="turn-flag">VEZ</div>
         ${foreheadOnSeat}
         ${isHostSeat ? '<div class="host-star" title="Dono da sala">★</div>' : ""}
+        ${isDealer ? '<div class="dealer-chip" title="Dá as cartas — fala por último">D</div>' : ""}
         ${bannerRibbon}
         <div class="seat-body">
-          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}${isDealer ? '<span class="dealer" title="Distribui esta mão">D</span>' : ""}</div>
+          <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}</div>
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             <div class="seat-meta">${meta}</div>
