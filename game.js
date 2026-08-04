@@ -236,6 +236,31 @@ export function medalForPosition(position, humanCount) {
   return ["gold", "silver", "bronze"][position - 1] || null;
 }
 
+// A escalação humana do torneio não muda entre as partidas. Além de definir
+// se o pódio é válido, ela permite recolocar quem saiu entre uma partida e a
+// próxima na mesma vaga — sem zerar suas medalhas já conquistadas.
+export function tournamentHumanCount(participants) {
+  return Object.values(participants || {}).filter((participant) => participant?.userId).length;
+}
+
+export function tournamentParticipantIdForUser(playerIds, participants, userId) {
+  if (!userId) return null;
+  return (playerIds || []).find((playerId) => participants?.[playerId]?.userId === userId) || null;
+}
+
+// Queda não é desistência. Enquanto a pessoa ainda estiver viva e não tiver
+// sido expulsa, ela pode reassumir sua cadeira e a mão que estava em curso.
+export function canResumeAsPlayer(player) {
+  return Boolean(player
+    && !player.isBot
+    && !player.connected
+    && !player.expelled
+    && !player.eliminated
+    && !player.quit
+    && player.lives > 0
+    && player.resumeToken);
+}
+
 // Banners liberados pelas vitórias online. Recebe o catálogo (cada banner
 // conquistável tem um limiar em `wins`); exclusivos/automáticos não entram.
 export function unlockedBannerKeys(onlineWins, banners) {

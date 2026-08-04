@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -264,12 +264,6 @@ function tournamentStandings(room) {
     .filter(Boolean));
 }
 
-// A validade do pódio do torneio é definida pela escalação humana que começou
-// o torneio. Não pode mudar no meio dele quando alguém sai da mesa.
-function tournamentHumanCount(room) {
-  return Object.keys(room.tournament?.participants || {}).length;
-}
-
 function tournamentState(room) {
   if (!room.tournament) return null;
   return {
@@ -278,6 +272,60 @@ function tournamentState(room) {
     finished: room.tournament.finished,
     standings: tournamentStandings(room),
   };
+}
+
+// Entre partidas, um participante que saiu pode voltar à sua vaga original.
+// Reutilizar o mesmo id mantém o placar e as medalhas já acumuladas no torneio.
+function restoreTournamentPlayer(room, socket) {
+  const tournament = room.tournament;
+  const userId = socket.data.user?.id;
+  if (!tournament || tournament.finished || !tournament.completedGames || room.phase !== "game_over") return null;
+  const playerId = tournamentParticipantIdForUser(tournament.playerIds, tournament.participants, userId);
+  if (!playerId) return null;
+
+  const participant = tournament.participants[playerId];
+  let player = playerById(room, playerId);
+  if (player?.connected) return null;
+  if (player) {
+    if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+    player.disconnectTimer = null;
+    player.name = participant.name;
+    player.spectator = false;
+    player.quit = false;
+    player.auto = false;
+    applyProfile(player, socket.data.user);
+  } else {
+    player = createPlayer(socket, participant.name);
+    player.id = playerId;
+    room.players.push(player);
+  }
+  sendSession(socket, room, player);
+  transferHost(room);
+  notice(socket, "Você voltou ao torneio como jogador.");
+  broadcast(room);
+  return player;
+}
+
+// Quem caiu pode voltar até durante a partida: mantém cartas, vidas e posição.
+// Saídas voluntárias zeram resumeToken/quit; expulsões também nunca passam aqui.
+function restoreDisconnectedPlayer(room, socket, player) {
+  if (!canResumeAsPlayer(player)) return null;
+  if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+  if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+  player.disconnectTimer = null;
+  room.cleanupTimer = null;
+  if (room.autoTurnId === player.id && room.botTimer) {
+    clearTimeout(room.botTimer);
+    room.botTimer = null;
+    room.autoTurnId = null;
+  }
+  player.auto = false;
+  applyProfile(player, socket.data.user);
+  sendSession(socket, room, player);
+  transferHost(room);
+  notice(socket, "Você voltou para a mesa.");
+  broadcast(room);
+  return player;
 }
 
 function playerById(room, id) {
@@ -1116,7 +1164,7 @@ function endGame(room) {
   const humanCount = humanStandings.length;
   // Numa partida comum vale a mesa atual. No torneio, a regra dos cinco usa a
   // escalação original: uma desistência não invalida as medalhas das rodadas seguintes.
-  const medalPlayerCount = isTournament ? tournamentHumanCount(room) : humanCount;
+  const medalPlayerCount = isTournament ? tournamentHumanCount(room.tournament.participants) : humanCount;
   const positionById = new Map(humanStandings.map((entry) => [entry.id, entry.position]));
   const online = !room.solo; // solo (contra bots) não conta no quadro de medalhas
   const humanPlayers = seatedPlayers(room)
@@ -1339,6 +1387,13 @@ io.on("connection", (socket) => {
         return notice(socket, "Senha incorreta.");
       }
     }
+    // O torneio conserva a escalação original até o fim. Quem sai depois de
+    // uma partida pode retornar à sua vaga antes da próxima começar.
+    if (restoreTournamentPlayer(room, socket)) return;
+    // Queda durante uma partida não vira espectador: se ainda houver vidas e
+    // não houve expulsão/desistência, a pessoa reassume a própria cadeira.
+    const disconnectedPlayer = room.players.find((player) => player.userId === socket.data.user.id);
+    if (restoreDisconnectedPlayer(room, socket, disconnectedPlayer)) return;
     // Mesmo nome na mesa: se for um "fantasma" desconectado que dá pra liberar (fora de mão
     // ativa, ou já eliminado/espectador), remove pra deixar a pessoa voltar. Se for alguém
     // conectado, um bot, ou um jogador sendo jogado por bot numa mão em andamento, bloqueia.

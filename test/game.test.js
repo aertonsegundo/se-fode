@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
 
 const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
 
@@ -146,6 +146,40 @@ test("medalhas só valem no pódio de partidas com 5+ humanos", () => {
   assert.equal(medalForPosition(4, 8), null);
   assert.equal(medalForPosition(1, 4), null);
   assert.equal(medalForPosition(3, 4), null);
+});
+
+test("torneio mantém a validade das medalhas pela escalação inicial", () => {
+  const participants = {
+    ana: { userId: "u-ana", name: "Ana" },
+    bia: { userId: "u-bia", name: "Bia" },
+    caio: { userId: "u-caio", name: "Caio" },
+    duda: { userId: "u-duda", name: "Duda" },
+    enzo: { userId: "u-enzo", name: "Enzo" },
+  };
+  // Mesmo que Enzo não esteja na segunda partida, o torneio ainda começou
+  // válido com cinco humanos e o pódio dessa rodada continua valendo.
+  assert.equal(tournamentHumanCount(participants), 5);
+  assert.equal(medalForPosition(1, tournamentHumanCount(participants)), "gold");
+  assert.equal(medalForPosition(2, tournamentHumanCount(participants)), "silver");
+  assert.equal(medalForPosition(3, tournamentHumanCount(participants)), "bronze");
+});
+
+test("participante que volta entre partidas recupera a mesma vaga do torneio", () => {
+  const playerIds = ["ana", "bia", "caio", "duda", "enzo"];
+  const participants = Object.fromEntries(playerIds.map((id) => [id, { userId: `u-${id}`, name: id }]));
+  // O id da vaga, e portanto o placar acumulado, não depende de a pessoa
+  // ainda estar em room.players quando ela retorna entre duas partidas.
+  assert.equal(tournamentParticipantIdForUser(playerIds, participants, "u-caio"), "caio");
+  assert.equal(tournamentParticipantIdForUser(playerIds, participants, "u-fora"), null);
+});
+
+test("quem cai vivo e sem expulsão pode reassumir a própria cadeira", () => {
+  const base = { isBot: false, connected: false, expelled: false, eliminated: false, quit: false, lives: 2, resumeToken: "token" };
+  assert.equal(canResumeAsPlayer(base), true);
+  assert.equal(canResumeAsPlayer({ ...base, lives: 0 }), false);
+  assert.equal(canResumeAsPlayer({ ...base, expelled: true }), false);
+  assert.equal(canResumeAsPlayer({ ...base, quit: true }), false);
+  assert.equal(canResumeAsPlayer({ ...base, resumeToken: null }), false);
 });
 
 test("jogador que saiu após ser eliminado em terceiro mantém a medalha", () => {
