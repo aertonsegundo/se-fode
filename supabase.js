@@ -399,11 +399,32 @@ export async function recordGame(players, winnerId, mode = "Partida", online = f
       p_medals: medals,
       p_online: Boolean(online),
     });
-    // Enquanto a migração não foi aplicada, preserva ao menos partidas e vitórias.
+    // Se a instalação ainda não tiver recarregado a função SQL da migração,
+    // atualiza diretamente em vez de registrar só jogos/vitórias e perder as
+    // medalhas do pódio.
     if (resultError) {
-      const { error: fallbackError } = await admin.rpc("record_game", { p_players: playerIds, p_winner: winnerId || null });
+      console.warn("[supabase] record_game_medals falhou; usando atualização direta:", resultError.message);
+      const { data: profiles, error: profilesError } = await admin
+        .from("profiles")
+        .select("id, games_played, wins, online_wins, gold_medals, silver_medals, bronze_medals")
+        .in("id", playerIds);
+      if (profilesError) throw profilesError;
+      const now = new Date().toISOString();
+      const writes = (profiles || []).map((profile) => {
+        const medal = medals[profile.id];
+        return admin.from("profiles").update({
+          games_played: (profile.games_played || 0) + 1,
+          wins: (profile.wins || 0) + (profile.id === winnerId ? 1 : 0),
+          online_wins: (profile.online_wins || 0) + (online && profile.id === winnerId ? 1 : 0),
+          gold_medals: (profile.gold_medals || 0) + (medal === "gold" ? 1 : 0),
+          silver_medals: (profile.silver_medals || 0) + (medal === "silver" ? 1 : 0),
+          bronze_medals: (profile.bronze_medals || 0) + (medal === "bronze" ? 1 : 0),
+          updated_at: now,
+        }).eq("id", profile.id);
+      });
+      const results = await Promise.all(writes);
+      const fallbackError = results.find((result) => result.error)?.error;
       if (fallbackError) throw fallbackError;
-      console.warn("[supabase] rode o schema.sql para ativar as medalhas:", resultError.message);
     }
 
     // O histórico é complementar às estatísticas. Se a migration ainda não
