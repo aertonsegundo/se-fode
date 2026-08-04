@@ -431,6 +431,13 @@ function recentGameLabel(game) {
   return `${date} · ${game.mode || "Partida"}`;
 }
 
+// Botão de abrir votação de expulsão (só faz sentido com 3+ jogadores e ninguém votando ainda).
+function nominateExpelBtn(currentPlayer) {
+  const seated = state?.players?.filter((p) => !p.isBot && !p.spectator).length || 0;
+  const can = currentPlayer && !state?.solo && currentPlayer.id !== state?.me?.id
+    && !currentPlayer.isBot && !currentPlayer.spectator && !state?.expel && !iAmSpectator() && seated >= 3;
+  return can ? `<button id="nominate-expel" class="player-nominate">⚖️ Votar pra expulsar ${escapeHtml(currentPlayer.name)}</button>` : "";
+}
 function renderPlayerCard(profile, currentPlayer = null) {
   const body = $("#player-card-body");
   const stats = profileStats(profile);
@@ -451,7 +458,9 @@ function renderPlayerCard(profile, currentPlayer = null) {
     ${now}
     <div class="player-stat-grid"><div><b>${stats.games}</b><span>PARTIDAS</span></div><div><b>${stats.wins}</b><span>VITÓRIAS</span></div><div><b>${stats.rate}%</b><span>APROVEITAMENTO</span></div></div>
     <div class="player-points-grid"><div><b>${profile.goldMedals || 0}</b><span>🥇 OURO</span></div><div><b>${profile.silverMedals || 0}</b><span>🥈 PRATA</span></div><div><b>${profile.bronzeMedals || 0}</b><span>🥉 BRONZE</span></div><div><b>${profile.tournamentTitles || 0}</b><span>🏆 TROFÉUS</span></div></div>
-    <section class="player-history"><div class="player-history-title">HISTÓRICO RECENTE</div>${profile.historyAvailable === false ? '<p class="player-history-empty">O histórico começa a ser salvo nas próximas partidas.</p>' : games ? `<ul>${games}</ul>` : '<p class="player-history-empty">Ainda não terminou uma partida.</p>'}</section>`;
+    <section class="player-history"><div class="player-history-title">HISTÓRICO RECENTE</div>${profile.historyAvailable === false ? '<p class="player-history-empty">O histórico começa a ser salvo nas próximas partidas.</p>' : games ? `<ul>${games}</ul>` : '<p class="player-history-empty">Ainda não terminou uma partida.</p>'}</section>
+    ${nominateExpelBtn(currentPlayer)}`;
+  $("#nominate-expel")?.addEventListener("click", () => { socket.emit("nominate-expel", currentPlayer.id); $("#player-card").close(); });
 }
 
 async function openPlayerCard(player) {
@@ -1116,6 +1125,32 @@ function maybeGuardBid() {
   setTimeout(() => { if (state) render(); }, 640); // reabilita os botões depois do delay
 }
 
+// Barra da votação de expulsão. Fica no topo, em fluxo (nunca cobre a mesa/mão no mobile).
+// Mostra quem votou o quê (sim/não/pendente) e, ao terminar, o resultado por um tempinho.
+function renderExpel() {
+  const bar = $("#expel-bar");
+  const e = state.expel;
+  if (!e) { bar.classList.add("hidden"); bar.innerHTML = ""; return; }
+  bar.classList.remove("hidden");
+  bar.classList.toggle("resolved", Boolean(e.resolved));
+  const tally = e.tally.map((t) => `<span class="ev-chip ${t.vote}">${t.vote === "yes" ? "✓" : t.vote === "no" ? "✗" : "•"} ${escapeHtml(t.name)}</span>`).join("");
+  let head = "", actions = "";
+  if (e.resolved === "approved") {
+    head = `<span class="ev-result yes">✓ ${escapeHtml(e.targetName)} foi expulso pela mesa</span>`;
+  } else if (e.resolved === "failed") {
+    head = `<span class="ev-result no">✗ Sem votos suficientes — ${escapeHtml(e.targetName)} fica na mesa</span>`;
+  } else if (e.amTarget) {
+    head = `<span class="ev-title">A mesa está votando pra te tirar… <b class="ev-timer">${e.countdown}s</b></span>`;
+  } else {
+    head = `<span class="ev-title">Expulsar <b>${escapeHtml(e.targetName)}</b>? <span class="ev-count">${e.yesCount}/${e.needed}</span> <b class="ev-timer">${e.countdown}s</b></span>`;
+    if (e.amEligible && !e.myVote) actions = `<div class="ev-actions"><button id="expel-yes" class="ev-btn yes">EXPULSAR</button><button id="expel-no" class="ev-btn no">MANTER</button></div>`;
+    else if (e.myVote) actions = `<div class="ev-mine">você votou <b>${e.myVote === "yes" ? "EXPULSAR" : "MANTER"}</b></div>`;
+  }
+  bar.innerHTML = `<div class="ev-row"><div class="ev-head">${head}</div>${actions}</div><div class="ev-tally">${tally}</div>`;
+  $("#expel-yes")?.addEventListener("click", () => socket.emit("vote-expel", true));
+  $("#expel-no")?.addEventListener("click", () => socket.emit("vote-expel", false));
+}
+
 function render() {
   const shouldAnimateDeal = state.phase === "bidding" && state.round !== animatedRound;
   game.dataset.phase = state.phase;
@@ -1135,6 +1170,7 @@ function render() {
   $("#emote-toggle").classList.toggle("hidden", lobbyTools); // figurinhas valem também no solo (offline)
   renderAutoBar();
   renderSpectatorBar();
+  renderExpel();
   renderWatchers();
   renderTournamentBar();
   renderPot();

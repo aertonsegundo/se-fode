@@ -365,6 +365,23 @@ function publicState(room, viewerId) {
       restartNeeded: Math.ceil(room.players.filter((p) => !p.isBot && p.connected && !p.spectator).length * 2 / 3),
       iVotedRestart: room.restartVotes ? room.restartVotes.has(viewerId) : false,
     },
+    // Votação de expulsão em curso (roda em paralelo, não interrompe a partida). Votos públicos.
+    expel: room.expelVote ? (() => {
+      const vote = room.expelVote;
+      const eligible = expelEligible(room, vote.targetId);
+      return {
+        targetName: playerById(room, vote.targetId)?.name || "",
+        needed: eligible.length,
+        yesCount: [...vote.votes.values()].filter(Boolean).length,
+        // Lista pública: cada um que pode votar e seu voto (sim / não / pendente).
+        tally: eligible.map((p) => ({ name: p.name, vote: vote.votes.has(p.id) ? (vote.votes.get(p.id) ? "yes" : "no") : "pending" })),
+        amTarget: vote.targetId === viewerId,
+        amEligible: eligible.some((p) => p.id === viewerId),
+        myVote: vote.votes.has(viewerId) ? (vote.votes.get(viewerId) ? "yes" : "no") : null,
+        countdown: vote.resolved ? 0 : Math.max(0, Math.ceil((vote.endsAt - Date.now()) / 1000)),
+        resolved: vote.resolved, // null | "approved" | "failed"
+      };
+    })() : null,
     phase: room.phase,
     hostId: room.hostId,
     dealerId: room.dealerId,
@@ -599,6 +616,7 @@ function clearVotes(room) {
   room.startCountdownEndsAt = null;
   room.startVotes?.clear();
   room.restartVotes?.clear();
+  closeExpelVote(room); // votação de expulsão não carrega pra próxima partida
 }
 function cancelStartCountdown(room) {
   if (room.startCountdownTimer) { clearInterval(room.startCountdownTimer); room.startCountdownTimer = null; }
@@ -675,6 +693,66 @@ function evaluateStartVote(room) {
   maybeCancelStartCountdown(room);
 }
 
+// ===== Votação de expulsão =====
+const EXPEL_VOTE_MS = 15000;   // janela da votação; roda em paralelo (não interrompe a partida)
+const EXPEL_RESULT_MS = 4500;  // tempo mostrando o resultado (aprovado / sem votos) antes de sumir
+// Quem pode votar: humanos conectados e sentados, MENOS o indicado (ele não vota).
+function expelEligible(room, targetId) {
+  return room.players.filter((p) => !p.isBot && p.connected && !p.spectator && p.id !== targetId);
+}
+function closeExpelVote(room) {
+  if (room.expelTimer) { clearInterval(room.expelTimer); room.expelTimer = null; }
+  if (room.expelClearTimer) { clearTimeout(room.expelClearTimer); room.expelClearTimer = null; }
+  room.expelVote = null;
+}
+function approveExpel(room, target) {
+  target.expelled = true; // não volta nesta partida
+  if (["bidding", "playing", "trick_reveal"].includes(room.phase)) {
+    target.auto = true;   // um bot fecha a mão por ele
+    target.quit = true;   // e ele sai de vez ao fim da mão (scoreRound)
+  } else {
+    room.players = room.players.filter((p) => p.id !== target.id); // fora de mão ativa: sai já
+    transferHost(room);
+  }
+  if (target.socketId) io.to(target.socketId).emit("expelled", "A mesa votou pra te tirar da partida.");
+}
+// Resolve a votação (aprovada/sem-votos): para a contagem, mostra o resultado com a lista por um
+// tempinho (pra todos verem quem votou o quê) e então limpa.
+function resolveExpel(room, outcome) {
+  const vote = room.expelVote;
+  if (!vote || vote.resolved) return;
+  vote.resolved = outcome;
+  if (room.expelTimer) { clearInterval(room.expelTimer); room.expelTimer = null; }
+  room.expelClearTimer = setTimeout(() => { room.expelVote = null; room.expelClearTimer = null; broadcast(room); }, EXPEL_RESULT_MS);
+}
+function evaluateExpelVote(room) {
+  const vote = room.expelVote;
+  if (!vote || vote.resolved) return;
+  const target = playerById(room, vote.targetId);
+  if (!target || target.isBot || target.spectator || target.expelled) { closeExpelVote(room); return; }
+  const eligible = expelEligible(room, vote.targetId);
+  if (eligible.length < 2) { closeExpelVote(room); return; } // 2 jogadores: sem votação de expulsão
+  for (const id of [...vote.votes.keys()]) if (!eligible.some((p) => p.id === id)) vote.votes.delete(id);
+  const yes = [...vote.votes.values()].filter(Boolean).length;
+  if (yes >= eligible.length) { approveExpel(room, target); resolveExpel(room, "approved"); } // unânime a favor
+  else if (vote.votes.size >= eligible.length) resolveExpel(room, "failed"); // todos votaram, mas teve "não"
+}
+// Abre a votação (uma por vez). nominatorId=null quando é automática (jogador virou bot); quem abre já vota "sim".
+function openExpelVote(room, targetId, nominatorId) {
+  if (room.expelVote) return;
+  const target = playerById(room, targetId);
+  if (!target || target.isBot || target.spectator || target.eliminated || target.expelled) return;
+  if (expelEligible(room, targetId).length < 2) return; // partidas de 2 pessoas não têm votação
+  room.expelVote = { targetId, votes: new Map(nominatorId ? [[nominatorId, true]] : []), endsAt: Date.now() + EXPEL_VOTE_MS, resolved: null };
+  room.expelTimer = setInterval(() => {
+    const vote = room.expelVote;
+    if (!vote || vote.resolved) { clearInterval(room.expelTimer); room.expelTimer = null; return; }
+    if (vote.endsAt - Date.now() <= 0) resolveExpel(room, "failed"); // tempo acabou sem unanimidade
+    broadcast(room); // tique pro contador
+  }, 1000);
+  evaluateExpelVote(room); // pode já resolver (ex.: nomeador é o único elegível)
+}
+
 // Expulsa um jogador da partida por inatividade repetida: um bot termina a mão dele
 // (pra não quebrar a rodada), ele volta ao menu e não reconecta nesta sala.
 function expelPlayer(room, player) {
@@ -747,6 +825,7 @@ function scheduleAutomaticTurn(room) {
         expelPlayer(room, player);
         return broadcast(room);
       }
+      openExpelVote(room, player.id, null); // virou bot por inatividade → abre votação de expulsão
     }
     playAutomatically(room, player);
   }, delay);
@@ -1394,6 +1473,28 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Nomear alguém pra votação de expulsão (qualquer jogador; roda em paralelo, sem parar o jogo).
+  socket.on("nominate-expel", (targetId) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player || player.isBot || player.spectator) return;
+    if (String(targetId) === player.id) return; // não nomeia a si mesmo
+    openExpelVote(room, String(targetId), player.id);
+    broadcast(room);
+  });
+
+  // Votar SIM/NÃO na expulsão em curso (o indicado não vota; precisa ser unânime entre os outros).
+  socket.on("vote-expel", (value) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player || player.isBot || player.spectator || !room.expelVote || room.expelVote.resolved) return;
+    if (player.id === room.expelVote.targetId) return;
+    if (!expelEligible(room, room.expelVote.targetId).some((p) => p.id === player.id)) return;
+    room.expelVote.votes.set(player.id, value !== false); // true = sim (padrão); false = não
+    evaluateExpelVote(room);
+    broadcast(room);
+  });
+
   // O dono da sala pode tirar da mesa bots e jogadores ausentes (que caíram ou saíram)
   // ao fim da partida — antes disso não era possível e eles voltavam sozinhos no restart.
   socket.on("remove-player", (targetId) => {
@@ -1481,6 +1582,7 @@ io.on("connection", (socket) => {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
     maybeCancelStartCountdown(room); // saiu durante a contagem de início → cancela na hora
+    if (room.expelVote) evaluateExpelVote(room); // saiu um votante/indicado → reavalia a expulsão
     if (gameInProgress && !activeHand && activePlayers(room).length <= 1) return endGame(room);
     broadcast(room);
   });
@@ -1511,6 +1613,7 @@ io.on("connection", (socket) => {
         player.disconnectTimer = null;
         if (player.connected || player.eliminated) return;
         player.auto = true;
+        openExpelVote(room, player.id, null); // caiu e um bot assumiu → abre votação de expulsão
         broadcast(room);
       }, RECONNECT_GRACE_MS);
     }
@@ -1518,6 +1621,7 @@ io.on("connection", (socket) => {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
     maybeCancelStartCountdown(room); // caiu durante a contagem de início → cancela na hora
+    if (room.expelVote) evaluateExpelVote(room); // caiu um votante/indicado → reavalia a expulsão
     broadcast(room);
   });
 });
