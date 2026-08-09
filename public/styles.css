@@ -142,6 +142,8 @@ button { cursor:pointer; }
 .fodeu-item.eliminated span { color:var(--red); }
 .fodeu-none { color:var(--acid)!important; font-weight:700; }
 .bid-hand { display:none; }
+/* Só existe no mobile, onde o painel da vez cobre os assentos (ver bloco 850px). */
+.table-tally { display:none; }
 .bids { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; }
 .bids button { margin:0; box-shadow:none; padding:.7rem .2rem; }
 .bids.guarded { opacity:.5; transition:opacity .2s; } /* trava breve anti-misclick ao abrir */
@@ -327,7 +329,21 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
     padding:1rem 1.1rem calc(1.15rem + env(safe-area-inset-bottom, 0px));
     background:#1b1a16; border-top:2px solid var(--acid); border-radius:18px 18px 0 0;
     box-shadow:0 -12px 34px #000b; text-align:center; animation:sheet-up .22s ease;
+    /* Mesa cheia + placar + cartas podem passar da tela: o sheet rola por dentro
+       em vez de empurrar os botões de aposta para fora. */
+    max-height:calc(100dvh - 3.5rem); overflow-y:auto; overscroll-behavior:contain;
   }
+  /* Placar da mesa dentro do sheet: quem já apostou quanto, na ordem da aposta.
+     Durante a mão vira "fez/aposta". Sem isso, o sheet esconde os assentos. */
+  .game[data-acting="1"] .table-tally { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:.3rem; margin:.55rem 0 .1rem; }
+  .game[data-acting="1"] .tally-item { display:flex; align-items:center; gap:.32rem; min-width:0; max-width:8.5rem; padding:.22rem .5rem; border:1px solid #3d3b34; border-radius:999px; background:#232219; font-size:.66rem; }
+  .game[data-acting="1"] .tally-item b { min-width:0; font-weight:700; color:#c7c2b4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .game[data-acting="1"] .tally-item i { font-style:normal; font-weight:900; color:var(--paper); }
+  .game[data-acting="1"] .tally-item.pending { opacity:.45; }
+  .game[data-acting="1"] .tally-item.me { border-color:var(--acid); }
+  .game[data-acting="1"] .tally-item.me i { color:var(--acid); }
+  .game[data-acting="1"] .tally-sum { display:flex; align-items:center; gap:.32rem; padding:.22rem .3rem; font-size:.58rem; font-weight:800; letter-spacing:.08em; color:#8d897e; white-space:nowrap; }
+  .game[data-acting="1"] .tally-sum i { font-style:normal; font-size:.7rem; font-weight:900; color:var(--paper); }
   .game[data-acting="1"] .action-panel .panel-title { margin-bottom:.35rem; }
   .game[data-acting="1"] .action-panel h3 { font-size:1.75rem; margin:.1rem 0 .45rem; }
   .game[data-acting="1"] .action-panel p { font-size:.82rem; }

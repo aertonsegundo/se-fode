@@ -1368,6 +1368,28 @@ function turnClockHtml() {
   return `<div class="turn-timer"><i id="turn-bar"></i></div><small class="turn-hint">Modo automático em <b id="turn-secs">${TURN_SECONDS}</b>s se você não jogar</small>`;
 }
 
+// No mobile o painel da vez vira um sheet fixo que cobre a parte de baixo da
+// mesa — justamente onde ficam os assentos com "aposta X · fez Y". Repetimos o
+// placar aqui dentro (na ordem da aposta) pra ninguém ter que adivinhar o que a
+// mesa já apostou na hora de escolher. No desktop o CSS esconde: os assentos
+// estão todos visíveis.
+function tableTallyHtml() {
+  const order = (state.bidOrder?.length ? state.bidOrder : state.players.map((player) => player.id))
+    .map((id) => state.players.find((player) => player.id === id))
+    .filter((player) => player && !player.eliminated);
+  if (order.length < 2) return "";
+  const playing = state.phase === "playing";
+  const total = order.reduce((sum, player) => sum + (player.bid ?? 0), 0);
+  const items = order.map((player) => {
+    const mine = player.id === state.me?.id;
+    const value = player.bid == null ? "—" : playing ? `${player.wins}/${player.bid}` : String(player.bid);
+    const classes = ["tally-item", player.bid == null ? "pending" : "", mine ? "me" : ""].filter(Boolean).join(" ");
+    return `<span class="${classes}"><b>${escapeHtml(mine ? "você" : player.name)}</b><i>${value}</i></span>`;
+  }).join("");
+  const label = playing ? "FEZ/APOSTA · SOMA" : "SOMA";
+  return `<div class="table-tally" aria-label="Apostas da mesa">${items}<span class="tally-sum">${label} <i>${total}</i>/${state.handSize}</span></div>`;
+}
+
 function renderAction() {
   const panel = $("#action-panel");
   if (state.phase === "lobby") {
@@ -1408,17 +1430,17 @@ function renderAction() {
       ? `<div class="bid-hand">${[...state.me.hand].sort((a, b) => cardStrength(a) - cardStrength(b)).map((card) => cardHtml(card)).join("")}</div>`
       : "";
     const guarded = Date.now() < bidGuardUntil; // trava breve pós-abertura (anti-misclick)
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p>${handPreview}<div class="bids ${guarded ? "guarded" : ""}">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) && !guarded ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p>${handPreview}${tableTallyHtml()}<div class="bids ${guarded ? "guarded" : ""}">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) && !guarded ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
   if (state.phase === "playing" && state.turnId === state.me.id) {
     if (state.handSize === 1) {
       // Rodada na testa: joga sozinha, sem botão (a carta está na testa).
-      panel.innerHTML = `<div class="panel-title">RODADA NA TESTA</div><h3>JOGUE NO ESCURO</h3><p>Sua carta vai sozinha — todo mundo vê, menos você.</p>`;
+      panel.innerHTML = `<div class="panel-title">RODADA NA TESTA</div><h3>JOGUE NO ESCURO</h3><p>Sua carta vai sozinha — todo mundo vê, menos você.</p>${tableTallyHtml()}`;
       return;
     }
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>Clique numa carta da sua mão.</p>${turnClockHtml()}`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>Clique numa carta da sua mão.</p>${tableTallyHtml()}${turnClockHtml()}`;
     return;
   }
   if (state.phase === "trick_reveal") {
