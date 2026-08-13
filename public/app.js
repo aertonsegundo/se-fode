@@ -164,6 +164,23 @@ document.getElementById("sfx-toggle")?.addEventListener("click", () => {
 updateSfxToggle();
 loadSfx();
 
+// ===== Dinâmicas: narração da mesa + sequências (combos) =====
+const nameOf = (id) => state?.players.find((p) => p.id === id)?.name || "Alguém";
+// A mesa "narra" as jogadas num balão no centro do feltro (some sozinho).
+let narrationTimer = null;
+function narrate(text) {
+  const el = document.getElementById("narration");
+  if (!el || !text) return;
+  el.textContent = text;
+  el.classList.remove("show"); void el.offsetWidth; el.classList.add("show"); // reinicia a animação
+  clearTimeout(narrationTimer);
+  narrationTimer = setTimeout(() => el.classList.remove("show"), 3400);
+}
+// Sequência de vazas seguidas do mesmo jogador dentro da mão (para badge + narração).
+const comboTrack = { round: 0, lastWinnerId: null, streak: 0 };
+let currentCombo = { winnerId: null, count: 0 }; // lido pelo renderSeats no trick_reveal
+const playedSeen = new Set(); // cartas que já animaram a entrada (não repetir a cada re-render)
+
 // Toca os SFX conforme o estado muda (detecta os eventos por diff do estado anterior).
 const MANILHAS = ["4♣", "7♥", "A♠", "7♦"]; // zap = 4♣ (mais forte)
 const sfxTrack = { round: 0, tableIds: "", trickKey: "", bidCount: 0, phase: "", myTurn: false };
@@ -171,26 +188,42 @@ function runSounds() {
   if (!state) return;
   // nova mão distribuída
   if (state.round !== sfxTrack.round && state.phase === "bidding" && state.round > 0 && sfxTrack.round > 0) playSfx("deal", 0.45);
-  // carta nova na mesa (zap/manilha ganham som próprio)
+  // carta nova na mesa (zap/manilha ganham som próprio + narração das jogadas de peso)
   const ids = (state.table || []).map((item) => item.card?.id).filter(Boolean);
   const idsKey = ids.join(",");
   if (idsKey !== sfxTrack.tableIds) {
     const prevLen = sfxTrack.tableIds ? sfxTrack.tableIds.split(",").length : 0;
     if (ids.length > prevLen) {
       const newId = ids[ids.length - 1];
-      if (newId === "4♣") playSfx("zap-card", 0.8); // zap (4 de paus): som próprio
-      else if (MANILHAS.includes(newId)) playSfx("manilha", 0.65);
+      const who = nameOf((state.table || [])[state.table.length - 1]?.playerId);
+      if (newId === "4♣") { playSfx("zap-card", 0.8); narrate(`⚡ ZAP! ${who} baixou o 4♣`); }
+      else if (MANILHAS.includes(newId)) { playSfx("manilha", 0.65); narrate(`🔥 ${who} cravou manilha (${newId})`); }
       else playSfx("card", 0.5);
     }
     sfxTrack.tableIds = idsKey;
   }
-  // resolução da vaza (melada / bolo acumulado / vaza normal)
+  // resolução da vaza (melada / bolo acumulado / vaza normal) + atualiza combo e narra
   const tr = state.trickResult;
   const trickKey = tr ? `${state.round}-${state.trick}-${tr.winnerId || "melou"}` : "";
   if (trickKey && trickKey !== sfxTrack.trickKey) {
-    if (!tr.winnerId || (state.melada || []).length) playSfx("melada", 0.6);
-    else if ((state.pot || 0) > 1) playSfx("pot", 0.7);        // ganhou mais do que colocou (bolo)
-    else playSfx("trick", 0.6);
+    if (comboTrack.round !== state.round) { comboTrack.round = state.round; comboTrack.lastWinnerId = null; comboTrack.streak = 0; }
+    const melou = (state.melada || []).length > 0; // houve carta melada (pode ter vencedor mesmo assim)
+    if (!tr.winnerId) {
+      // sem vencedor de fato: aí sim ninguém levou a mão
+      playSfx("melada", 0.6);
+      comboTrack.lastWinnerId = null; comboTrack.streak = 0; // quebra a sequência
+      currentCombo = { winnerId: null, count: 0 };
+      narrate("🍯 MELOU! Ninguém levou");
+    } else {
+      comboTrack.streak = tr.winnerId === comboTrack.lastWinnerId ? comboTrack.streak + 1 : 1;
+      comboTrack.lastWinnerId = tr.winnerId;
+      currentCombo = { winnerId: tr.winnerId, count: comboTrack.streak };
+      const w = nameOf(tr.winnerId);
+      if (comboTrack.streak >= 2) { playSfx("pot", 0.7); narrate(`🔥 ${w} — ${comboTrack.streak} seguidas!`); }
+      else if ((state.pot || 0) > 1) { playSfx("pot", 0.7); narrate(`💰 ${w} abocanhou o bolo ×${state.pot}`); }
+      else if (melou) { playSfx("melada", 0.6); narrate(`🍯 Melou, mas ${w} levou a mão`); }
+      else { playSfx("trick", 0.6); narrate(`${w} levou a mão`); }
+    }
     sfxTrack.trickKey = trickKey;
   }
   // apostas: toca quando entra uma aposta nova
@@ -202,15 +235,33 @@ function runSounds() {
     const losers = state.roundLosers || [];
     if (losers.some((l) => l.eliminated)) playSfx("eliminated", 0.7);
     else if (losers.length) playSfx("lose", 0.6);
+    const fodidos = (state.players || []).filter((p) => p.roundLoss > 0);
+    const caiu = fodidos.filter((p) => p.eliminated).map((p) => p.name);
+    if (caiu.length) narrate(`💀 ${caiu.join(", ")} caiu fora!`);
+    else if (fodidos.length) narrate(`😖 ${fodidos.map((p) => p.name).join(", ")} se fodeu`);
   }
   // fim de jogo
-  if (state.phase === "game_over" && sfxTrack.phase !== "game_over") playSfx("win", 0.6);
+  if (state.phase === "game_over" && sfxTrack.phase !== "game_over") {
+    playSfx("win", 0.6);
+    if (state.lastResult?.name) narrate(`🏆 ${state.lastResult.name} venceu!`);
+  }
   // virou a minha vez
   const myTurn = state.turnId === state.me?.id && (state.phase === "bidding" || state.phase === "playing");
   if (myTurn && !sfxTrack.myTurn) playSfx("turn", 0.5);
   sfxTrack.myTurn = myTurn;
   sfxTrack.phase = state.phase;
   sfxTrack.round = state.round;
+}
+
+// Nível de tensão da reta final (0 nenhum, 1 médio, 2 alto) — vira atributo no #game
+// e o CSS acende um leve pulso vermelho no feltro. Robusto: não depende do índice da vaza.
+function tensionLevel() {
+  if (!state || !["playing", "trick_reveal"].includes(state.phase)) return 0;
+  const alive = (state.players || []).filter((p) => !p.eliminated && (p.lives ?? 0) > 0);
+  if (alive.length === 2) return 2;                 // finalíssima: só dois de pé
+  if (state.handSize === 1) return 1;               // testa (1 carta): tenso por natureza
+  if ((state.pot || 0) > 1) return 1;               // bolo acumulado em jogo
+  return 0;
 }
 
 function leaveRoom() {
@@ -1313,6 +1364,7 @@ function render() {
   const actingNow = state.turnId === state.me?.id
     && (state.phase === "bidding" || (state.phase === "playing" && state.handSize === 1));
   game.dataset.acting = actingNow ? "1" : "";
+  game.dataset.tension = String(tensionLevel() || ""); // reta final acende o feltro
   $("#copy-code").textContent = state.code;
   $("#round-label").textContent = state.phase === "lobby" ? "AQUECENDO A MESA" : `MÃO ${state.round} · ${state.handSize} CARTA${state.handSize > 1 ? "S" : ""}`;
   $("#status").textContent = state.message;
@@ -1368,6 +1420,7 @@ function renderSeats() {
   // "Eu" fico embaixo; os demais preenchem a mesa no sentido horário (mesma direção do jogo).
   const ordered = [...players.slice(meIndex), ...players.slice(0, meIndex)];
   const forehead = state.handSize === 1 && state.phase !== "lobby";
+  if (!state.table || !state.table.length) playedSeen.clear(); // mesa vazia: pode reanimar a próxima vaza
 
   $("#seats").innerHTML = ordered.map((player, k) => {
     const angle = Math.PI / 2 + (k / total) * Math.PI * 2;
@@ -1382,10 +1435,16 @@ function renderSeats() {
     const play = state.table.find((item) => item.playerId === player.id);
     const foreheadCard = forehead && !isMe ? player.foreheadCard : null;
     const melada = play && (state.melada || []).includes(play.card.id);
+    // "just-played": anima a entrada só na 1ª vez que a carta aparece (ver playedSeen)
+    const playKey = play ? `${state.round}-${state.trick}-${play.card.id}` : "";
+    const freshPlay = play && !playedSeen.has(playKey);
+    if (freshPlay) playedSeen.add(playKey);
+    // combo: quantas vazas seguidas este jogador levou (>=2 vira badge no lugar do "LEVOU")
+    const combo = wonTrick && currentCombo.winnerId === player.id && currentCombo.count >= 2 ? currentCombo.count : 0;
 
     // carta jogada fica exatamente na frente do jogador (slot a 24% do raio)
     const cardZone = play
-      ? `<div class="seat-card ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
+      ? `<div class="seat-card ${freshPlay ? "just-played" : ""} ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
       : "";
     // no testa, a carta que todos veem fica colada na LATERAL do card do dono, pro lado de
     // fora da mesa (nunca sobre o feltro/texto): assentos à esquerda (cos<0) recebem a carta
@@ -1435,7 +1494,7 @@ function renderSeats() {
             <div class="hearts" title="${lives} vidas"><span class="hearts-full">${hearts}</span><span class="hearts-compact">${compactHearts}</span></div>
           </div>
         </div>
-        ${wonTrick ? '<div class="seat-tag win">LEVOU</div>' : ""}
+        ${wonTrick ? (combo ? `<div class="seat-tag combo">🔥 ${combo} SEGUIDAS</div>` : '<div class="seat-tag win">LEVOU</div>') : ""}
         ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
         ${!player.connected ? (player.auto ? '<div class="seat-tag off">🤖 BOT NO LUGAR</div>' : '<div class="seat-tag off">RECONECTANDO</div>') : ""}
         ${player.auto && !player.isBot && player.connected && (state.phase === "bidding" || state.phase === "playing") ? '<div class="seat-tag auto">🤖 AUTO</div>' : ""}

@@ -259,6 +259,8 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-tag.win { background:var(--acid); color:var(--ink); }
 .seat-tag.lose { background:var(--red); color:#fff; }
 .seat-tag.off { background:#6d6a62; color:#fff; }
+.seat-tag.combo { background:linear-gradient(90deg,#ff8a1f,#ff3b30); color:#fff; box-shadow:0 0 10px #ff6a1f88; animation:combo-pop .4s ease; }
+@keyframes combo-pop { 0% { transform:scale(.6); opacity:0; } 60% { transform:scale(1.15); } 100% { transform:scale(1); opacity:1; } }
 
 .seat-card-slot { position:absolute; left:calc(50% + var(--cos) * var(--card-rx)); top:calc(50% + var(--sin) * var(--card-ry)); transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
 .seat-card { position:relative; filter:drop-shadow(0 6px 10px #000a); }
@@ -275,8 +277,23 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .forehead-card .card { width:48px; height:70px; font-size:.8rem; padding:.28rem; }
 .forehead-card .card .big-suit { font-size:1.25rem; }
 @keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
+/* carta recém-jogada "cai" na mesa (só na 1ª aparição, ver playedSeen no JS) */
+.seat-card.just-played .card { animation:card-drop .34s cubic-bezier(.2,.9,.25,1.2); }
+@keyframes card-drop { 0% { transform:translateY(-42px) scale(.6) rotate(-8deg); opacity:0; } 70% { opacity:1; } 100% { transform:translateY(0) scale(1) rotate(0); opacity:1; } }
 .mystery-card { background:#27251f; color:var(--acid); display:grid; place-items:center; place-content:center; font:2rem "Archivo Black"; }
-@media (prefers-reduced-motion:reduce) { .seat.turn .turn-flag,.seat-card.winning .card { animation:none; } }
+@media (prefers-reduced-motion:reduce) { .seat.turn .turn-flag,.seat-card.winning .card,.seat-card.just-played .card,.seat-tag.combo { animation:none; } }
+
+/* ===== Dinâmicas: narração da mesa + tensão da reta final ===== */
+.narration { position:absolute; top:44%; left:50%; transform:translate(-50%,-50%) scale(.9); z-index:7; max-width:78%; text-align:center; pointer-events:none; opacity:0;
+  background:#0d0d0acc; color:var(--paper); font:.86rem/1.15 "Archivo Black",sans-serif; letter-spacing:.01em; padding:.5rem .8rem; border-radius:10px; border:1px solid #ffffff1f; box-shadow:0 8px 22px #000a; -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+.narration.show { animation:narr-pop 3.4s ease forwards; }
+@keyframes narr-pop { 0% { opacity:0; transform:translate(-50%,-50%) scale(.7); } 8% { opacity:1; transform:translate(-50%,-50%) scale(1.04); } 16% { transform:translate(-50%,-50%) scale(1); } 82% { opacity:1; transform:translate(-50%,-50%) scale(1); } 100% { opacity:0; transform:translate(-50%,-50%) scale(.96); } }
+/* reta final: acende um pulso vermelho no feltro (1 médio, 2 alto/finalíssima) */
+.game[data-tension="1"] .felt { animation:tension-soft 2.4s ease-in-out infinite; }
+.game[data-tension="2"] .felt { animation:tension-hard 1.15s ease-in-out infinite; }
+@keyframes tension-soft { 0%,100% { box-shadow:inset 0 0 0 3px #547363,inset 0 8px 30px #0006,0 22px 45px #0009; } 50% { box-shadow:inset 0 0 0 3px #7a5a3f,inset 0 0 42px #ff3b3040,0 22px 45px #0009; } }
+@keyframes tension-hard { 0%,100% { box-shadow:inset 0 0 0 3px #547363,inset 0 8px 30px #0006,0 22px 45px #0009; } 50% { box-shadow:inset 0 0 0 3px #ff3b30,inset 0 0 60px #ff3b3070,0 22px 45px #0009; } }
+@media (prefers-reduced-motion:reduce) { .narration.show { animation:none; opacity:1; } .game[data-tension] .felt { animation:none; } }
 
 @media (max-width:850px) {
   .game-layout { grid-template-columns:1fr; gap:1rem; }
