@@ -706,6 +706,12 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .dash-gate { text-align:center; padding:4rem 1rem; color:#b9b4a6; font-weight:700; }
 .dash-gate a { color:var(--acid); }
 .dash-content { margin-top:1.4rem; }
+.dash-nav { display:flex; gap:.2rem; flex-wrap:wrap; border-bottom:1px solid #302f29; margin-bottom:1.4rem; }
+.dash-tab { border:0; background:none; color:#8d897e; font-weight:800; font-size:.82rem; letter-spacing:.03em; padding:.7rem 1.1rem; margin-bottom:-1px; border-bottom:2px solid transparent; cursor:pointer; transition:color .12s, border-color .12s; }
+.dash-tab:hover { color:var(--paper); }
+.dash-tab.is-active { color:var(--paper); border-bottom-color:var(--acid); }
+.dash-panel { display:none; }
+.dash-panel.is-active { display:block; }
 .dash-stats { display:flex; gap:.8rem; flex-wrap:wrap; margin-bottom:1.4rem; }
 .dash-stat { flex:1; min-width:120px; background:#1c1b16; border:1px solid #302f29; border-radius:12px; padding:.9rem 1rem; }
 .dash-stat b { display:block; font:1.7rem "Archivo Black",sans-serif; color:var(--acid); }

@@ -247,4 +247,19 @@ async function createEmoteReq(body) {
   finally { btn.disabled = false; }
 }
 
+// Navegação por abas (Usuários / Métricas / Figurinhas), lembra a última escolhida.
+function setupTabs() {
+  const tabs = [...document.querySelectorAll(".dash-tab")];
+  const panels = [...document.querySelectorAll(".dash-panel")];
+  const show = (key) => {
+    if (!tabs.some((t) => t.dataset.tab === key)) key = "usuarios";
+    tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === key));
+    panels.forEach((p) => p.classList.toggle("is-active", p.dataset.panel === key));
+    try { localStorage.setItem("dashTab", key); } catch { /* ignora */ }
+  };
+  tabs.forEach((t) => { t.onclick = () => show(t.dataset.tab); });
+  show(localStorage.getItem("dashTab") || "usuarios");
+}
+setupTabs();
+
 boot();
