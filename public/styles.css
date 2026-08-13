@@ -586,6 +586,12 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 
 /* Barra de conta no topo do menu */
 .account-bar { position:fixed; top:0; left:0; right:0; z-index:30; display:flex; align-items:center; justify-content:space-between; gap:.6rem; padding:.55rem .9rem; background:linear-gradient(#171713f2,#17171300); flex-wrap:wrap; }
+/* banner "voltar à mesa" (troca de dispositivo): partida em aberto da conta */
+.resume-banner { display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; width:100%; max-width:1040px; background:#123324cc; border:1px solid #3fb27f; border-radius:12px; padding:.75rem 1.1rem; }
+.resume-text { flex:1; min-width:180px; font-weight:700; font-size:.9rem; color:var(--paper); }
+.resume-btn { border:2px solid var(--acid); background:var(--acid); color:var(--ink); font-weight:900; font-size:.72rem; letter-spacing:.05em; padding:.5rem .9rem; border-radius:8px; cursor:pointer; }
+.resume-btn:hover { filter:brightness(1.06); }
+.resume-dismiss { border:1px solid #45433c; background:transparent; color:#b9b4a6; font-weight:800; border-radius:6px; padding:.35rem .55rem; cursor:pointer; line-height:1; }
 .account-chip { display:flex; align-items:center; gap:.6rem; border:1px solid #3d3b34; background:#20201b; color:var(--paper); padding:.4rem .8rem .4rem .4rem; border-radius:16px; }
 .account-photo { width:2.2rem; height:2.2rem; border-radius:50%; overflow:hidden; display:grid; place-items:center; background:var(--blue); color:var(--ink); font-weight:900; flex:0 0 2.2rem; }
 .account-photo img { width:100%; height:100%; object-fit:cover; }

@@ -352,6 +352,37 @@ function restoreDisconnectedPlayer(room, socket, player) {
   return player;
 }
 
+// Troca de dispositivo: a MESMA conta abre em outro aparelho e assume a própria
+// cadeira. Transfere a sessão para o novo socket e encerra a do aparelho antigo.
+function takeoverSeat(room, socket, player) {
+  const oldSocketId = player.socketId;
+  if (oldSocketId && oldSocketId !== socket.id) {
+    const oldSocket = io.sockets.sockets.get(oldSocketId);
+    if (oldSocket) {
+      oldSocket.data.roomCode = null;   // zera antes de derrubar: o handler de disconnect não mexe no assento
+      oldSocket.data.playerId = null;
+      oldSocket.emit("session-taken-over");
+      oldSocket.disconnect(true);
+    }
+  }
+  if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
+  if (room.cleanupTimer) { clearTimeout(room.cleanupTimer); room.cleanupTimer = null; }
+  if (room.autoTurnId === player.id && room.botTimer) {
+    clearTimeout(room.botTimer);
+    room.botTimer = null;
+    room.autoTurnId = null;
+  }
+  leaveVoice(room, player);           // a malha de voz do aparelho antigo caiu; recomeça no novo se quiser
+  player.auto = false;
+  player.resumeToken = randomUUID();  // invalida o token do aparelho antigo (não volta e rouba a cadeira)
+  applyProfile(player, socket.data.user);
+  sendSession(socket, room, player);
+  transferHost(room);
+  notice(socket, "Você assumiu a mesa neste dispositivo.");
+  broadcast(room);
+  return player;
+}
+
 function playerById(room, id) {
   return room.players.find((player) => player.id === id);
 }
@@ -1310,6 +1341,18 @@ io.on("connection", (socket) => {
     socket.emit("rooms", roomListDTO());
   });
 
+  // Novo dispositivo/login sem sessão local: procura se a conta já está numa partida,
+  // pra oferecer "voltar à mesa" (mesmo em sala privada, cujo código a pessoa nem tem).
+  socket.on("find-my-game", () => {
+    const uid = socket.data.user?.id;
+    if (!uid) return socket.emit("my-game", null);
+    for (const room of rooms.values()) {
+      const seat = room.players.find((p) => !p.isBot && p.userId === uid && !p.eliminated && !p.quit && !p.expelled && p.socketId !== socket.id);
+      if (seat) return socket.emit("my-game", { code: room.code, name: room.name, phase: room.phase, spectator: Boolean(seat.spectator) });
+    }
+    socket.emit("my-game", null);
+  });
+
   socket.on("resume-session", ({ code, playerId, resumeToken } = {}) => {
     const room = rooms.get(cleanCode(code));
     const player = room && playerById(room, String(playerId || ""));
@@ -1421,6 +1464,12 @@ io.on("connection", (socket) => {
     const room = rooms.get(code);
     if (!name) return notice(socket, "Digite seu nome.");
     if (!room) return notice(socket, "Sala não encontrada.");
+    // Troca de dispositivo: a mesma conta já está sentada e CONECTADA aqui (outro
+    // aparelho). Assume a cadeira neste dispositivo — dispensa senha (é o dono do assento).
+    const mySeat = room.players.find((p) => !p.isBot && p.userId && p.userId === socket.data.user.id);
+    if (mySeat && mySeat.connected && mySeat.socketId && mySeat.socketId !== socket.id) {
+      return takeoverSeat(room, socket, mySeat);
+    }
     // Sala privada: entra com o link de convite (token) OU com a senha certa.
     if (room.isPrivate) {
       const invited = invite && invite === room.inviteToken;

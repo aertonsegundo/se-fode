@@ -568,17 +568,25 @@ function maybeAutoJoinInvite() {
   join("join-room", { code: inv.code, invite: inv.invite });
 }
 
+let sessionTakenOver = false; // este aparelho foi substituído por outro (mesma conta)
 socket.on("connect", () => {
   const saved = localStorage.getItem(SESSION_KEY);
   if (saved) {
     try { socket.emit("resume-session", JSON.parse(saved)); }
     catch { localStorage.removeItem(SESSION_KEY); }
+  } else if (!state) {
+    socket.emit("find-my-game"); // logado sem sessão local: tem partida em aberto pra voltar?
   }
   if (connectedBefore) showToast("Conexão recuperada.");
   connectedBefore = true;
   if (!state) watchLobby(); // na home: assina a lista de salas ao vivo
 });
-socket.on("disconnect", () => { if (state) showToast("Conexão perdida. Tentando voltar…"); });
+socket.on("disconnect", () => {
+  // Sessão assumida em outro aparelho: o servidor nos derrubou de propósito → reconecta
+  // (agora sem sessão local) pra a home voltar a funcionar, sem o toast de "conexão perdida".
+  if (sessionTakenOver) { sessionTakenOver = false; setTimeout(() => { if (!socket.connected) socket.connect(); }, 400); return; }
+  if (state) showToast("Conexão perdida. Tentando voltar…");
+});
 socket.on("session", (session) => {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   myPlayerId = session.playerId;
@@ -589,7 +597,42 @@ socket.on("session-expired", () => {
   game.classList.add("hidden");
   home.classList.remove("hidden");
   showToast("A sala anterior não existe mais.");
+  if (socket.connected) socket.emit("find-my-game"); // talvez a conta ainda esteja em outra mesa
 });
+
+// ===== Troca de dispositivo (mesma conta) =====
+// Este aparelho foi substituído por outro: sai da mesa aqui, de forma limpa.
+socket.on("session-taken-over", () => {
+  sessionTakenOver = true;
+  localStorage.removeItem(SESSION_KEY);
+  leaveVoice();
+  state = null;
+  stopTurnClock();
+  hideResumeBanner();
+  game.classList.add("hidden");
+  home.classList.remove("hidden");
+  showToast("Você abriu o jogo em outro dispositivo. A sessão aqui foi encerrada.");
+});
+
+// Descobriu uma partida em aberto da conta (sem sessão local): oferece "voltar à mesa".
+let resumeGame = null;
+socket.on("my-game", (info) => {
+  if (!info || state) return hideResumeBanner();
+  resumeGame = info;
+  const txt = $("#resume-banner .resume-text");
+  if (txt) txt.textContent = info.spectator
+    ? `👁️ Você está assistindo uma partida (sala ${info.code}). Voltar neste dispositivo?`
+    : `🎮 Você tem uma partida em andamento (sala ${info.code}).`;
+  $("#resume-banner")?.classList.remove("hidden");
+});
+function hideResumeBanner() { resumeGame = null; $("#resume-banner")?.classList.add("hidden"); }
+$("#resume-btn")?.addEventListener("click", () => {
+  if (!resumeGame) return;
+  const code = resumeGame.code;
+  hideResumeBanner();
+  joinRoomByCode(code); // o servidor faz o takeover (dispensa senha: é o dono do assento)
+});
+$("#resume-dismiss")?.addEventListener("click", hideResumeBanner);
 socket.on("notice", (text) => {
   // Entrou por código numa sala privada: o servidor recusou por senha → abre o modal próprio.
   if (text === "Senha incorreta." && pendingJoin) {
