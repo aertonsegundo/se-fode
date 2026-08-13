@@ -261,6 +261,12 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-tag.off { background:#6d6a62; color:#fff; }
 .seat-tag.combo { background:linear-gradient(90deg,#ff8a1f,#ff3b30); color:#fff; box-shadow:0 0 10px #ff6a1f88; animation:combo-pop .4s ease; }
 @keyframes combo-pop { 0% { transform:scale(.6); opacity:0; } 60% { transform:scale(1.15); } 100% { transform:scale(1); opacity:1; } }
+/* chat de voz: badge de mic (só quem está no voz) + anel verde de "falando" */
+.voice-badge { display:none; }
+.seat.in-voice .voice-badge { display:grid; place-items:center; position:absolute; top:-.45rem; right:-.45rem; width:1.35rem; height:1.35rem; background:#123324; border:1px solid #3fb27f; border-radius:50%; font-size:.72rem; z-index:5; box-shadow:0 2px 6px #0007; }
+.seat.speaking { border-color:#3fb27f; animation:voice-pulse 1s ease-in-out infinite; }
+@keyframes voice-pulse { 0%,100% { box-shadow:0 0 0 2px #3fb27f,0 0 9px #3fb27f66,0 6px 16px #0006; } 50% { box-shadow:0 0 0 2px #55d89a,0 0 20px #3fb27faa,0 6px 16px #0006; } }
+@media (prefers-reduced-motion:reduce) { .seat.speaking { animation:none; box-shadow:0 0 0 2px #3fb27f,0 6px 16px #0006; } }
 
 .seat-card-slot { position:absolute; left:calc(50% + var(--cos) * var(--card-rx)); top:calc(50% + var(--sin) * var(--card-ry)); transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
 .seat-card { position:relative; filter:drop-shadow(0 6px 10px #000a); }
@@ -391,6 +397,11 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .sfx-toggle { border:1px solid #45433c; background:#20201b; color:var(--paper); border-radius:6px; padding:.28rem .45rem; font-size:.95rem; line-height:1; cursor:pointer; }
 .sfx-toggle:hover { border-color:var(--acid); }
 .sfx-toggle.muted { opacity:.55; }
+/* chat de voz: botão ativo (verde) e mute (vermelho) */
+.voice-toggle.on { background:#123324; border-color:#3fb27f; }
+.voice-toggle.on:hover { border-color:#55d89a; }
+.voice-mute.muted { background:#3a1616; border-color:#ff5a4a; opacity:1; }
+.voice-mute.hidden { display:none; }
 .leave-btn { border:1px solid #6d3a35; background:transparent; color:#ff8a80; font-weight:800; font-size:.62rem; letter-spacing:.1em; padding:.4rem .75rem; border-radius:6px; }
 .leave-btn:hover { background:var(--red); color:#fff; border-color:var(--red); }
 

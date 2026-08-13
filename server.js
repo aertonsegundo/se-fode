@@ -566,6 +566,22 @@ function broadcastRoomList() {
   io.to("lobby").emit("rooms", list);
 }
 
+// ===== Chat de voz (WebRTC mesh, best-effort): o servidor só faz o relay da sinalização =====
+// Quem já está no voz (menos o próprio), para o novato saber com quem se conectar.
+function voicePeers(room, exceptId) {
+  return room.players.filter((p) => p.voice && p.connected && p.socketId && !p.isBot && p.id !== exceptId);
+}
+function voiceEmit(room, playerId, event, payload) {
+  const p = playerById(room, playerId);
+  if (p && p.connected && p.socketId) io.to(p.socketId).emit(event, payload);
+}
+// Tira o jogador do voz e avisa os pares (usado no leave/disconnect também).
+function leaveVoice(room, player) {
+  if (!room || !player || !player.voice) return;
+  player.voice = false;
+  for (const peer of voicePeers(room, player.id)) io.to(peer.socketId).emit("voice-peer-left", { id: player.id });
+}
+
 function newRoom(code, host) {
   const room = {
     code,
@@ -1542,6 +1558,39 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ===== Chat de voz: entrar/sair, relay de oferta-resposta-ICE e "quem fala" =====
+  socket.on("voice-join", () => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player || player.isBot) return;
+    player.voice = true;
+    // manda ao novato a lista de quem já está no voz…
+    socket.emit("voice-peers", voicePeers(room, player.id).map((p) => ({ id: p.id, name: p.name })));
+    // …e avisa os demais que ele entrou (cada lado decide quem inicia pela ordem do id)
+    for (const peer of voicePeers(room, player.id)) io.to(peer.socketId).emit("voice-peer-joined", { id: player.id, name: player.name });
+  });
+
+  socket.on("voice-leave", () => {
+    const room = rooms.get(socket.data.roomCode);
+    leaveVoice(room, room && playerById(room, socket.data.playerId));
+  });
+
+  // Relay de sinalização (SDP/ICE) para um par específico da mesma sala.
+  socket.on("voice-signal", ({ to, data } = {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player || !player.voice || !data) return;
+    voiceEmit(room, String(to), "voice-signal", { from: player.id, data });
+  });
+
+  // "Quem está falando": o próprio cliente detecta pelo nível do mic e avisa os pares.
+  socket.on("voice-speaking", (speaking) => {
+    const room = rooms.get(socket.data.roomCode);
+    const player = room && playerById(room, socket.data.playerId);
+    if (!room || !player || !player.voice) return;
+    for (const peer of voicePeers(room, player.id)) io.to(peer.socketId).emit("voice-speaking", { id: player.id, speaking: Boolean(speaking) });
+  });
+
   // Entre as mãos avança sozinho; qualquer jogador pode pular a espera.
   socket.on("next-round", () => {
     const room = rooms.get(socket.data.roomCode);
@@ -1656,6 +1705,7 @@ io.on("connection", (socket) => {
     socket.data.roomCode = null;
     socket.data.playerId = null;
     if (!room || !player) return;
+    leaveVoice(room, player); // saiu da sala → tira do chat de voz e avisa os pares
     if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
     player.connected = false;
     player.socketId = null;
@@ -1705,6 +1755,7 @@ io.on("connection", (socket) => {
     if (!room) return;
     const player = playerById(room, socket.data.playerId);
     if (!player || player.socketId !== socket.id) return;
+    leaveVoice(room, player); // caiu → tira do chat de voz e avisa os pares
     player.connected = false;
     player.socketId = null;
     transferHost(room);

@@ -264,7 +264,185 @@ function tensionLevel() {
   return 0;
 }
 
+// ===== Chat de voz (WebRTC mesh, best-effort) =====
+// Cada par vira uma RTCPeerConnection; a sinalização passa pelo servidor. Sem TURN
+// (best-effort): funciona na maioria das redes; algumas NATs simétricas podem falhar.
+const VOICE_ICE = { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+] };
+let voiceOn = false;
+let voiceMuted = false;
+let voiceStream = null;              // meu microfone
+let voiceAnalyser = null, voiceRaf = 0, voiceSpeakingLocal = false;
+let voiceRejoinPending = false;      // reconstruir a malha após reconectar
+const voicePeersMap = new Map();     // peerId -> { pc, audio, remoteStream }
+const speaking = new Set();          // ids falando agora (anel verde no assento)
+const voiceRoster = new Set();       // ids no chat de voz (badge de mic no assento)
+const myId = () => state?.me?.id || null;
+
+function updateVoiceUI() {
+  const b = document.getElementById("voice-toggle");
+  const m = document.getElementById("voice-mute");
+  if (b) { b.textContent = voiceOn ? "🎙️" : "🎧"; b.classList.toggle("on", voiceOn); b.title = voiceOn ? "Sair do chat de voz" : "Entrar no chat de voz"; }
+  if (m) { m.classList.toggle("hidden", !voiceOn); m.textContent = voiceMuted ? "🔇" : "🎤"; m.classList.toggle("muted", voiceMuted); m.title = voiceMuted ? "Ativar seu microfone" : "Silenciar seu microfone"; }
+}
+// Aplica os estados de voz nos assentos já renderizados (sem esperar um re-render completo).
+function paintVoice() {
+  document.querySelectorAll(".seat[data-seat]").forEach((el) => {
+    const id = el.dataset.seat;
+    el.classList.toggle("in-voice", voiceRoster.has(id));
+    el.classList.toggle("speaking", speaking.has(id));
+  });
+}
+function setSpeaking(id, on) {
+  if (!id) return;
+  if (on) speaking.add(id); else speaking.delete(id);
+  document.querySelector(`.seat[data-seat="${id}"]`)?.classList.toggle("speaking", !!on);
+}
+
+async function joinVoice() {
+  if (voiceOn) return;
+  if (!state?.code) return showToast("Entre numa sala primeiro.");
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+  } catch {
+    return showToast("Não consegui acessar o microfone. Libere a permissão no navegador.");
+  }
+  voiceOn = true; voiceMuted = false;
+  voiceRoster.add(myId());
+  startLocalSpeaking();
+  socket.emit("voice-join");
+  paintVoice(); updateVoiceUI();
+  showToast("🎙️ Você entrou no chat de voz.");
+}
+function leaveVoice() {
+  if (!voiceOn) return;
+  voiceOn = false; voiceMuted = false; voiceRejoinPending = false;
+  socket.emit("voice-leave");
+  for (const id of [...voicePeersMap.keys()]) closePeer(id);
+  stopLocalSpeaking();
+  if (voiceStream) { voiceStream.getTracks().forEach((t) => t.stop()); voiceStream = null; }
+  speaking.clear(); voiceRoster.clear();
+  paintVoice(); updateVoiceUI();
+}
+function closePeer(id) {
+  const p = voicePeersMap.get(id);
+  if (p) {
+    try { p.pc.ontrack = p.pc.onicecandidate = p.pc.onconnectionstatechange = null; p.pc.close(); } catch { /* já fechado */ }
+    if (p.audio) { try { p.audio.srcObject = null; p.audio.remove(); } catch { /* ignora */ } }
+    voicePeersMap.delete(id);
+  }
+  voiceRoster.delete(id); speaking.delete(id);
+  paintVoice();
+}
+function createPeer(peerId, initiator) {
+  if (voicePeersMap.has(peerId)) return voicePeersMap.get(peerId);
+  const pc = new RTCPeerConnection(VOICE_ICE);
+  const audio = document.createElement("audio");
+  audio.autoplay = true; audio.playsInline = true; audio.dataset.voice = peerId;
+  document.body.appendChild(audio);
+  const entry = { pc, audio, remoteStream: new MediaStream() };
+  voicePeersMap.set(peerId, entry);
+  voiceRoster.add(peerId); paintVoice();
+  if (voiceStream) for (const track of voiceStream.getTracks()) pc.addTrack(track, voiceStream);
+  pc.onicecandidate = (e) => { if (e.candidate) socket.emit("voice-signal", { to: peerId, data: { candidate: e.candidate } }); };
+  pc.ontrack = (e) => {
+    audio.srcObject = e.streams[0] || entry.remoteStream;
+    audio.play?.().catch(() => { /* autoplay pode exigir gesto; o clique de entrar já serve */ });
+  };
+  if (initiator) makeOffer(peerId);
+  return entry;
+}
+async function makeOffer(peerId) {
+  const entry = voicePeersMap.get(peerId);
+  if (!entry) return;
+  try {
+    const offer = await entry.pc.createOffer();
+    await entry.pc.setLocalDescription(offer);
+    socket.emit("voice-signal", { to: peerId, data: { sdp: entry.pc.localDescription } });
+  } catch { /* best-effort */ }
+}
+// Detecção de fala local pelo nível do microfone (com histerese pra não piscar).
+function startLocalSpeaking() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(voiceStream);
+    voiceAnalyser = audioCtx.createAnalyser();
+    voiceAnalyser.fftSize = 512;
+    src.connect(voiceAnalyser); // NÃO conecta ao destino: evita eco
+    const data = new Uint8Array(voiceAnalyser.frequencyBinCount);
+    const tick = () => {
+      if (!voiceOn || !voiceAnalyser) return;
+      voiceAnalyser.getByteTimeDomainData(data);
+      let sum = 0; for (const v of data) { const x = (v - 128) / 128; sum += x * x; }
+      const rms = Math.sqrt(sum / data.length);
+      const talking = !voiceMuted && (voiceSpeakingLocal ? rms > 0.028 : rms > 0.05);
+      if (talking !== voiceSpeakingLocal) {
+        voiceSpeakingLocal = talking;
+        setSpeaking(myId(), talking);
+        socket.emit("voice-speaking", talking);
+      }
+      voiceRaf = requestAnimationFrame(tick);
+    };
+    voiceRaf = requestAnimationFrame(tick);
+  } catch { /* sem analyser: segue sem indicador de fala */ }
+}
+function stopLocalSpeaking() {
+  if (voiceRaf) cancelAnimationFrame(voiceRaf);
+  voiceRaf = 0; voiceAnalyser = null; voiceSpeakingLocal = false;
+}
+function toggleVoiceMute() {
+  if (!voiceOn) return;
+  voiceMuted = !voiceMuted;
+  if (voiceStream) voiceStream.getAudioTracks().forEach((t) => { t.enabled = !voiceMuted; });
+  if (voiceMuted && voiceSpeakingLocal) { voiceSpeakingLocal = false; setSpeaking(myId(), false); socket.emit("voice-speaking", false); }
+  updateVoiceUI();
+}
+// Reconstrói a malha após uma reconexão (o resume-session já religou o socket à sala).
+function maybeRejoinVoice() {
+  if (voiceOn && voiceRejoinPending && socket.connected && state?.code) {
+    voiceRejoinPending = false;
+    socket.emit("voice-join");
+  }
+}
+
+socket.on("voice-peers", (list) => {
+  // acabei de entrar: conecto com quem já estava (eu inicio se meu id for "menor")
+  for (const peer of list || []) createPeer(peer.id, myId() < peer.id);
+});
+socket.on("voice-peer-joined", ({ id } = {}) => { if (id && voiceOn) createPeer(id, myId() < id); });
+socket.on("voice-peer-left", ({ id } = {}) => closePeer(id));
+socket.on("voice-signal", async ({ from, data } = {}) => {
+  if (!voiceOn || !from || !data) return;
+  const entry = voicePeersMap.get(from) || createPeer(from, false); // recebi de alguém novo: sou o não-iniciador
+  const pc = entry.pc;
+  try {
+    if (data.sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      if (data.sdp.type === "offer") {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit("voice-signal", { to: from, data: { sdp: pc.localDescription } });
+      }
+    } else if (data.candidate) {
+      await pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+    }
+  } catch { /* best-effort */ }
+});
+socket.on("voice-speaking", ({ id, speaking: sp } = {}) => setSpeaking(id, sp));
+socket.on("disconnect", () => {
+  if (!voiceOn) return;
+  for (const id of [...voicePeersMap.keys()]) closePeer(id); // conexões morreram
+  voiceRejoinPending = true;
+});
+
+document.getElementById("voice-toggle")?.addEventListener("click", () => (voiceOn ? leaveVoice() : joinVoice()));
+document.getElementById("voice-mute")?.addEventListener("click", toggleVoiceMute);
+updateVoiceUI();
+
 function leaveRoom() {
+  leaveVoice(); // sair da sala também sai do chat de voz
   socket.emit("leave-room");
   localStorage.removeItem(SESSION_KEY);
   state = null;
@@ -1387,6 +1565,7 @@ function render() {
   renderHand();
   maybeStartTurnClock();
   maybeCelebrate();
+  maybeRejoinVoice();
   if (shouldAnimateDeal) {
     animatedRound = state.round;
     requestAnimationFrame(animateDeal);
@@ -1480,8 +1659,9 @@ function renderSeats() {
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
-      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}" aria-label="Abrir perfil de ${escapeHtml(player.name)}">
+      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${voiceRoster.has(player.id) ? "in-voice" : ""} ${speaking.has(player.id) ? "speaking" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}" aria-label="Abrir perfil de ${escapeHtml(player.name)}">
         <div class="turn-flag">VEZ</div>
+        <div class="voice-badge" title="No chat de voz">🎙️</div>
         ${foreheadOnSeat}
         ${isHostSeat ? '<div class="host-star" title="Dono da sala">★</div>' : ""}
         ${isDealer ? '<div class="dealer-chip" title="Dá as cartas — fala por último">D</div>' : ""}
