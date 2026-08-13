@@ -371,6 +371,9 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 
 /* ===== Sair, compartilhar sala, modo automático e relógio de turno ===== */
 .top-right { display:flex; align-items:center; gap:.8rem; justify-self:end; }
+.sfx-toggle { border:1px solid #45433c; background:#20201b; color:var(--paper); border-radius:6px; padding:.28rem .45rem; font-size:.95rem; line-height:1; cursor:pointer; }
+.sfx-toggle:hover { border-color:var(--acid); }
+.sfx-toggle.muted { opacity:.55; }
 .leave-btn { border:1px solid #6d3a35; background:transparent; color:#ff8a80; font-weight:800; font-size:.62rem; letter-spacing:.1em; padding:.4rem .75rem; border-radius:6px; }
 .leave-btn:hover { background:var(--red); color:#fff; border-color:var(--red); }
 
@@ -741,6 +744,8 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .emote-emoji-fallback { font-size:2.4rem; line-height:1; }
 .emote-info b { display:block; font-size:.85rem; }
 .emote-info span { font-size:.62rem; color:#8d897e; }
+.emote-sound { width:100%; }
+.emote-sound select { width:100%; border:1px solid #3d3b34; background:#26241d; color:var(--paper); font-size:.66rem; font-weight:600; padding:.3rem .4rem; border-radius:6px; }
 .emote-actions { display:flex; gap:.4rem; }
 .emote-toggle-btn, .emote-del-btn { border:1px solid #3d3b34; background:#26241d; color:var(--paper); font-weight:700; font-size:.64rem; padding:.35rem .55rem; border-radius:6px; }
 .emote-del-btn { color:#ff8a7a; border-color:#5a2a24; }

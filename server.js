@@ -5,8 +5,9 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import fs from "node:fs";
 import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
-import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
+import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, setEmoteSound, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
 const server = createServer(app);
@@ -183,6 +184,29 @@ app.post("/api/admin/emotes/:key/active", async (req, res) => {
   if (!admin) return;
   const ok = await setEmoteActive(req.params.key, req.body?.active);
   if (!ok) return res.status(400).json({ error: "Não foi possível atualizar a figurinha." });
+  await reloadAndBroadcastEmotes();
+  res.json({ ok: true });
+});
+
+// Admin: lista os áudios disponíveis em public/emotes/sounds para escolher no dashboard.
+app.get("/api/admin/emote-sounds", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  let sounds = [];
+  try {
+    sounds = fs.readdirSync(path.join(__dirname, "public", "emotes", "sounds"))
+      .filter((file) => /\.(mp3|ogg|wav|m4a)$/i.test(file))
+      .sort();
+  } catch { /* pasta ausente */ }
+  res.json({ sounds });
+});
+
+// Admin: define (ou limpa) o som de um emote.
+app.post("/api/admin/emotes/:key/sound", async (req, res) => {
+  const admin = await adminProfile(req, res);
+  if (!admin) return;
+  const result = await setEmoteSound(req.params.key, req.body?.sound || null);
+  if (!result.ok) return res.status(400).json({ error: result.error || "Não foi possível salvar o som da figurinha." });
   await reloadAndBroadcastEmotes();
   res.json({ ok: true });
 });
@@ -1512,7 +1536,7 @@ io.on("connection", (socket) => {
     const player = room && playerById(room, socket.data.playerId);
     const emote = emoteMap[String(key)];
     if (!room || !player || !emote || !emote.active) return;
-    const payload = { playerId: player.id, name: player.name, key: emote.key, emoji: emote.emoji, imageUrl: emote.imageUrl };
+    const payload = { playerId: player.id, name: player.name, key: emote.key, emoji: emote.emoji, imageUrl: emote.imageUrl, sound: emote.sound || null };
     for (const member of room.players) {
       if (!member.isBot && member.connected && member.socketId) io.to(member.socketId).emit("emote", payload);
     }

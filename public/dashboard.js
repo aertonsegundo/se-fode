@@ -121,11 +121,16 @@ async function setBanner(userId, banner, select) {
 }
 
 // ===== Figurinhas =====
+let emoteSounds = []; // áudios disponíveis em public/emotes/sounds
 async function loadEmotes() {
   try {
-    const res = await fetch("/api/admin/emotes", { headers: bearer() });
-    if (!res.ok) return;
-    const data = await res.json();
+    const [emRes, sndRes] = await Promise.all([
+      fetch("/api/admin/emotes", { headers: bearer() }),
+      fetch("/api/admin/emote-sounds", { headers: bearer() }),
+    ]);
+    if (sndRes.ok) emoteSounds = (await sndRes.json()).sounds || [];
+    if (!emRes.ok) return;
+    const data = await emRes.json();
     renderEmotes(data.emotes || []);
   } catch { /* silencioso */ }
 }
@@ -155,6 +160,16 @@ function renderEmotes(list) {
     info.innerHTML = `<b>${escapeHtml(emote.title || emote.key)}</b><span>:${escapeHtml(emote.key)}:${emote.builtin ? " · nativa" : ""}${emote.active ? "" : " · inativa"}</span>`;
     card.appendChild(info);
 
+    // Som do emote: escolhe entre os áudios de public/emotes/sounds (ou "sem som").
+    const soundRow = document.createElement("div");
+    soundRow.className = "emote-sound";
+    const sel = document.createElement("select");
+    sel.innerHTML = `<option value="">🔇 sem som</option>` +
+      emoteSounds.map((s) => `<option value="${escapeHtml(s)}" ${emote.sound === s ? "selected" : ""}>🔊 ${escapeHtml(s)}</option>`).join("");
+    sel.onchange = () => setEmoteSound(emote.key, sel.value);
+    soundRow.appendChild(sel);
+    card.appendChild(soundRow);
+
     const actions = document.createElement("div");
     actions.className = "emote-actions";
     const toggle = document.createElement("button");
@@ -179,6 +194,14 @@ async function setEmoteActive(key, active) {
     toast(active ? "Figurinha ativada." : "Figurinha desativada.");
     loadEmotes();
   } catch (err) { toast(err.message || "Não deu pra atualizar."); }
+}
+
+async function setEmoteSound(key, sound) {
+  try {
+    const res = await fetch(`/api/admin/emotes/${encodeURIComponent(key)}/sound`, { method: "POST", headers: jsonBearer(), body: JSON.stringify({ sound }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erro.");
+    toast(sound ? "Som da figurinha salvo." : "Som removido.");
+  } catch (err) { toast(err.message || "Não deu pra salvar o som."); }
 }
 
 async function removeEmote(key, title) {

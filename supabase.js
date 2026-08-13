@@ -328,9 +328,9 @@ async function uploadDataUrl(dataUrl, pathNoExt) {
   return { ok: true, url: `${data.publicUrl}?v=${Date.now()}` };
 }
 
-const shapeEmote = (row) => ({ key: row.key, title: row.title, emoji: row.emoji, imageUrl: row.image_url || null, active: !!row.active, sort: row.sort ?? 0, builtin: BUILTIN_EMOTES.some((b) => b.key === row.key) });
+const shapeEmote = (row) => ({ key: row.key, title: row.title, emoji: row.emoji, imageUrl: row.image_url || null, sound: row.sound || null, active: !!row.active, sort: row.sort ?? 0, builtin: BUILTIN_EMOTES.some((b) => b.key === row.key) });
 
-const builtinEmoteList = () => BUILTIN_EMOTES.map((emote, index) => ({ ...emote, imageUrl: null, active: true, sort: index, builtin: true }));
+const builtinEmoteList = () => BUILTIN_EMOTES.map((emote, index) => ({ ...emote, imageUrl: null, sound: null, active: true, sort: index, builtin: true }));
 
 // Garante que as figurinhas nativas existam na tabela (upsert que NÃO sobrescreve
 // as já presentes — preserva desativações e as personalizadas como a "messi").
@@ -377,6 +377,15 @@ export async function setEmoteActive(key, active) {
   if (!admin) return false;
   const { error } = await admin.from("emotes").update({ active: Boolean(active) }).eq("key", String(key || ""));
   return !error;
+}
+
+// Define (ou limpa) o som de um emote — nome de arquivo dentro de public/emotes/sounds.
+export async function setEmoteSound(key, sound) {
+  if (!admin) return { ok: false, error: "Contas desativadas." };
+  const clean = sound ? String(sound).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80) : null;
+  const { error } = await admin.from("emotes").update({ sound: clean }).eq("key", String(key || ""));
+  // Erro típico aqui = coluna "sound" ainda não existe: rode a migração em supabase/schema.sql.
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export async function deleteEmote(key) {

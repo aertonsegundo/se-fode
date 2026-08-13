@@ -341,6 +341,7 @@ create table if not exists public.emotes (
   created_at  timestamptz not null default now()
 );
 alter table public.emotes enable row level security;
+alter table public.emotes add column if not exists sound text;
 -- Sem policies: o servidor lê/escreve com a service_role; o cliente nunca acessa direto.
 
 -- ---------------------------------------------------------------------------

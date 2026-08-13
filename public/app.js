@@ -91,6 +91,128 @@ async function join(kind, extra = {}) {
 
 const roomUrl = (code) => `${location.origin}/?sala=${code}`;
 
+// ===== Efeitos sonoros (Web Audio: baixa latência, permite sobreposição) =====
+const SFX_NAMES = ["card", "deal", "bid", "trick", "pot", "manilha", "zap", "zap-card", "melada", "lose", "eliminated", "turn", "win"];
+const MAX_SFX_DUR = 1.8;   // corta QUALQUER áudio em ~1.8s (independente do arquivo/uso)
+let sfxMuted = localStorage.getItem("sfxMuted") === "1";
+let audioCtx = null;
+const sfxBuffers = {};
+const sfxLastAt = {};      // anti-spam: última vez que cada som tocou
+async function loadSfx() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    await Promise.all(SFX_NAMES.map(async (name) => {
+      try {
+        const buf = await (await fetch(`/sfx/${name}.mp3`)).arrayBuffer();
+        sfxBuffers[name] = await audioCtx.decodeAudioData(buf);
+      } catch {}
+    }));
+  } catch {}
+}
+// Toca um AudioBuffer com corte de duração (MAX_SFX_DUR) e anti-spam (gap mínimo por chave).
+function playBuffer(buffer, { vol = 0.6, key = null, minGap = 60, maxDur = MAX_SFX_DUR } = {}) {
+  if (sfxMuted || !audioCtx || !buffer) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  const now = performance.now();
+  if (key) {
+    if (sfxLastAt[key] && now - sfxLastAt[key] < minGap) return; // anti-spam: mesmo som muito rápido
+    sfxLastAt[key] = now;
+  }
+  const dur = Math.min(buffer.duration, maxDur);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  const gain = audioCtx.createGain();
+  const t0 = audioCtx.currentTime;
+  gain.gain.setValueAtTime(vol, t0);
+  if (buffer.duration > maxDur) { // fade curto no corte pra não estalar
+    gain.gain.setValueAtTime(vol, t0 + dur - 0.08);
+    gain.gain.linearRampToValueAtTime(0, t0 + dur);
+  }
+  src.connect(gain).connect(audioCtx.destination);
+  src.start();
+  src.stop(t0 + dur);
+}
+function playSfx(name, vol = 0.6) {
+  playBuffer(sfxBuffers[name], { vol, key: name, minGap: 60 });
+}
+// Som do emote (escolhido no dashboard): carrega sob demanda de /emotes/sounds e toca
+// com corte de duração + anti-spam (gap maior, pois emotes podem ser repetidos rápido).
+const emoteSfxBuffers = {};
+async function playEmoteSound(file) {
+  if (sfxMuted || !audioCtx || !file) return;
+  try {
+    if (!emoteSfxBuffers[file]) {
+      const buf = await (await fetch(`/emotes/sounds/${encodeURIComponent(file)}`)).arrayBuffer();
+      emoteSfxBuffers[file] = await audioCtx.decodeAudioData(buf);
+    }
+    playBuffer(emoteSfxBuffers[file], { vol: 0.7, key: `emote:${file}`, minGap: 500 });
+  } catch { /* ignora */ }
+}
+// O navegador bloqueia áudio até um gesto do usuário: retoma o contexto no 1º toque.
+function unlockAudio() { if (audioCtx?.state === "suspended") audioCtx.resume(); }
+document.addEventListener("pointerdown", unlockAudio, { once: false });
+function updateSfxToggle() {
+  const btn = document.getElementById("sfx-toggle");
+  if (btn) { btn.textContent = sfxMuted ? "🔇" : "🔊"; btn.classList.toggle("muted", sfxMuted); }
+}
+document.getElementById("sfx-toggle")?.addEventListener("click", () => {
+  sfxMuted = !sfxMuted;
+  localStorage.setItem("sfxMuted", sfxMuted ? "1" : "0");
+  updateSfxToggle();
+  if (!sfxMuted) playSfx("bid", 0.4); // feedback ao religar
+});
+updateSfxToggle();
+loadSfx();
+
+// Toca os SFX conforme o estado muda (detecta os eventos por diff do estado anterior).
+const MANILHAS = ["4♣", "7♥", "A♠", "7♦"]; // zap = 4♣ (mais forte)
+const sfxTrack = { round: 0, tableIds: "", trickKey: "", bidCount: 0, phase: "", myTurn: false };
+function runSounds() {
+  if (!state) return;
+  // nova mão distribuída
+  if (state.round !== sfxTrack.round && state.phase === "bidding" && state.round > 0 && sfxTrack.round > 0) playSfx("deal", 0.45);
+  // carta nova na mesa (zap/manilha ganham som próprio)
+  const ids = (state.table || []).map((item) => item.card?.id).filter(Boolean);
+  const idsKey = ids.join(",");
+  if (idsKey !== sfxTrack.tableIds) {
+    const prevLen = sfxTrack.tableIds ? sfxTrack.tableIds.split(",").length : 0;
+    if (ids.length > prevLen) {
+      const newId = ids[ids.length - 1];
+      if (newId === "4♣") playSfx("zap-card", 0.8); // zap (4 de paus): som próprio
+      else if (MANILHAS.includes(newId)) playSfx("manilha", 0.65);
+      else playSfx("card", 0.5);
+    }
+    sfxTrack.tableIds = idsKey;
+  }
+  // resolução da vaza (melada / bolo acumulado / vaza normal)
+  const tr = state.trickResult;
+  const trickKey = tr ? `${state.round}-${state.trick}-${tr.winnerId || "melou"}` : "";
+  if (trickKey && trickKey !== sfxTrack.trickKey) {
+    if (!tr.winnerId || (state.melada || []).length) playSfx("melada", 0.6);
+    else if ((state.pot || 0) > 1) playSfx("pot", 0.7);        // ganhou mais do que colocou (bolo)
+    else playSfx("trick", 0.6);
+    sfxTrack.trickKey = trickKey;
+  }
+  // apostas: toca quando entra uma aposta nova
+  const bidCount = (state.players || []).filter((p) => p.bid != null && !p.spectator && !p.eliminated).length;
+  if (state.phase === "bidding" && bidCount > sfxTrack.bidCount) playSfx("bid", 0.4);
+  sfxTrack.bidCount = bidCount;
+  // fim da mão: se fodeu / eliminado
+  if (state.phase === "round_end" && sfxTrack.phase !== "round_end") {
+    const losers = state.roundLosers || [];
+    if (losers.some((l) => l.eliminated)) playSfx("eliminated", 0.7);
+    else if (losers.length) playSfx("lose", 0.6);
+  }
+  // fim de jogo
+  if (state.phase === "game_over" && sfxTrack.phase !== "game_over") playSfx("win", 0.6);
+  // virou a minha vez
+  const myTurn = state.turnId === state.me?.id && (state.phase === "bidding" || state.phase === "playing");
+  if (myTurn && !sfxTrack.myTurn) playSfx("turn", 0.5);
+  sfxTrack.myTurn = myTurn;
+  sfxTrack.phase = state.phase;
+  sfxTrack.round = state.round;
+}
+
 function leaveRoom() {
   socket.emit("leave-room");
   localStorage.removeItem(SESSION_KEY);
@@ -936,8 +1058,9 @@ socket.on("emotes", (list) => setEmotes(list || [])); // atualiza a barra ao viv
 socket.on("emote", (payload) => spawnEmote(payload));
 loadEmotes();
 
-function spawnEmote({ key, emoji, imageUrl, name } = {}) {
+function spawnEmote({ key, emoji, imageUrl, name, sound } = {}) {
   const emote = { key, emoji: emoji || emoteById[key]?.emoji || "❓", imageUrl: imageUrl ?? emoteById[key]?.imageUrl ?? null };
+  playEmoteSound(sound ?? emoteById[key]?.sound); // toca o som configurado pra este emote
   if (!key && !emote.emoji) return;
   const layer = $("#emote-layer");
   const fly = document.createElement("div");
@@ -1201,6 +1324,7 @@ function render() {
   renderAutoBar();
   renderSpectatorBar();
   renderExpel();
+  runSounds();
   renderWatchers();
   renderTournamentBar();
   renderPot();
