@@ -40,7 +40,7 @@ async function boot() {
   let cfg;
   try { cfg = await fetch("/api/config").then((r) => r.json()); }
   catch { cfg = { enabled: false }; }
-  if (!cfg.enabled) return gate("Contas desativadas no servidor.");
+  if (!cfg.enabled) return gate("Painel indisponível no momento. Feche esta aba e abra novamente em alguns instantes.");
   supabase = createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true } });
   const { data } = await supabase.auth.getSession();
   token = data.session?.access_token || null;

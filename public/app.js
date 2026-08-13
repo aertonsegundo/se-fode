@@ -769,7 +769,7 @@ async function applySession(session) {
     // o detalhe técnico fica só no console (para o dev/admin diagnosticar).
     accountProfile = null;
     showAuthScreen();
-    setAuthError("Não foi possível carregar seu perfil agora. Tente novamente em instantes.");
+    setAuthError("Não foi possível carregar seu perfil. Feche esta aba e abra novamente em alguns instantes.");
     console.error("Falha ao carregar /api/me:", err);
     return;
   }
