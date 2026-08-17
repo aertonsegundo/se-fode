@@ -214,12 +214,15 @@ test("apostas somam ao vivo na dupla e o dano da mão é da equipe", async () =>
   await until(host, (state) => state.phase === "bidding", "apostas abertas");
 
   // A soma da dupla acompanha cada aposta individual, em tempo real.
-  const partial = await until(host, (state) => state.teams.some((team) => team.pending.length === 1), "primeira aposta");
-  const started = partial.teams.find((team) => team.pending.length === 1);
-  const partnerBids = started.playerIds
-    .map((id) => partial.players.find((player) => player.id === id)?.bid || 0)
-    .reduce((sum, bid) => sum + bid, 0);
-  assert.equal(started.bid, partnerBids);
+  const bidsOf = (state, team) => team.playerIds.map((id) => state.players.find((player) => player.id === id));
+  const partial = await until(host, (state) => state.teams.some((team) => {
+    const [one, two] = bidsOf(state, team);
+    return (one.bid == null) !== (two.bid == null); // só um dos parceiros apostou
+  }), "primeira aposta");
+  for (const team of partial.teams) {
+    const total = bidsOf(partial, team).reduce((sum, player) => sum + (player.bid ?? 0), 0);
+    assert.equal(team.bid, total);
+  }
 
   // A revelação da vaza carrega a melada entre parceiros (vazia quando não houve).
   const reveal = await until(host, (state) => state.phase === "trick_reveal", "vaza revelada");
@@ -351,6 +354,9 @@ test("bot da desconexão herda a dupla, e a reconexão não duplica jogador nem 
   const started = await until(host, (state) => state.phase === "bidding", "partida rolando");
   const fallerId = started.players.find((player) => player.name === "Duda").id;
   const teamBefore = teamOfPlayer(started, fallerId);
+  // Todo mundo sentado e conectado: ninguém aparece como ausente só por não ter apostado.
+  assert.ok(started.players.every((player) => player.presence === "in"));
+  assert.ok(started.players.some((player) => player.bid === null));
 
   faller.disconnect();
   const withBot = await until(host, (state) => state.players.find((player) => player.id === fallerId)?.auto === true, "bot assumiu");
@@ -359,6 +365,7 @@ test("bot da desconexão herda a dupla, e a reconexão não duplica jogador nem 
   assert.deepEqual(teamAfter.playerIds, teamBefore.playerIds);     // sem re-sorteio
   assert.equal(teamAfter.lives, teamBefore.lives);                 // vidas preservadas
   assert.equal(withBot.teams.length, started.teams.length);
+  assert.equal(withBot.players.find((player) => player.id === fallerId).presence, "bot"); // "Bot jogando", não "falta"
 
   const back = await connect("Duda");
   back.emit("resume-session", session || { code, playerId: fallerId, resumeToken: null });

@@ -890,29 +890,42 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .mode-choice:has(input:checked) { border-color:var(--red); background:#ff3b301a; }
 .mode-hint { margin:.1rem 0 .4rem; font-size:.76rem; line-height:1.35; opacity:.85; }
 
-/* Painel resumido por dupla, acima da mesa */
-.teams-panel { display:flex; flex-wrap:wrap; justify-content:center; gap:.4rem; margin:0 0 .5rem; }
-.team-row { display:flex; align-items:center; gap:.45rem; padding:.3rem .6rem; border:1px solid var(--team,#45433c); border-left:4px solid var(--team,#45433c); border-radius:8px; background:#20201bef; font-size:.68rem; }
-.team-row.mine { box-shadow:0 0 0 1px var(--acid); }
-.team-row.out { opacity:.45; filter:grayscale(.6); }
-.team-row.out .team-names { text-decoration:line-through; }
-.team-badge { font:.56rem "Archivo Black"; letter-spacing:.06em; color:var(--team,#c7c2b4); white-space:nowrap; }
-.team-names { font-size:.72rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:11rem; }
-.team-stat { font-size:.56rem; font-weight:800; letter-spacing:.08em; color:#8d897e; white-space:nowrap; }
-.team-stat i { font-style:normal; font-size:.72rem; font-weight:900; color:var(--paper); margin-left:.2rem; }
-.team-lives { font-size:.72rem; font-weight:900; white-space:nowrap; }
-.team-status { font-size:.55rem; font-weight:800; letter-spacing:.06em; color:#a7a396; }
-.team-status.out { color:var(--red); }
+/* Placar das duplas: coluna compacta na lateral, logo abaixo de "de quem é a vez".
+   Sem barras compridas no topo da mesa e sem repetir nomes espalhados pela tela. */
+.team-score { margin:.9rem 0 .2rem; text-align:left; }
+.team-score-toggle { display:flex; align-items:center; justify-content:space-between; gap:.5rem; width:100%; padding:0 0 .35rem; border:0; background:none; color:#8d897e; font:.6rem "Archivo Black"; letter-spacing:.16em; cursor:default; }
+.team-score-toggle i { display:none; } /* a seta só existe no celular, onde o placar recolhe */
+.team-score-row { padding:.4rem .55rem; margin-bottom:.3rem; border-left:3px solid var(--team,#45433c); border-radius:0 6px 6px 0; background:#ffffff08; }
+.team-score-row.mine { background:#ffffff14; box-shadow:inset 0 0 0 1px #ffffff1a; }
+.team-score-row.out { opacity:.5; }
+.team-score-row.out .team-score-names { text-decoration:line-through; }
+.team-score-head { display:flex; align-items:center; gap:.35rem; font:.58rem "Archivo Black"; letter-spacing:.1em; color:var(--team,#c7c2b4); }
+.team-dot { width:.5rem; height:.5rem; border-radius:50%; background:var(--team,#8d897e); flex:0 0 auto; }
+.team-score-names { font-size:.76rem; font-weight:700; color:var(--paper); margin:.05rem 0 .12rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.team-score-stats { display:flex; flex-wrap:wrap; gap:.55rem; font-size:.62rem; color:#a7a396; }
+.team-score-stats b { color:var(--paper); font-weight:900; }
+.team-score-note { font-size:.58rem; font-weight:700; color:#a7a396; margin-top:.15rem; }
+.team-score-note.out { color:var(--red); }
 
-/* Assento com a cor da dupla + rótulo do parceiro */
-.seat.in-team { border-color:var(--team); }
+/* Assento: a dupla veste o card inteiro — fundo tingido, faixa lateral cheia e o
+   nome da equipe. Mesmo assim o destaque da VEZ ganha, porque usa outro canal:
+   contorno aceso, brilho e etiqueta, que nenhuma equipe recebe. */
+.seat.in-team { background:#20201bef; border-color:#403e37; } /* reserva: navegador sem color-mix */
+.seat.in-team {
+  background:linear-gradient(100deg, color-mix(in srgb, var(--team) 40%, #1c1b17), color-mix(in srgb, var(--team) 16%, #1c1b17));
+  border-color:color-mix(in srgb, var(--team) 80%, #403e37);
+}
+.seat.in-team::before { content:""; position:absolute; left:0; top:0; bottom:0; width:6px; border-radius:12px 0 0 12px; background:var(--team); }
+.seat.in-team .avatar { box-shadow:0 0 0 2px var(--team); }
 .seat.in-team.turn { border-color:var(--acid); }
-.seat-team { font:.5rem "Archivo Black"; letter-spacing:.05em; color:var(--team,#a7a396); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:.05rem 0; }
+.seat-team { font:.5rem "Archivo Black"; letter-spacing:.06em; color:color-mix(in srgb, var(--team) 45%, #ffffff); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:.08rem 0; }
+.seat-chip { display:inline-block; padding:.02rem .32rem; border-radius:999px; border:1px solid var(--bn,#45433c); background:var(--bn-bg,#20201b); color:var(--bn-fg,#c7c2b4); font-size:.46rem; font-weight:800; letter-spacing:.04em; white-space:nowrap; }
 
 /* Sala de espera: prévia das duplas, sorteio e organização manual */
 .lobby-teams { margin:.6rem 0 .9rem; padding:.7rem .75rem; border:1px solid #45433c; border-radius:10px; background:#00000026; text-align:left; }
 .lobby-teams-title { font:.64rem "Archivo Black"; letter-spacing:.12em; color:var(--acid); }
 .lobby-teams-hint { margin:.25rem 0 .6rem; font-size:.7rem; line-height:1.35; color:#a7a396; }
+.team-badge { display:flex; align-items:center; gap:.3rem; font:.56rem "Archivo Black"; letter-spacing:.08em; color:var(--team,#c7c2b4); white-space:nowrap; }
 .lobby-team { display:flex; align-items:center; gap:.5rem; padding:.35rem .55rem; margin-bottom:.35rem; border-left:4px solid var(--team,#45433c); background:#20201b; border-radius:6px; }
 .lobby-team b { font-size:.78rem; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .lobby-team small { font-size:.58rem; color:#a7a396; margin-left:auto; white-space:nowrap; }
@@ -944,10 +957,17 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .room-badge.doubles { color:#b0451f; }
 
 @media (max-width:850px) {
-  .teams-panel { gap:.3rem; margin-bottom:.35rem; }
-  .team-row { flex-wrap:wrap; gap:.3rem .4rem; padding:.28rem .45rem; font-size:.62rem; max-width:100%; }
-  .team-names { max-width:8.5rem; font-size:.68rem; }
+  /* Placar recolhível: fechado mostra cor + vidas + meta + ganhas; os nomes abrem no toque. */
+  .team-score { margin:.7rem 0 .1rem; }
+  .team-score-toggle { cursor:pointer; padding:.3rem 0; }
+  .team-score-toggle i { display:block; font-style:normal; transition:transform .18s; }
+  .team-score.open .team-score-toggle i { transform:rotate(180deg); }
+  .team-score:not(.open) .team-score-names,
+  .team-score:not(.open) .team-score-note { display:none; }
+  .team-score-row { padding:.3rem .45rem; }
+  .team-score-stats { gap:.45rem; font-size:.6rem; }
   .seat-team { font-size:.46rem; }
+  .seat-chip { font-size:.42rem; }
   .lobby-team b { font-size:.74rem; }
   .team-pick { grid-template-columns:minmax(0,1fr) auto; }
   /* No sheet de aposta, a meta da dupla fica junto do placar da mesa */

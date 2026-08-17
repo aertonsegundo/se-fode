@@ -56,9 +56,10 @@ const teamOfPlayer = (player) => teamById(player?.teamId);
 const myTeam = () => teamOfPlayer(me());
 const teamNames = (team) => (team?.members || []).map((member) => member.name);
 const teamTitle = (team) => teamNames(team).join(" + ") || team?.name || "Dupla";
-// A cor nunca fica sozinha: símbolo e nome da dupla vão junto em todo lugar.
-const partnerOf = (player) => teamNames(teamOfPlayer(player)).filter((name) => name !== player?.name).join(", ");
+// A cor nunca fica sozinha: o nome da dupla vai junto em todo lugar.
 const cardKey = (card) => card?.uid || card?.id;
+// Títulos conquistados viram chip curto na cadeira; o nome completo fica no tooltip.
+const BANNER_CHIPS = { pato: "🦆 Pato", coringa: "🃏 Coringa", manilha: "⭐ Manilha", zap: "⚡ Zap", maldito: "😈 Maldito", rei: "👑 Rei", campeao: "🏆 Campeão" };
 
 function showToast(text) {
   toast.textContent = text;
@@ -855,7 +856,13 @@ function renderPlayerCard(profile, currentPlayer = null) {
   const stats = profileStats(profile);
   const banner = profile.banner && profile.banner !== "novato"
     ? `<span class="banner-pill banner-${escapeHtml(profile.banner)}">${escapeHtml(bannerTitle(profile.banner))}</span>` : "";
-  const now = currentPlayer ? `<div class="player-card-now"><span>NA MESA</span><b>${currentPlayer.lives} ${currentPlayer.lives === 1 ? "vida" : "vidas"}</b><small>${currentPlayer.bid == null ? "Ainda não apostou" : `Apostou ${currentPlayer.bid} · fez ${currentPlayer.wins}`}</small></div>` : "";
+  // Em dupla as vidas são da equipe e moram só no placar da mesa: aqui entra a
+  // dupla de quem se está olhando, sem repetir o número de vidas em outro canto.
+  const currentTeam = teamOfPlayer(currentPlayer);
+  const nowTitle = currentTeam
+    ? `${currentTeam.symbol} ${escapeHtml(currentTeam.name)}`
+    : `${currentPlayer?.lives} ${currentPlayer?.lives === 1 ? "vida" : "vidas"}`;
+  const now = currentPlayer ? `<div class="player-card-now"><span>NA MESA</span><b>${nowTitle}</b><small>${currentPlayer.bid == null ? "Ainda não apostou" : `Apostou ${currentPlayer.bid} · fez ${currentPlayer.wins}`}</small></div>` : "";
   const games = (profile.recentGames || []).map((game) => `
     <li class="player-history-item ${game.won ? "won" : ""}">
       <span class="history-result">${game.won ? "🏆" : `${game.position}º`}</span>
@@ -1443,34 +1450,41 @@ function tournamentStandingsHtml({ podium = false } = {}) {
   return `<section class="tournament-standings"><div>⚡ QUADRO DO TORNEIO</div>${rows}</section>`;
 }
 
-// Painel resumido por dupla — 🔴 AERTON + DUDU · Meta 3 | Ganhas 2 | ❤️ 7.
+// Placar das duplas: coluna compacta na lateral direita, abaixo de "de quem é a vez".
 // Vem inteiro do estado do servidor, então acompanha em tempo real cada aposta,
 // rodada, perda de vidas, queda, bot assumindo e eliminação.
-function renderTeamsPanel() {
-  const panel = $("#teams-panel");
+// "Falta fulano" não existe aqui: quem está sentado e conectado nunca some da mesa
+// só porque ainda não apostou — a aposta pendente aparece como "—" na cadeira dele.
+const PRESENCE_NOTE = { off: "Desconectado", bot: "Bot jogando" };
+let teamScoreOpen = false; // no celular o placar abre e fecha; no desktop fica sempre aberto
+
+function teamScoreHtml() {
   const teams = state.teams || [];
-  const show = isDoubles() && teams.length > 0 && state.phase !== "lobby";
-  panel.classList.toggle("hidden", !show);
-  if (!show) { panel.innerHTML = ""; return; }
-  panel.innerHTML = teams.map((team) => {
+  if (!isDoubles() || !teams.length) return "";
+  const rows = teams.map((team) => {
     const mine = team.id === me()?.teamId;
-    const waiting = (team.pending || [])
-      .map((id) => state.players.find((player) => player.id === id)?.name)
-      .filter(Boolean);
-    const status = team.eliminated
-      ? '<span class="team-status out">ELIMINADA</span>'
-      : waiting.length && state.phase === "bidding"
-        ? `<span class="team-status">falta ${escapeHtml(waiting.join(" e "))}</span>`
-        : "";
-    return `<div class="team-row ${mine ? "mine" : ""} ${team.eliminated ? "out" : ""}" style="--team:${team.color}">
-      <span class="team-badge">${team.symbol} ${escapeHtml(team.label)}</span>
-      <b class="team-names">${escapeHtml(teamTitle(team))}</b>
-      <span class="team-stat">META <i>${team.bid}</i></span>
-      <span class="team-stat">GANHAS <i>${team.wins}</i></span>
-      <span class="team-lives" title="Vidas da dupla">❤️ ${team.lives}</span>
-      ${status}
+    const notes = (team.members || []).map((member) => {
+      const note = PRESENCE_NOTE[state.players.find((player) => player.id === member.id)?.presence];
+      return note ? `${escapeHtml(member.name)}: ${note}` : null;
+    }).filter(Boolean);
+    const note = team.eliminated ? "Eliminada" : notes.join(" · ");
+    return `<div class="team-score-row ${mine ? "mine" : ""} ${team.eliminated ? "out" : ""}" style="--team:${team.color}">
+      <div class="team-score-head"><i class="team-dot"></i>${escapeHtml(team.label)}</div>
+      <div class="team-score-names">${escapeHtml(teamTitle(team))}</div>
+      <div class="team-score-stats"><span title="Vidas da dupla">❤️ ${team.lives}</span><span>Meta <b>${team.bid}</b></span><span>Ganhas <b>${team.wins}</b></span></div>
+      ${note ? `<div class="team-score-note ${team.eliminated ? "out" : ""}">${note}</div>` : ""}
     </div>`;
   }).join("");
+  return `<section class="team-score ${teamScoreOpen ? "open" : ""}">
+    <button type="button" id="team-score-toggle" class="team-score-toggle" aria-expanded="${teamScoreOpen}">DUPLAS<i aria-hidden="true">▾</i></button>
+    ${rows}</section>`;
+}
+
+function bindTeamScore() {
+  $("#team-score-toggle")?.addEventListener("click", () => {
+    teamScoreOpen = !teamScoreOpen;
+    render();
+  });
 }
 
 function renderTournamentBar() {
@@ -1607,11 +1621,11 @@ function render() {
   runSounds();
   renderWatchers();
   renderTournamentBar();
-  renderTeamsPanel();
   renderPot();
   renderSeats();
   maybeGuardBid();
   renderAction();
+  bindTeamScore();
   renderHand();
   maybeStartTurnClock();
   maybeCelebrate();
@@ -1688,13 +1702,20 @@ function renderSeats() {
       ? `<div class="forehead-card ${foreheadSide} ${foreheadEdge}">${cardHtml(foreheadCard)}</div>`
       : "";
 
-    const meta = player.bid == null
-      // "apostando…" só pra quem está escolhendo AGORA (a vez dele); quem ainda vai apostar fica neutro.
-      ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? (state.turnId === player.id ? "apostando…" : "—") : "—")
-      : `aposta ${player.bid} · fez ${player.wins}`;
+    // Em dupla a cadeira mostra só o que é individual: aposta e rodadas ganhas.
+    // Vidas são da equipe e ficam num lugar só, no placar da lateral.
+    const meta = isDoubles()
+      ? (state.phase === "lobby" ? "na sala" : `Aposta ${player.bid ?? "—"} · Ganhas ${player.wins}`)
+      : player.bid == null
+        // "apostando…" só pra quem está escolhendo AGORA (a vez dele); quem ainda vai apostar fica neutro.
+        ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? (state.turnId === player.id ? "apostando…" : "—") : "—")
+        : `aposta ${player.bid} · fez ${player.wins}`;
     const lives = player.lives > 0 ? player.lives : 0;
     const hearts = lives > 0 ? "♥".repeat(lives) : "×";
     const compactHearts = lives > 0 ? `♥ ×${lives}` : "×";
+    const livesBlock = isDoubles()
+      ? ""
+      : `<div class="hearts" title="${lives} vidas"><span class="hearts-full">${hearts}</span><span class="hearts-compact">${compactHearts}</span></div>`;
     const isMaldito = player.name.trim().toLocaleLowerCase("pt-BR") === "maldito";
     const avatarSource = player.photoUrl
       ? player.photoUrl
@@ -1706,18 +1727,20 @@ function renderSeats() {
       ? `<span class="avatar-mount" data-src="${escapeHtml(avatarSource)}" data-name="${escapeHtml(player.name)}"></span>`
       : escapeHtml((player.name[0] || "?").toUpperCase());
     const banner = player.banner && player.banner !== "novato" ? player.banner : null;
-    const bannerRibbon = banner ? `<div class="seat-banner">${escapeHtml(bannerTitle(banner))}</div>` : "";
-    // Dupla: cor + símbolo + nome do parceiro. Quem não enxerga a cor continua
-    // sabendo de que equipe é o assento pelo rótulo.
-    const team = teamOfPlayer(player);
-    const partner = partnerOf(player);
-    const teamRibbon = team
-      ? `<div class="seat-team">${team.symbol} ${escapeHtml(team.label)}${partner ? ` · com ${escapeHtml(partner)}` : ""}</div>`
+    // Em dupla, o título vira um chip pequeno acima do nome (com o nome completo no
+    // tooltip): a cadeira não pode competir com o destaque de quem está na vez.
+    const bannerRibbon = banner && !isDoubles() ? `<div class="seat-banner">${escapeHtml(bannerTitle(banner))}</div>` : "";
+    const bannerChip = banner && isDoubles()
+      ? `<span class="seat-chip banner-${banner}" title="${escapeHtml(bannerTitle(banner))}">${BANNER_CHIPS[banner] || escapeHtml(bannerTitle(banner))}</span>`
       : "";
+    // Dupla: o card inteiro veste a cor da equipe (fundo + faixa) e leva o nome dela.
+    // Os nomes dos parceiros e as vidas ficam só no placar da lateral.
+    const team = teamOfPlayer(player);
+    const teamLine = team ? `<div class="seat-team">${team.symbol} ${escapeHtml(team.label)}</div>` : "";
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
-      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${voiceRoster.has(player.id) ? "in-voice" : ""} ${speaking.has(player.id) ? "speaking" : ""} ${banner ? `has-banner banner-${banner}` : ""} ${team ? `in-team team-${team.key}` : ""}" style="--cos:${cos};--sin:${sin}${team ? `;--team:${team.color}` : ""}" aria-label="Abrir perfil de ${escapeHtml(player.name)}${team ? `, ${team.label}` : ""}">
+      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${voiceRoster.has(player.id) ? "in-voice" : ""} ${speaking.has(player.id) ? "speaking" : ""} ${banner && !isDoubles() ? `has-banner banner-${banner}` : ""} ${team ? `in-team team-${team.key}` : ""}" style="--cos:${cos};--sin:${sin}${team ? `;--team:${team.color}` : ""}" aria-label="Abrir perfil de ${escapeHtml(player.name)}${team ? `, ${team.label}` : ""}">
         <div class="turn-flag">VEZ</div>
         <div class="voice-badge" title="No chat de voz">🎙️</div>
         ${foreheadOnSeat}
@@ -1727,10 +1750,11 @@ function renderSeats() {
         <div class="seat-body">
           <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}</div>
           <div class="seat-info">
+            ${bannerChip}
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
-            ${teamRibbon}
+            ${teamLine}
             <div class="seat-meta">${meta}</div>
-            <div class="hearts" title="${lives} vidas"><span class="hearts-full">${hearts}</span><span class="hearts-compact">${compactHearts}</span></div>
+            ${livesBlock}
           </div>
         </div>
         ${wonTrick ? (combo ? `<div class="seat-tag combo">🔥 ${combo} SEGUIDAS</div>` : '<div class="seat-tag win">LEVOU</div>') : ""}
@@ -1851,7 +1875,7 @@ function doublesLobbyHtml() {
     const names = members.map(nameById).filter(Boolean);
     const mine = members.includes(state.me?.id);
     return `<div class="lobby-team ${mine ? "mine" : ""}" style="--team:${palette.color}">
-      <span class="team-badge">${palette.symbol} ${escapeHtml(palette.label)}</span>
+      <span class="team-badge"><i class="team-dot"></i>${escapeHtml(palette.label)}</span>
       <b>${names.length ? escapeHtml(names.join(" + ")) : "vaga livre"}</b>
       ${names.length === 1 ? "<small>falta 1</small>" : ""}
     </div>`;
@@ -1947,17 +1971,20 @@ function renderAction() {
       ? `<div class="bid-hand">${[...state.me.hand].sort((a, b) => cardStrength(a) - cardStrength(b)).map((card) => cardHtml(card)).join("")}</div>`
       : "";
     const guarded = Date.now() < bidGuardUntil; // trava breve pós-abertura (anti-misclick)
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>QUANTAS VOCÊ LEVA?</h3><p>${isLast ? `Você é o pé: a soma não pode dar ${state.handSize}.` : "Escolha sua aposta. Errar custa vidas."}</p>${handPreview}${tableTallyHtml()}<div class="bids ${guarded ? "guarded" : ""}">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) && !guarded ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
+    const bidHint = isLast
+      ? `Você é o pé: a soma não pode dar ${state.handSize}.`
+      : isDoubles() ? "Sua aposta soma com a do parceiro. Errar custa vidas da dupla." : "Escolha sua aposta. Errar custa vidas.";
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${isDoubles() ? "FAÇA SUA APOSTA" : "QUANTAS VOCÊ LEVA?"}</h3><p>${bidHint}</p>${teamScoreHtml()}${handPreview}${tableTallyHtml()}<div class="bids ${guarded ? "guarded" : ""}">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) && !guarded ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
     return;
   }
   if (state.phase === "playing" && state.turnId === state.me.id) {
     if (state.handSize === 1) {
       // Rodada na testa: joga sozinha, sem botão (a carta está na testa).
-      panel.innerHTML = `<div class="panel-title">RODADA NA TESTA</div><h3>JOGUE NO ESCURO</h3><p>Sua carta vai sozinha — todo mundo vê, menos você.</p>${tableTallyHtml()}`;
+      panel.innerHTML = `<div class="panel-title">RODADA NA TESTA</div><h3>JOGUE NO ESCURO</h3><p>Sua carta vai sozinha — todo mundo vê, menos você.</p>${teamScoreHtml()}${tableTallyHtml()}`;
       return;
     }
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>Clique numa carta da sua mão.</p>${tableTallyHtml()}${turnClockHtml()}`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>Clique numa carta da sua mão.</p>${teamScoreHtml()}${tableTallyHtml()}${turnClockHtml()}`;
     return;
   }
   if (state.phase === "trick_reveal") {
@@ -1976,7 +2003,7 @@ function renderAction() {
       title = `${escapeHtml(result.winnerName || "")} LEVOU`;
       text = result.lastTrick ? "Última carta da mão na mesa. Confere antes de fechar as contas." : "Todas as cartas na mesa. Já vem a próxima rodada.";
     }
-    panel.innerHTML = `<div class="panel-title">RODADA ${result.trick ?? ""}</div><h3>${title}</h3><p>${text}</p>`;
+    panel.innerHTML = `<div class="panel-title">RODADA ${result.trick ?? ""}</div><h3>${title}</h3><p>${text}</p>${teamScoreHtml()}`;
     return;
   }
   if (state.phase === "round_end") {
@@ -2019,7 +2046,7 @@ function renderAction() {
     return;
   }
   const current = state.players.find((player) => player.id === state.turnId);
-  panel.innerHTML = `<div class="panel-title">AGORA</div><h3>${current ? `VEZ DE ${escapeHtml(current.name)}` : "SEGURA AÍ"}</h3><p>${state.phase === "bidding" ? "A aposta está rodando a mesa." : "A carta vem aí."}</p>`;
+  panel.innerHTML = `<div class="panel-title">AGORA</div><h3>${current ? `VEZ DE ${escapeHtml(current.name)}` : "SEGURA AÍ"}</h3><p>${state.phase === "bidding" ? "A aposta está rodando a mesa." : "A carta vem aí."}</p>${teamScoreHtml()}`;
 }
 
 function renderHand() {

@@ -329,12 +329,13 @@ export function teamMembers(team, players) {
 }
 
 // Meta e resultado da dupla são DERIVADOS dos parceiros: nada é guardado em dobro.
+// Aposta ainda não feita conta como zero na meta e aparece como "—" na cadeira de
+// quem falta apostar; ninguém precisa de uma lista separada de pendências.
 export function teamTally(team, players) {
   const members = teamMembers(team, players);
   return {
     bid: members.reduce((sum, player) => sum + (player.bid ?? 0), 0),
     wins: members.reduce((sum, player) => sum + (player.wins || 0), 0),
-    pending: members.filter((player) => player.bid == null && !player.eliminated && !player.spectator).map((player) => player.id),
     members,
   };
 }
@@ -449,6 +450,15 @@ export function tournamentHumanCount(participants) {
 export function tournamentParticipantIdForUser(playerIds, participants, userId) {
   if (!userId) return null;
   return (playerIds || []).find((playerId) => participants?.[playerId]?.userId === userId) || null;
+}
+
+// Presença é presença: quem está sentado e conectado nunca "falta", mesmo que
+// ainda não tenha apostado. Ausência de verdade é ter caído ("off") ou ter um bot
+// jogando no lugar ("bot") — a etapa da aposta não diz nada sobre isso.
+export function playerPresence(player) {
+  if (!player) return null;
+  if (!player.connected) return player.auto ? "bot" : "off";
+  return player.isBot || player.auto ? "bot" : "in";
 }
 
 // Queda não é desistência. Enquanto a pessoa ainda estiver viva e não tiver

@@ -5,7 +5,7 @@ import {
   normalizeGameMode, isDoublesMode, doublesSetupError, teamGroupsError, randomTeamGroups,
   createTeams, teamOf, teamMembers, teamTally, teamHandOutcome, teamLabel, interleaveTeams,
   teamIsOut, activeTeams, teamStandingsFrom, doublesStandingsFrom, partnerMeladas,
-  makeDeck, remainingDeck, nextHandSize, cardStrength, trickOutcome, validBidOptions,
+  playerPresence, makeDeck, remainingDeck, nextHandSize, cardStrength, trickOutcome, validBidOptions,
   medalAwardsForStandings, medalForPosition, DECK_SIZE,
 } from "../game.js";
 
@@ -95,17 +95,14 @@ test("parceiros sentam alternados: ninguém joga colado no próprio parceiro", (
 
 // ===== Apostas e rodadas =====
 
-test("as apostas dos parceiros somam a meta da dupla e mostram quem falta apostar", () => {
+test("as apostas dos parceiros somam a meta da dupla", () => {
   const players = four();
   const teams = pairs(["a", "d"], ["b", "c"]);
+  assert.equal(teamTally(teams[0], players).bid, 0); // ninguém apostou ainda
   players[0].bid = 1; // Aerton
-  const before = teamTally(teams[0], players);
-  assert.equal(before.bid, 1);
-  assert.deepEqual(before.pending, ["d"]); // Dudu ainda não apostou
+  assert.equal(teamTally(teams[0], players).bid, 1); // aposta pendente do parceiro não soma nada
   players[2].bid = 2; // Dudu
-  const after = teamTally(teams[0], players);
-  assert.equal(after.bid, 3); // Aerton 1 + Dudu 2 = meta 3
-  assert.deepEqual(after.pending, []);
+  assert.equal(teamTally(teams[0], players).bid, 3); // Aerton 1 + Dudu 2 = meta 3
 });
 
 test("o pé da mesa continua preso à soma GERAL das apostas, não à da dupla", () => {
@@ -145,6 +142,19 @@ test("dupla que erra perde a diferença da EQUIPE, e as vidas nunca ficam negati
   assert.equal(fatal.lost, 4);
   assert.equal(fatal.lives, 0); // 1 − 4 não vira −3
   assert.equal(fatal.eliminated, true);
+});
+
+// ===== Presença na mesa =====
+
+test("presença não sai da aposta: quem está sentado e conectado nunca 'falta'", () => {
+  const seated = { connected: true, auto: false, isBot: false, bid: null };
+  assert.equal(playerPresence(seated), "in");                                        // ainda não apostou, mas está na mesa
+  assert.equal(playerPresence({ ...seated, bid: 2 }), "in");                         // apostar não muda presença
+  assert.equal(playerPresence({ ...seated, connected: false }), "off");              // caiu: reconectando
+  assert.equal(playerPresence({ ...seated, connected: false, auto: true }), "bot");  // caiu e o bot assumiu
+  assert.equal(playerPresence({ ...seated, auto: true }), "bot");                    // automático ligado por ele mesmo
+  assert.equal(playerPresence({ ...seated, isBot: true }), "bot");
+  assert.equal(playerPresence(null), null);
 });
 
 // ===== Melada entre parceiros =====

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import { makeDeck, shuffle, FIXED_MANILHAS, DECK_SIZE, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay, GAME_MODES, TEAM_SIZE, TEAM_PALETTE, DOUBLES_PLAYER_COUNTS, normalizeGameMode, isDoublesMode, doublesSetupError, teamGroupsError, randomTeamGroups, createTeams, teamOf, teamMembers, teamTally, teamHandOutcome, teamLabel, interleaveTeams, activeTeams, teamIsOut, teamStandingsFrom, doublesStandingsFrom, partnerMeladas } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, DECK_SIZE, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, playerPresence, unlockedBannerKeys, remainingDeck, chooseBotPlay, GAME_MODES, TEAM_SIZE, TEAM_PALETTE, DOUBLES_PLAYER_COUNTS, normalizeGameMode, isDoublesMode, doublesSetupError, teamGroupsError, randomTeamGroups, createTeams, teamOf, teamMembers, teamTally, teamHandOutcome, teamLabel, interleaveTeams, activeTeams, teamIsOut, teamStandingsFrom, doublesStandingsFrom, partnerMeladas } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, setEmoteSound, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -631,7 +631,6 @@ function publicState(room, viewerId) {
         lives: team.lives,
         bid: tally.bid,
         wins: tally.wins,
-        pending: tally.pending,
         eliminated: team.eliminated,
         position: team.position,
       };
@@ -650,6 +649,8 @@ function publicState(room, viewerId) {
       roundLoss: player.roundLoss ?? null,
       eliminated: player.eliminated,
       connected: player.connected,
+      // Presença vem pronta do servidor: sentado e conectado, caído ou com bot no lugar.
+      presence: playerPresence(player),
       auto: Boolean(player.auto),
       isBot: Boolean(player.isBot),
       avatarKey: player.avatarKey || null,
