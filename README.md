@@ -54,3 +54,20 @@ O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service
 - O pé da mesa nunca pode fechar a soma das apostas no número de cartas, inclusive na mão de uma carta.
 - Cada erro entre aposta e resultado custa uma vida. Todos começam com cinco.
 - O número de cartas sobe até o limite do baralho, desce até uma e então inicia um novo ciclo.
+- A sala pode usar **um ou dois baralhos** (40 ou 80 cartas). Com dois, as mãos ficam maiores e a melada vira rotina — cada cópia é uma carta própria, então duas iguais na mesma vaza se anulam.
+
+## Se Fode Junto — duplas
+
+> Porque, se for para se foder, que seja com um amigo.
+
+Na criação da sala dá para trocar o modo **clássico** pelo **Se Fode Junto**. Salas e partidas antigas, sem modalidade gravada, continuam valendo como clássicas.
+
+- A mesa fecha com **4, 6 ou 8 jogadores** — nunca em número ímpar nem com equipe incompleta.
+- As duplas saem no **sorteio** ou na **organização manual** do dono da sala. O servidor valida a escalação: ninguém em duas duplas, ninguém de fora. Depois do início, ninguém troca de time.
+- Parceiros sentam **alternados** na mesa e dividem cor, símbolo e nome da dupla.
+- Cada um aposta e joga a sua vez normalmente, mas **as apostas e as rodadas vencidas somam**: a dupla apostou 3 e ganhou 3, cravou.
+- As **vidas são da dupla** — o dobro do clássico, numa reserva só. Errou a meta da equipe, os dois pagam; zerou, os dois são eliminados juntos.
+- A regra do pé continua olhando a soma **geral** da mesa, não a da dupla.
+- Cartas de mesma força melam **inclusive entre parceiros**: dá para melar o próprio time.
+- A partida acaba quando resta uma dupla. Os dois integrantes recebem a mesma colocação, e por isso a mesma medalha (o pódio continua exigindo 5+ humanos, ou seja, mesas de 6 ou 8).
+- **Desempate de duplas eliminadas na mesma mão:** sobreviventes primeiro; depois quem caiu na mão mais recente; empatou, mais vidas restantes; empatou de novo, ordem alfabética do nome da dupla. Nunca a ordem de iteração das listas.

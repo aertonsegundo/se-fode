@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import { makeDeck, shuffle, FIXED_MANILHAS, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay } from "./game.js";
+import { makeDeck, shuffle, FIXED_MANILHAS, DECK_SIZE, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, chooseBotPlay, GAME_MODES, TEAM_SIZE, TEAM_PALETTE, DOUBLES_PLAYER_COUNTS, normalizeGameMode, isDoublesMode, doublesSetupError, teamGroupsError, randomTeamGroups, createTeams, teamOf, teamMembers, teamTally, teamHandOutcome, teamLabel, interleaveTeams, activeTeams, teamIsOut, teamStandingsFrom, doublesStandingsFrom, partnerMeladas } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, setEmoteSound, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -16,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rooms = new Map();
 const STARTING_LIVES = 5;
 const MAX_SEATS = 8;
+const MAX_DECKS = 2; // a mesa pode usar um ou dois baralhos
 const MAX_SPECTATORS = 32;
 const BOT_NAMES = ["Bot Fodão", "Bot do Caos", "Bot Sem Freio", "Bot Pé Frio", "Bot Trambique", "Bot Carrasco", "Bot Zé Manilha"];
 const RANDOM_AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
@@ -256,12 +257,134 @@ function seatedPlayers(room) {
   return room.players.filter((player) => !player.spectator);
 }
 
+// ===== SE FODE JUNTO — DUPLAS =====
+// A sala guarda a modalidade e a escalação; as regras ficam em game.js. O estado
+// decisivo (quem é de qual dupla, quantas vidas restam) é sempre daqui, do servidor:
+// o cliente nunca escolhe equipe, dano, colocação nem vencedor.
+const isDoubles = (room) => isDoublesMode(room?.mode);
+const roomDeckSize = (room) => DECK_SIZE * (room?.deckCount || 1);
+const playerTeam = (room, playerId) => teamOf(room.teams, playerId);
+
+// As vidas são da DUPLA. Espelhar o valor em cada parceiro mantém assentos,
+// classificação, reconexão e SFX funcionando sem criar uma segunda fonte da verdade.
+function syncTeamLives(room) {
+  if (!isDoubles(room)) return;
+  for (const team of room.teams || []) {
+    for (const player of teamMembers(team, room.players)) player.lives = team.lives;
+  }
+}
+
+// Quantas cadeiras esta sala usa numa partida agora. Em dupla só valem mesas
+// completas (4, 6 ou 8), então a arquibancada sobe de dois em dois.
+function seatCapacity(room, available) {
+  if (!isDoubles(room)) return Math.min(MAX_SEATS, available);
+  const valid = DOUBLES_PLAYER_COUNTS.filter((count) => count <= Math.min(MAX_SEATS, available));
+  return valid.length ? valid.at(-1) : 0;
+}
+
+// Dupla sem ninguém na mesa (os dois desistiram/foram tirados) sai da partida.
+function closeEmptyTeams(room) {
+  for (const team of room.teams || []) {
+    if (team.eliminated || !teamIsOut(team, room.players)) continue;
+    team.eliminated = true;
+    team.eliminatedAtRound ??= room.round;
+    team.lives = 0;
+  }
+}
+
+// Desistência ou expulsão no meio da partida. No clássico, sair zera as vidas de
+// quem saiu. Em dupla as vidas são da equipe: o parceiro segue jogando com a mesma
+// reserva e a dupla só cai quando zera ou quando os dois abandonam a mesa.
+function retirePlayer(room, player) {
+  player.eliminated = true;
+  player.eliminatedAtRound ??= room.round;
+  if (!isDoubles(room)) {
+    player.lives = 0;
+    return;
+  }
+  closeEmptyTeams(room);
+  syncTeamLives(room);
+}
+
+// A partida acaba quando sobra uma pessoa (clássico) ou uma dupla (em dupla).
+function shouldEndGame(room) {
+  return isDoubles(room)
+    ? activeTeams(room.teams, room.players).length <= 1
+    : activePlayers(room).length <= 1;
+}
+
+// Impede começar/recomeçar com mesa que não fecha em duplas.
+function modeStartError(room, seatedCount) {
+  return isDoubles(room) ? doublesSetupError(seatedCount) : null;
+}
+
+// Prévia da escalação no lobby. No sorteio, mantém o resultado estável entre os
+// broadcasts e só re-sorteia quando a mesa muda. Na organização manual, respeita
+// o que o dono montou (mesmo incompleto) — quem valida de fato é o início da partida.
+function ensureTeamSetup(room) {
+  if (!isDoubles(room)) return;
+  const ids = seatedPlayers(room).map((player) => player.id);
+  const current = (room.teamSetup.groups || []).map((group) => group.filter((id) => ids.includes(id)));
+  if (room.teamSetup.mode === "manual") {
+    room.teamSetup.groups = current.filter((group) => group.length);
+    return;
+  }
+  if (doublesSetupError(ids.length)) { room.teamSetup.groups = []; return; }
+  room.teamSetup.groups = teamGroupsError(ids, current) ? randomTeamGroups(ids) : current;
+}
+
+// Limpa uma escalação vinda do cliente: só ids de quem está sentado, no máximo
+// dois por dupla e ninguém em duas duplas. Payload torto é recusado por inteiro.
+function sanitizeTeamGroups(room, raw) {
+  if (!Array.isArray(raw)) return null;
+  const ids = seatedPlayers(room).map((player) => player.id);
+  if (raw.length > Math.ceil(ids.length / TEAM_SIZE)) return null;
+  const seen = new Set();
+  const groups = [];
+  for (const group of raw) {
+    if (!Array.isArray(group) || group.length > TEAM_SIZE) return null;
+    const clean = [];
+    for (const value of group) {
+      const id = String(value ?? "");
+      if (!ids.includes(id) || seen.has(id)) return null;
+      seen.add(id);
+      clean.push(id);
+    }
+    groups.push(clean);
+  }
+  return groups;
+}
+
+// Escalação da partida: usa a organização manual enquanto ela continuar válida
+// para os jogadores sentados; caso contrário, sorteia. Depois disso, ninguém troca
+// de dupla até a partida acabar.
+function assignTeams(room, playerIds) {
+  const chosen = (room.teamSetup?.groups || []).map((group) => group.filter((id) => playerIds.includes(id)));
+  const groups = teamGroupsError(playerIds, chosen) ? randomTeamGroups(playerIds) : chosen;
+  room.teams = createTeams(groups, STARTING_LIVES);
+  room.teamSetup.groups = room.teams.map((team) => [...team.playerIds]);
+  for (const player of room.players) player.teamId = playerTeam(room, player.id)?.id || null;
+  syncTeamLives(room);
+  return room.teams;
+}
+
+// Parceiros alternados na mesa: a ordem dos assentos (e das apostas) segue
+// room.players, então basta reordenar os sentados intercalando as duplas.
+function seatTeamsAlternately(room) {
+  const order = interleaveTeams(room.teams.map((team) => team.playerIds));
+  const seated = order.map((id) => playerById(room, id)).filter(Boolean);
+  const rest = room.players.filter((player) => !order.includes(player.id));
+  room.players = [...seated, ...rest];
+}
+
 // A arquibancada pode ter mais pessoas que as oito cadeiras. Em sala comum,
 // quem estiver aguardando sobe para uma vaga assim que ela existir, mantendo a
 // ordem de chegada. Torneios têm escalação fechada e não promovem espectadores.
 function promoteSpectators(room) {
   if (room.tournament) return;
-  let vacancies = MAX_SEATS - seatedPlayers(room).length;
+  const waiting = room.players.filter((player) => player.spectator && !player.isBot && player.connected).length;
+  const seated = seatedPlayers(room).length;
+  let vacancies = Math.max(0, seatCapacity(room, seated + waiting) - seated);
   for (const player of room.players) {
     if (vacancies <= 0) break;
     if (player.spectator && !player.isBot && player.connected) {
@@ -495,9 +618,31 @@ function publicState(room, viewerId) {
     pot: room.pot,
     botDifficulty: room.botDifficulty,
     solo: room.solo,
+    mode: room.mode,
+    deckCount: room.deckCount,
+    // Duplas: o cliente só desenha o que vem daqui — meta, ganhas e vidas são calculadas
+    // no servidor a cada broadcast, então o painel acompanha a mesa em tempo real.
+    teams: isDoubles(room) ? room.teams.map((team) => {
+      const tally = teamTally(team, room.players);
+      return {
+        id: team.id, key: team.key, name: team.name, label: team.label, color: team.color, symbol: team.symbol,
+        playerIds: team.playerIds,
+        members: teamMembers(team, room.players).map((player) => ({ id: player.id, name: player.name })),
+        lives: team.lives,
+        bid: tally.bid,
+        wins: tally.wins,
+        pending: tally.pending,
+        eliminated: team.eliminated,
+        position: team.position,
+      };
+    }) : [],
+    teamSetup: isDoubles(room) ? { mode: room.teamSetup.mode, groups: room.teamSetup.groups } : null,
+    teamPalette: isDoubles(room) ? TEAM_PALETTE : [], // cores/símbolos da prévia no lobby
+    teamResults: isDoubles(room) && room.phase === "round_end" ? room.teamResults : [],
     players: seatedPlayers(room).map((player) => ({
       id: player.id,
       profileId: player.userId || null,
+      teamId: player.teamId || null,
       name: player.name,
       lives: player.lives,
       bid: player.bid,
@@ -533,6 +678,7 @@ function publicState(room, viewerId) {
 }
 
 function broadcast(room) {
+  if (room.phase === "lobby") ensureTeamSetup(room); // prévia das duplas antes de começar
   for (const player of room.players) {
     if (!player.isBot && player.connected && player.socketId) io.to(player.socketId).emit("state", publicState(room, player.id));
   }
@@ -552,6 +698,8 @@ function roomListDTO() {
       name: room.name || `Mesa ${room.code}`,
       isPrivate: Boolean(room.isPrivate),
       isTournament: Boolean(room.tournament),
+      mode: room.mode,           // a pessoa vê que é uma mesa em dupla ANTES de entrar
+      deckCount: room.deckCount, // e com quantos baralhos se joga
       count: seated.length,
       max: MAX_SEATS,
       inProgress: room.phase !== "lobby" && room.phase !== "game_over",
@@ -593,6 +741,11 @@ function newRoom(code, host) {
     password: null,      // senha da sala privada (nunca vai pro publicState de quem está fora)
     inviteToken: randomUUID(), // link de convite entra direto, sem senha
     quickMatch: false,   // sala pública de "partida rápida"
+    mode: GAME_MODES.CLASSIC, // modalidade: clássico ou "se fode junto" (duplas)
+    deckCount: 1,        // 1 ou 2 baralhos na mesa
+    teams: [],           // duplas da partida em curso (vazio no clássico)
+    teamSetup: { mode: "random", groups: [] }, // como as duplas são formadas + prévia do lobby
+    teamResults: [],     // resumo da última mão por dupla (aposta, ganhas, vidas perdidas)
     hostId: host.id,
     banned: new Set(),   // userIds que o dono tirou da sala: não voltam nem pelo código
     players: [],
@@ -629,13 +782,13 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, quit: false, afkStrikes: 0, expelled: false, hand: [], userId: null, banner: "novato", photoUrl: null };
+  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, quit: false, afkStrikes: 0, expelled: false, hand: [], teamId: null, userId: null, banner: "novato", photoUrl: null };
   applyProfile(player, socket.data.user);
   return player;
 }
 
 function createBot(code, index) {
-  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, isBot: true, hand: [] };
+  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, isBot: true, hand: [], teamId: null };
 }
 
 function validBids(room, playerId) {
@@ -673,7 +826,7 @@ function submitPlay(room, playerId, cardId) {
 function chooseBotBid(room, bot) {
   const choices = validBids(room, bot.id);
   if (room.botDifficulty === "easy") return choices[Math.floor(Math.random() * choices.length)];
-  const target = suggestedBid(bot.hand, room.botDifficulty, activePlayers(room).length);
+  const target = suggestedBid(bot.hand, room.botDifficulty, activePlayers(room).length, room.deckCount);
   return choices.reduce((best, bid) => {
     const distance = Math.abs(bid - target);
     const bestDistance = Math.abs(best - target);
@@ -700,15 +853,18 @@ function chooseBotCard(room, bot) {
     wins: bot.wins,
     table: room.table,
     after,
-    unknown: remainingDeck(known),
+    unknown: remainingDeck(known, room.deckCount),
   });
 }
 
-const HUMAN_TURN_MS = 20000; // tempo do jogador online antes do modo automático assumir
-const RECONNECT_GRACE_MS = 15000; // tempo pra reconectar antes de um bot assumir a vaga de vez
+// Tempos da mesa. Podem ser encurtados por variável de ambiente para os testes
+// automatizados rodarem partidas inteiras em segundos; em produção valem os padrões.
+const timing = (name, fallback) => (Number(process.env[name]) > 0 ? Number(process.env[name]) : fallback);
+const HUMAN_TURN_MS = timing("HUMAN_TURN_MS", 20000); // tempo do jogador online antes do modo automático assumir
+const RECONNECT_GRACE_MS = timing("RECONNECT_GRACE_MS", 15000); // tempo pra reconectar antes de um bot assumir a vaga de vez
 const AFK_STRIKES_LIMIT = 3; // avisos de inatividade numa partida antes da expulsão
-const FOREHEAD_MS = 900; // delay entre as cartas na rodada na testa (joga sozinha)
-const NEXT_ROUND_MS = 4000; // tempo pra ver o resultado antes da próxima mão (mesa sem bots)
+const FOREHEAD_MS = timing("FOREHEAD_MS", 900); // delay entre as cartas na rodada na testa (joga sozinha)
+const NEXT_ROUND_MS = timing("NEXT_ROUND_MS", 4000); // tempo pra ver o resultado antes da próxima mão (mesa sem bots)
 
 // Sem host pra clicar: entre as mãos a mesa sempre avança sozinha depois de um tempinho
 // (o suficiente pra ver o resultado). Qualquer jogador pode pular a espera (next-round).
@@ -726,6 +882,8 @@ function doStartGame(room) {
   room.players = room.players.filter((player) => player.isBot || player.connected);
   promoteSpectators(room);
   if (room.players.filter((p) => !p.spectator).length < 2) return "Chame pelo menos mais uma pessoa.";
+  const modeError = modeStartError(room, seatedPlayers(room).length);
+  if (modeError) return modeError;
   if (room.tournament && room.tournament.completedGames === 0) {
     room.tournament.playerIds = [];
     room.tournament.scores = {};
@@ -738,6 +896,8 @@ function doStartGame(room) {
 }
 function doRestart(room) {
   if (seatedPlayers(room).length < 2) return "Chame pelo menos mais uma pessoa pra recomeçar.";
+  const modeError = modeStartError(room, seatedPlayers(room).length);
+  if (modeError) return modeError;
   if (room.tournament) {
     if (!room.tournament.finished) return "Use Próxima Partida para continuar o torneio.";
     room.tournament.completedGames = 0;
@@ -752,6 +912,8 @@ function doRestart(room) {
 function doNextTournament(room) {
   if (!room.tournament) return "Sem torneio.";
   if (room.tournament.finished) return "O torneio já terminou.";
+  const modeError = modeStartError(room, seatedPlayers(room).length);
+  if (modeError) return modeError;
   startGame(room);
   return null;
 }
@@ -781,9 +943,7 @@ function kickFromRoom(room, target) {
     if (activeHand) {
       target.auto = true; // um bot fecha a mão por ele
     } else {
-      target.eliminated = true;
-      target.eliminatedAtRound ??= room.round;
-      target.lives = 0;
+      retirePlayer(room, target);
     }
   } else {
     room.players = room.players.filter((item) => item.id !== target.id);
@@ -870,7 +1030,7 @@ function scheduleAutomaticTurn(room) {
 
 function startRound(room) {
   const active = activePlayers(room);
-  if (active.length <= 1) return endGame(room);
+  if (active.length <= 1 || shouldEndGame(room)) return endGame(room);
   room.round += 1;
   room.trick = 1;
   room.table = [];
@@ -879,7 +1039,7 @@ function startRound(room) {
   room.roundLosers = [];
   room.pot = 0;
   room.lastWinnerId = null;
-  const deck = shuffle(makeDeck());
+  const deck = shuffle(makeDeck(room.deckCount));
   for (const player of room.players) {
     player.hand = [];
     player.bid = null;
@@ -915,12 +1075,18 @@ function startGame(room) {
       .map((player) => [player.id, { userId: player.userId, name: player.name }]));
   }
   const tournamentPlayers = room.tournament ? new Set(room.tournament.playerIds) : null;
-  // Espectadores que estavam esperando entram como jogadores de verdade nesta partida.
+  // Escalação desta partida: quem já estava sentado tem preferência e a arquibancada
+  // sobe na ordem de chegada, até onde a mesa comporta. Em dupla, "onde comporta" é
+  // 4, 6 ou 8 — o excedente continua assistindo em vez de travar o início com mesa ímpar.
+  const alreadySeated = room.players.filter((player) => !player.spectator);
+  const waiting = room.players.filter((player) => player.spectator);
+  const capacity = seatCapacity(room, alreadySeated.length + waiting.length) || alreadySeated.length;
+  const lineup = new Set([...alreadySeated, ...waiting].slice(0, capacity).map((player) => player.id));
   room.players.forEach((player) => Object.assign(player, {
     lives: STARTING_LIVES,
     eliminated: false,
     eliminatedAtRound: null,
-    spectator: tournamentPlayers ? !tournamentPlayers.has(player.id) : false,
+    spectator: tournamentPlayers ? !tournamentPlayers.has(player.id) : !lineup.has(player.id),
     hand: [],
     bid: null,
     wins: 0,
@@ -934,6 +1100,26 @@ function startGame(room) {
   room.resetHand = false;
   room.lastWinnerName = null;
   room.history = [];
+  room.teamResults = [];
+  // Modo em dupla: a escalação é fechada AQUI e não muda mais até a partida acabar.
+  // A validação do servidor vale mesmo que a interface tenha deixado passar.
+  if (isDoubles(room)) {
+    const roster = activePlayers(room).map((player) => player.id);
+    if (doublesSetupError(roster.length)) {
+      room.phase = "lobby";
+      room.dealerId = null;
+      room.turnId = null;
+      room.teams = [];
+      for (const player of room.players) player.teamId = null;
+      room.message = doublesSetupError(roster.length);
+      return broadcast(room);
+    }
+    assignTeams(room, roster);
+    seatTeamsAlternately(room);
+  } else {
+    room.teams = [];
+    for (const player of room.players) player.teamId = null;
+  }
   const dealerPool = activePlayers(room);
   if (dealerPool.length < 2) {
     room.phase = "lobby";
@@ -968,7 +1154,7 @@ function advanceBid(room) {
   broadcast(room);
 }
 
-const TRICK_REVEAL_MS = 2400;
+const TRICK_REVEAL_MS = timing("TRICK_REVEAL_MS", 2400);
 
 function advancePlay(room) {
   const order = orderedFrom(room, room.bidOrder[0]);
@@ -982,7 +1168,8 @@ function advancePlay(room) {
 }
 
 function revealTrick(room) {
-  const winner = trickWinner(room.table);
+  const resolved = trickOutcome(room.table);
+  const winner = resolved.winner;
   const lastTrick = activePlayers(room)[0].hand.length === 0;
   const outcome = resolveTrickScore({ pot: room.pot, lastWinnerId: room.lastWinnerId }, winner?.playerId || null, lastTrick);
   if (outcome.credit) playerById(room, outcome.credit.playerId).wins += outcome.credit.amount;
@@ -998,9 +1185,17 @@ function revealTrick(room) {
       ? `Melou tudo — as ${potAmount} rodadas acumuladas vão para ${potWinnerName}.`
       : `A rodada ${room.trick} melou inteira.`;
   room.history.push({ type: "trick", text });
+  // Cartas iguais melam mesmo entre parceiros — não existe proteção dentro da dupla.
+  // Só narra assim quando as DUAS cartas anuladas são da mesma equipe.
+  const ownGoals = partnerMeladas(resolved.meladaPairs, room.teams).map((hit) => {
+    const names = hit.playerIds.map((id) => playerById(room, id)?.name || "Alguém");
+    room.history.push({ type: "trick", text: `💥 ${names[0]} meleu o próprio parceiro. A dupla se fodeu junta.` });
+    return { teamId: hit.team.id, teamName: hit.team.name, names };
+  });
   room.turnId = null; // congela a mesa: nenhum bot joga durante a revelação
   room.phase = "trick_reveal";
   room.trickResult = {
+    partnerMelada: ownGoals,
     trick: room.trick,
     winnerId: winner?.playerId || null,
     winnerName: name,
@@ -1043,7 +1238,8 @@ function resolveTrick(room, winner, lastTrick) {
   broadcast(room);
 }
 
-function scoreRound(room) {
+// Fim da mão no clássico: cada jogador paga a própria diferença.
+function scoreRoundClassic(room) {
   const results = [];
   const losers = [];
   for (const player of activePlayers(room)) {
@@ -1057,6 +1253,55 @@ function scoreRound(room) {
     if (lost > 0) losers.push({ id: player.id, name: player.name, lost, eliminated: player.eliminated });
     results.push(`${player.name}: apostou ${player.bid}, fez ${player.wins}${lost ? ` e perdeu ${lost} vida${lost > 1 ? "s" : ""}` : " — cravou"}`);
   }
+  return {
+    results,
+    losers,
+    message: losers.length
+      ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
+      : "Ninguém se fodeu dessa vez — todo mundo cravou.",
+  };
+}
+
+// Fim da mão em dupla: o dano é da EQUIPE (|meta − ganhas|), sai da reserva
+// compartilhada e, se ela zerar, os dois integrantes caem juntos.
+function scoreRoundDoubles(room) {
+  const results = [];
+  const losers = [];
+  room.teamResults = [];
+  for (const team of room.teams) {
+    if (team.eliminated) continue;
+    const outcome = teamHandOutcome(team, room.players);
+    const members = teamMembers(team, room.players);
+    team.lives = outcome.lives;
+    for (const member of members) member.roundLoss = outcome.lost;
+    if (outcome.eliminated) {
+      team.eliminated = true;
+      team.eliminatedAtRound = room.round;
+      for (const member of members) {
+        member.eliminated = true;
+        member.eliminatedAtRound ??= room.round;
+      }
+    }
+    room.teamResults.push({
+      teamId: team.id, name: team.name, label: team.label, symbol: team.symbol, color: team.color,
+      names: members.map((member) => member.name),
+      bid: outcome.bid, wins: outcome.wins, lost: outcome.lost, lives: team.lives, eliminated: team.eliminated,
+    });
+    if (outcome.lost > 0) losers.push({ id: team.id, name: team.name, lost: outcome.lost, eliminated: team.eliminated });
+    results.push(`${team.name} (${members.map((member) => member.name).join(" + ")}): apostou ${outcome.bid}, fez ${outcome.wins}${outcome.lost ? ` e perdeu ${outcome.lost} vida${outcome.lost > 1 ? "s" : ""}` : " — cravou"}`);
+  }
+  syncTeamLives(room);
+  return {
+    results,
+    losers,
+    message: losers.length
+      ? `Se fodeu junto: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminada" : ""})`).join(" · ")}`
+      : "Nenhuma dupla se fodeu dessa vez — todo mundo cravou.",
+  };
+}
+
+function scoreRound(room) {
+  const { results, losers, message } = isDoubles(room) ? scoreRoundDoubles(room) : scoreRoundClassic(room);
   room.roundLosers = losers;
   // Alguém morreu nesta mão → a próxima volta para 1 carta (na testa).
   room.resetHand = losers.some((loser) => loser.eliminated);
@@ -1064,17 +1309,13 @@ function scoreRound(room) {
   room.phase = "round_end";
   room.turnId = null;
   room.table = [];
-  room.message = losers.length
-    ? `Se fodeu: ${losers.map((loser) => `${loser.name} (−${loser.lost}${loser.eliminated ? ", eliminado" : ""})`).join(" · ")}`
-    : "Ninguém se fodeu dessa vez — todo mundo cravou.";
+  room.message = message;
   // Quem quitou deixa o bot fechar a mão, mas a saída vale como eliminação. A
   // pessoa continua na classificação desta partida para contabilizar jogo e medalha.
-  for (const player of room.players.filter((item) => item.quit && !item.spectator)) {
-    player.eliminated = true;
-    player.eliminatedAtRound ??= room.round;
-    player.lives = 0;
-  }
-  if (activePlayers(room).length <= 1) return endGame(room);
+  // Em dupla, as vidas são da equipe: a desistência de um não mata o parceiro —
+  // a dupla só sai quando zera as vidas ou quando os dois abandonam a mesa.
+  for (const player of room.players.filter((item) => item.quit && !item.spectator)) retirePlayer(room, player);
+  if (shouldEndGame(room)) return endGame(room);
   broadcast(room);
   maybeAutoAdvance(room); // mesa sem bots: próxima mão começa sozinha
 }
@@ -1095,7 +1336,7 @@ function nextRound(room) {
     room.direction = 1;
     room.resetHand = false;
   } else {
-    const next = nextHandSize(room.handSize, room.direction, active.length);
+    const next = nextHandSize(room.handSize, room.direction, active.length, roomDeckSize(room));
     room.handSize = next.handSize;
     room.direction = next.direction;
   }
@@ -1105,27 +1346,48 @@ function nextRound(room) {
 function endGame(room) {
   room.phase = "game_over";
   room.turnId = null;
-  const winner = activePlayers(room)[0];
-  if (winner) {
+  const doubles = isDoubles(room);
+  // Em dupla quem vence é a EQUIPE: os dois integrantes sobrevivem juntos e
+  // entram no ranking da sala com o nome da dupla.
+  const winningTeam = doubles ? activeTeams(room.teams, room.players)[0] || null : null;
+  const winners = doubles
+    ? (winningTeam ? teamMembers(winningTeam, room.players).filter((player) => !player.eliminated) : [])
+    : [activePlayers(room)[0]].filter(Boolean);
+  const winnerIds = new Set(winners.map((player) => player.id));
+  const winnerLabel = doubles
+    ? (winningTeam ? teamLabel(winningTeam, room.players) : null)
+    : winners[0]?.name || null;
+  if (winnerLabel) {
     // Só partidas COM vencedor entram no ranking da sala.
-    room.results.push(winner.name);
-    room.lastWinnerName = winner.name;
-    const streak = winStreak(room.results, winner.name);
+    room.results.push(winnerLabel);
+    room.lastWinnerName = winnerLabel;
+    const streak = winStreak(room.results, winnerLabel);
     const flair = streak >= 3
       ? ` 👑 ${streak} PARTIDAS SEGUIDAS!`
       : streak === 2
         ? " 🔥 Duas seguidas!"
         : "";
-    room.message = `${winner.name} sobreviveu. O resto se fodeu.${flair}`;
+    room.message = doubles
+      ? `🏆 A DUPLA ${winnerLabel.toUpperCase()} SOBREVIVEU. O resto se fodeu junto.${flair}`
+      : `${winnerLabel} sobreviveu. O resto se fodeu.${flair}`;
   } else {
     room.lastWinnerName = null; // ninguém venceu: não conta pro ranking
-    room.message = "Todo mundo se fodeu. Impressionante.";
+    room.message = doubles ? "Todas as duplas se foderam. Impressionante." : "Todo mundo se fodeu. Impressionante.";
   }
+  if (doubles) {
+    // Colocação por equipe: os dois parceiros recebem exatamente a mesma.
+    for (const entry of teamStandingsFrom(room.teams)) {
+      const team = room.teams.find((item) => item.id === entry.id);
+      if (team) team.position = entry.position;
+    }
+  }
+  // Classificação da partida: em dupla, a posição é da equipe (mesma para os dois).
+  const standingsOf = (players) => doubles ? doublesStandingsFrom(room.teams, players) : finalStandingsFrom(players);
   // Bots não contam: posição, medalhas e histórico usam apenas contas humanas.
   const isTournament = Boolean(room.tournament);
   // Quem quitou no meio da partida fica como eliminado na classificação: conta
   // jogo, derrota e a medalha correspondente à posição final.
-  const humanStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
+  const humanStandings = standingsOf(seatedPlayers(room).filter((player) => player.userId));
   const humanCount = humanStandings.length;
   // Numa partida comum vale a mesa atual. No torneio, a regra dos cinco usa a
   // escalação original: uma desistência não invalida as medalhas das rodadas seguintes.
@@ -1141,16 +1403,22 @@ function endGame(room) {
         userId: player.userId,
         position,
         playerCount: humanCount,
-        won: player.id === winner?.id,
+        won: winnerIds.has(player.id),
         medal: medalById.get(player.id) || null,
       };
     });
-  if (humanPlayers.length) recordGame(humanPlayers, winner?.userId || null, isTournament ? "Torneio de Medalhas" : "Partida", online);
-  // Só o vencedor de partida ONLINE ganha vitória online — pode desbloquear banner.
-  if (online && winner?.userId) {
-    winner.onlineWins = (winner.onlineWins || 0) + 1;
-    const unlocked = BANNERS.find((banner) => banner.wins === winner.onlineWins);
-    if (unlocked && winner.socketId) io.to(winner.socketId).emit("banner-unlocked", { key: unlocked.key, title: unlocked.title });
+  // A modalidade fica gravada no histórico (coluna `mode`, que já existia): dá para
+  // auditar e, depois, separar estatísticas de dupla sem tocar nos registros antigos.
+  const baseMode = isTournament ? "Torneio de Medalhas" : "Partida";
+  if (humanPlayers.length) recordGame(humanPlayers, winners.map((player) => player.userId).filter(Boolean), doubles ? `${baseMode} em Duplas` : baseMode, online);
+  // Vitória ONLINE (pode desbloquear banner) vale para quem sobreviveu — em dupla, os dois.
+  if (online) {
+    for (const champion of winners) {
+      if (!champion.userId) continue;
+      champion.onlineWins = (champion.onlineWins || 0) + 1;
+      const unlocked = BANNERS.find((banner) => banner.wins === champion.onlineWins);
+      if (unlocked && champion.socketId) io.to(champion.socketId).emit("banner-unlocked", { key: unlocked.key, title: unlocked.title });
+    }
   }
   if (room.tournament) {
     for (const entry of humanStandings) {
@@ -1169,7 +1437,12 @@ function endGame(room) {
     const leader = finalTournamentStandings[0];
     if (room.tournament.finished && finalTournamentStandings.length >= 5 && !room.tournament.trophyAwarded) {
       room.tournament.trophyAwarded = true;
-      awardTournamentTrophy(leader?.userId);
+      // Em dupla o título é da equipe do líder: os dois integrantes levam o troféu.
+      const championTeam = doubles && leader ? teamOf(room.teams, leader.id) : null;
+      const champions = championTeam
+        ? teamMembers(championTeam, room.players).map((player) => player.userId).filter(Boolean)
+        : [leader?.userId].filter(Boolean);
+      for (const championId of champions) awardTournamentTrophy(championId);
     }
     room.message = room.tournament.finished
       ? `${leader?.name || "Alguém"} venceu o Torneio de Medalhas${finalTournamentStandings.length >= 5 ? " e ganhou um troféu!" : "!"}`
@@ -1178,8 +1451,8 @@ function endGame(room) {
   // Congela a classificação da partida ANTES de promover espectadores (senão eles entrariam
   // como "sobreviventes"). Depois, no fim de partida (não-torneio), quem assistia entra na
   // mesa: deixa de ser espectador e passa a poder votar/jogar a próxima partida.
-  room.matchStandings = finalStandingsFrom(seatedPlayers(room));
-  room.medalStandings = finalStandingsFrom(seatedPlayers(room).filter((player) => player.userId));
+  room.matchStandings = standingsOf(seatedPlayers(room));
+  room.medalStandings = standingsOf(seatedPlayers(room).filter((player) => player.userId));
   room.medalMatch = !room.solo && medalPlayerCount >= 5;
   if (!room.tournament) {
     promoteSpectators(room);
@@ -1294,7 +1567,7 @@ io.on("connection", (socket) => {
   });
 
   // Criação unificada: nome da sala, privada (com senha ou gerada) e, opcionalmente, torneio.
-  socket.on("create-room", async ({ name, roomName, isPrivate, password, isTournament, tournamentGames, token } = {}) => {
+  socket.on("create-room", async ({ name, roomName, isPrivate, password, isTournament, tournamentGames, mode, deckCount, teamSetup, token } = {}) => {
     if (!await requireUser(socket, token)) return;
     await refreshUser(socket);
     name = cleanName(name) || cleanName(socket.data.user.displayName);
@@ -1303,6 +1576,14 @@ io.on("connection", (socket) => {
     const player = createPlayer(socket, name);
     const room = newRoom(code, player);
     room.name = cleanRoomName(roomName) || `Mesa de ${name}`;
+    // Modalidade e baralhos são escolhidos aqui e valem para a sala inteira. O
+    // servidor normaliza: qualquer valor desconhecido cai no clássico com 1 baralho.
+    room.mode = normalizeGameMode(mode);
+    room.deckCount = Number(deckCount) === MAX_DECKS ? MAX_DECKS : 1;
+    room.teamSetup = { mode: teamSetup === "manual" ? "manual" : "random", groups: [] };
+    if (isDoubles(room)) {
+      room.message = `Se Fode Junto — duplas${room.deckCount > 1 ? " · 2 baralhos" : ""}. Chame a turma: a mesa fecha com ${DOUBLES_PLAYER_COUNTS.join(", ")} jogadores.`;
+    }
     if (isPrivate) {
       room.isPrivate = true;
       room.password = cleanPassword(password) || genPassword();
@@ -1310,7 +1591,7 @@ io.on("connection", (socket) => {
     if (isTournament) {
       const totalGames = [3, 5].includes(Number(tournamentGames)) ? Number(tournamentGames) : 3;
       room.tournament = { totalGames, completedGames: 0, finished: false, playerIds: [], scores: {}, participants: {} };
-      room.message = `Torneio de Medalhas com ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
+      room.message = `Torneio de Medalhas${isDoubles(room) ? " em duplas" : ""} com ${totalGames} partidas. Chame a turma e comece quando a mesa estiver pronta.`;
     }
     rooms.set(code, room);
     sendSession(socket, room, player);
@@ -1324,7 +1605,9 @@ io.on("connection", (socket) => {
     name = cleanName(name) || cleanName(socket.data.user.displayName);
     if (!name) return notice(socket, "Digite seu nome.");
     // Salas públicas no lobby, com vaga, sem o nome já ocupado.
+    // Partida rápida é sempre clássica: ninguém cai numa mesa em dupla sem escolher.
     const open = [...rooms.values()].filter((r) => !r.isPrivate && !r.solo && r.phase === "lobby"
+      && !isDoubles(r)
       && seatedPlayers(r).length < 8
       && !r.banned.has(socket.data.user.id)
       && !r.players.some((p) => p.name.toLowerCase() === name.toLowerCase()));
@@ -1455,6 +1738,26 @@ io.on("connection", (socket) => {
     if (err) notice(socket, err);
   });
 
+  // ===== Duplas: sorteio ou organização manual, sempre antes de começar =====
+  // O cliente só sugere; quem monta, valida e guarda a escalação é o servidor.
+  socket.on("set-teams", ({ mode, groups } = {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || socket.data.playerId !== room.hostId) return;
+    if (!isDoubles(room)) return;
+    if (room.phase !== "lobby") return notice(socket, "As duplas só mudam antes da partida começar.");
+    const ids = seatedPlayers(room).map((player) => player.id);
+    if (mode === "random") {
+      const error = doublesSetupError(ids.length);
+      if (error) return notice(socket, error);
+      room.teamSetup = { mode: "random", groups: randomTeamGroups(ids) };
+      return broadcast(room);
+    }
+    const clean = sanitizeTeamGroups(room, groups);
+    if (!clean) return notice(socket, "Escalação inválida: cada jogador entra em uma única dupla.");
+    room.teamSetup = { mode: "manual", groups: clean };
+    broadcast(room);
+  });
+
   socket.on("bid", (rawBid) => {
     const room = rooms.get(socket.data.roomCode);
     const error = submitBid(room, socket.data.playerId, rawBid);
@@ -1557,7 +1860,7 @@ io.on("connection", (socket) => {
     kickFromRoom(room, target);
     // Tirado entre as mãos: pode acabar o jogo (sobrou 1) ou liberar o auto-avanço.
     if (room.phase === "round_end") {
-      if (activePlayers(room).length <= 1) return endGame(room);
+      if (shouldEndGame(room)) return endGame(room);
       broadcast(room);
       return maybeAutoAdvance(room);
     }
@@ -1606,9 +1909,7 @@ io.on("connection", (socket) => {
     } else {
       // Entre mãos, não há bot para jogar: a desistência já é uma eliminação.
       player.quit = true;
-      player.eliminated = true;
-      player.eliminatedAtRound ??= room.round;
-      player.lives = 0;
+      retirePlayer(room, player);
     }
     transferHost(room);
     if (room.autoTurnId === player.id && room.botTimer) {
@@ -1627,7 +1928,7 @@ io.on("connection", (socket) => {
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
-    if (gameInProgress && !activeHand && activePlayers(room).length <= 1) return endGame(room);
+    if (gameInProgress && !activeHand && shouldEndGame(room)) return endGame(room);
     broadcast(room);
   });
 

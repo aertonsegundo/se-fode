@@ -873,3 +873,85 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
   .game.chat-open .chat-form { padding:.7rem; }
   .game.chat-open .chat-form input { min-height:2.8rem; font-size:1rem; }
 }
+
+/* ===================== SE FODE JUNTO — DUPLAS =====================
+   A dupla nunca é identificada só pela cor: cor + símbolo + nome andam juntos.
+   Cada bloco recebe a cor da equipe por --team, então uma paleta nova no
+   servidor aparece aqui sem tocar no CSS. */
+
+/* Escolha de modo e de baralhos no modal de criar sala */
+.mode-choices { display:grid; gap:.5rem; margin:.15rem 0 .2rem; }
+.mode-choice { display:flex; align-items:flex-start; gap:.6rem; padding:.65rem .75rem; border:2px solid #d6d1c2; border-radius:10px; cursor:pointer; transition:border-color .12s, background .12s; }
+.mode-choice:hover { border-color:var(--ink); }
+.mode-choice input { width:1.1rem; height:1.1rem; margin-top:.1rem; accent-color:var(--red); flex:0 0 auto; }
+.mode-choice span { display:flex; flex-direction:column; gap:.12rem; min-width:0; }
+.mode-choice b { font-size:.82rem; letter-spacing:.02em; }
+.mode-choice small { font-size:.72rem; opacity:.7; line-height:1.25; }
+.mode-choice:has(input:checked) { border-color:var(--red); background:#ff3b301a; }
+.mode-hint { margin:.1rem 0 .4rem; font-size:.76rem; line-height:1.35; opacity:.85; }
+
+/* Painel resumido por dupla, acima da mesa */
+.teams-panel { display:flex; flex-wrap:wrap; justify-content:center; gap:.4rem; margin:0 0 .5rem; }
+.team-row { display:flex; align-items:center; gap:.45rem; padding:.3rem .6rem; border:1px solid var(--team,#45433c); border-left:4px solid var(--team,#45433c); border-radius:8px; background:#20201bef; font-size:.68rem; }
+.team-row.mine { box-shadow:0 0 0 1px var(--acid); }
+.team-row.out { opacity:.45; filter:grayscale(.6); }
+.team-row.out .team-names { text-decoration:line-through; }
+.team-badge { font:.56rem "Archivo Black"; letter-spacing:.06em; color:var(--team,#c7c2b4); white-space:nowrap; }
+.team-names { font-size:.72rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:11rem; }
+.team-stat { font-size:.56rem; font-weight:800; letter-spacing:.08em; color:#8d897e; white-space:nowrap; }
+.team-stat i { font-style:normal; font-size:.72rem; font-weight:900; color:var(--paper); margin-left:.2rem; }
+.team-lives { font-size:.72rem; font-weight:900; white-space:nowrap; }
+.team-status { font-size:.55rem; font-weight:800; letter-spacing:.06em; color:#a7a396; }
+.team-status.out { color:var(--red); }
+
+/* Assento com a cor da dupla + rótulo do parceiro */
+.seat.in-team { border-color:var(--team); }
+.seat.in-team.turn { border-color:var(--acid); }
+.seat-team { font:.5rem "Archivo Black"; letter-spacing:.05em; color:var(--team,#a7a396); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:.05rem 0; }
+
+/* Sala de espera: prévia das duplas, sorteio e organização manual */
+.lobby-teams { margin:.6rem 0 .9rem; padding:.7rem .75rem; border:1px solid #45433c; border-radius:10px; background:#00000026; text-align:left; }
+.lobby-teams-title { font:.64rem "Archivo Black"; letter-spacing:.12em; color:var(--acid); }
+.lobby-teams-hint { margin:.25rem 0 .6rem; font-size:.7rem; line-height:1.35; color:#a7a396; }
+.lobby-team { display:flex; align-items:center; gap:.5rem; padding:.35rem .55rem; margin-bottom:.35rem; border-left:4px solid var(--team,#45433c); background:#20201b; border-radius:6px; }
+.lobby-team b { font-size:.78rem; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lobby-team small { font-size:.58rem; color:#a7a396; margin-left:auto; white-space:nowrap; }
+.lobby-team.mine { box-shadow:inset 0 0 0 1px var(--acid); }
+.lobby-warn { margin:.4rem 0 .2rem; font-size:.72rem; font-weight:700; color:#ffb3ad; }
+.team-controls { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
+.team-controls button { flex:1 1 8rem; font-size:.62rem; }
+.team-controls button.active { border-color:var(--acid); color:var(--acid); }
+.team-picker { display:grid; gap:.35rem; margin-top:.55rem; }
+.team-pick { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:.5rem; font-size:.72rem; }
+.team-pick span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.team-pick select { border:1px solid #45433c; background:#20201b; color:var(--paper); border-radius:6px; padding:.28rem .4rem; font-size:.68rem; }
+
+/* Fim da mão: uma linha por dupla, cravou ou se fodeu */
+.team-results { display:flex; flex-direction:column; gap:.4rem; margin:.3rem 0 .8rem; }
+.team-result { display:flex; flex-direction:column; gap:.1rem; padding:.5rem .65rem; text-align:left; background:#20201b; border-left:4px solid var(--team,#45433c); border-radius:6px; }
+.team-result b { font-size:.82rem; }
+.team-result span { font-size:.66rem; font-weight:700; letter-spacing:.03em; color:#c7c2b4; }
+.team-result small { font-size:.6rem; color:#a7a396; }
+.team-result.clean { background:#222a18; }
+.team-result.clean b { color:var(--acid); }
+.team-result.lost { background:#3a2320; }
+.team-result.lost b { color:#ffb3ad; }
+.team-result.eliminated span { color:var(--red); }
+
+/* Complementos: placar do sheet, classificação e selo na lista de salas */
+.tally-team { display:none; }
+.match-rank-team { display:block; font-size:.55rem; font-weight:700; letter-spacing:.05em; color:#a7a396; }
+.room-badge.doubles { color:#b0451f; }
+
+@media (max-width:850px) {
+  .teams-panel { gap:.3rem; margin-bottom:.35rem; }
+  .team-row { flex-wrap:wrap; gap:.3rem .4rem; padding:.28rem .45rem; font-size:.62rem; max-width:100%; }
+  .team-names { max-width:8.5rem; font-size:.68rem; }
+  .seat-team { font-size:.46rem; }
+  .lobby-team b { font-size:.74rem; }
+  .team-pick { grid-template-columns:minmax(0,1fr) auto; }
+  /* No sheet de aposta, a meta da dupla fica junto do placar da mesa */
+  .game[data-acting="1"] .tally-team { display:flex; align-items:center; gap:.32rem; padding:.22rem .5rem; border:1px solid var(--acid); border-radius:999px; background:#232219; font-size:.58rem; font-weight:800; letter-spacing:.06em; color:#c7c2b4; white-space:nowrap; }
+  .game[data-acting="1"] .tally-team i { font-style:normal; font-size:.7rem; font-weight:900; color:var(--acid); }
+  .game[data-acting="1"] .tally-item.partner { border-color:#8d897e; }
+}

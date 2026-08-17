@@ -116,6 +116,7 @@
       <section id="tournament-bar" class="tournament-bar hidden" aria-live="polite"></section>
       <div id="watchers" class="watchers hidden"></div>
       <div id="manilhas" class="manilhas-fixas"></div>
+      <section id="teams-panel" class="teams-panel hidden" aria-live="polite" aria-label="Placar das duplas"></section>
       <div class="game-layout">
         <section class="table-stage">
           <div id="poker" class="poker">
@@ -189,6 +190,39 @@
     <h2>CRIAR SALA</h2>
     <label class="profile-label" for="create-name">NOME DA SALA</label>
     <input id="create-name" class="modal-input" maxlength="28" placeholder="Ex.: Mesa da firma" autocomplete="off" />
+
+    <label class="profile-label">MODO DE JOGO</label>
+    <div class="mode-choices" role="radiogroup" aria-label="Modo de jogo">
+      <label class="mode-choice">
+        <input type="radio" name="create-mode" value="classic" checked />
+        <span><b>CLÁSSICO</b><small>Cada um por si: as vidas são suas e a aposta também.</small></span>
+      </label>
+      <label class="mode-choice">
+        <input type="radio" name="create-mode" value="doubles" />
+        <span><b>👥 SE FODE JUNTO — DUPLAS</b><small>Porque, se for para se foder, que seja com um amigo.</small></span>
+      </label>
+    </div>
+    <p id="create-mode-hint" class="mode-hint hidden">As apostas e rodadas vencidas são somadas. As vidas pertencem à dupla. A mesa fecha com <b>4, 6 ou 8</b> jogadores.</p>
+    <div id="create-teams-row" class="hidden">
+      <label class="profile-label" for="create-teams">COMO FORMAR AS DUPLAS</label>
+      <select id="create-teams" aria-label="Como formar as duplas">
+        <option value="random" selected>Sorteio — o sistema divide a mesa</option>
+        <option value="manual">Organizar na mão — o dono monta</option>
+      </select>
+    </div>
+
+    <label class="profile-label">BARALHOS NA MESA</label>
+    <div class="mode-choices" role="radiogroup" aria-label="Quantidade de baralhos">
+      <label class="mode-choice">
+        <input type="radio" name="create-decks" value="1" checked />
+        <span><b>1 BARALHO</b><small>40 cartas — o jogo de sempre.</small></span>
+      </label>
+      <label class="mode-choice">
+        <input type="radio" name="create-decks" value="2" />
+        <span><b>2 BARALHOS</b><small>80 cartas: mãos maiores e muito mais melação.</small></span>
+      </label>
+    </div>
+
     <label class="modal-check"><input type="checkbox" id="create-private" /> <span>Sala privada (só entra com senha ou convite)</span></label>
     <div id="create-pass-row" class="hidden">
       <label class="profile-label" for="create-password">SENHA</label>

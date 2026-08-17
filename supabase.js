@@ -395,24 +395,34 @@ export async function deleteEmote(key) {
 }
 
 // Registra o resultado de uma partida e as medalhas já apuradas pelo servidor.
-export async function recordGame(players, winnerId, mode = "Partida", online = false) {
+// `winner` aceita um id ou uma lista: no modo em dupla a partida tem dois campeões,
+// e a função SQL existente só sabe registrar um. Com mais de um vencedor a
+// atualização é feita direto nos perfis (mesmo caminho já usado como reserva),
+// sem alterar nenhuma migration aplicada.
+export async function recordGame(players, winner, mode = "Partida", online = false) {
   if (!admin || !players?.length) return;
   try {
+    const winnerIds = (Array.isArray(winner) ? winner : [winner]).filter(Boolean);
     const playerIds = players.map((player) => typeof player === "string" ? player : player.userId).filter(Boolean);
     const medals = Object.fromEntries(players
       .filter((player) => typeof player === "object" && player.userId && player.medal)
       .map((player) => [player.userId, player.medal]));
-    let { error: resultError } = await admin.rpc("record_game_medals", {
-      p_players: playerIds,
-      p_winner: winnerId || null,
-      p_medals: medals,
-      p_online: Boolean(online),
-    });
+    let resultError = null;
+    if (winnerIds.length > 1) {
+      resultError = { message: `${winnerIds.length} vencedores (partida em dupla): registro direto nos perfis.` };
+    } else {
+      ({ error: resultError } = await admin.rpc("record_game_medals", {
+        p_players: playerIds,
+        p_winner: winnerIds[0] || null,
+        p_medals: medals,
+        p_online: Boolean(online),
+      }));
+    }
     // Se a instalação ainda não tiver recarregado a função SQL da migração,
     // atualiza diretamente em vez de registrar só jogos/vitórias e perder as
     // medalhas do pódio.
     if (resultError) {
-      console.warn("[supabase] record_game_medals falhou; usando atualização direta:", resultError.message);
+      console.warn("[supabase] record_game_medals não aplicado; usando atualização direta:", resultError.message);
       const { data: profiles, error: profilesError } = await admin
         .from("profiles")
         .select("id, games_played, wins, online_wins, gold_medals, silver_medals, bronze_medals")
@@ -423,8 +433,8 @@ export async function recordGame(players, winnerId, mode = "Partida", online = f
         const medal = medals[profile.id];
         return admin.from("profiles").update({
           games_played: (profile.games_played || 0) + 1,
-          wins: (profile.wins || 0) + (profile.id === winnerId ? 1 : 0),
-          online_wins: (profile.online_wins || 0) + (online && profile.id === winnerId ? 1 : 0),
+          wins: (profile.wins || 0) + (winnerIds.includes(profile.id) ? 1 : 0),
+          online_wins: (profile.online_wins || 0) + (online && winnerIds.includes(profile.id) ? 1 : 0),
           gold_medals: (profile.gold_medals || 0) + (medal === "gold" ? 1 : 0),
           silver_medals: (profile.silver_medals || 0) + (medal === "silver" ? 1 : 0),
           bronze_medals: (profile.bronze_medals || 0) + (medal === "bronze" ? 1 : 0),

@@ -30,10 +30,13 @@ const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? 
 const me = () => state?.players.find((player) => player.id === state.me?.id);
 const isHost = () => state?.hostId === state.me?.id;
 // Começar, recomeçar e tirar gente da mesa é sempre do dono da sala.
+const DOUBLES_COUNTS = [4, 6, 8];
+const doublesReady = () => DOUBLES_COUNTS.includes(state.players.length);
 function lobbyStartControl(tournament) {
   const label = tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS";
+  const blocked = state.players.length < 2 || (isDoubles() && !doublesReady());
   return isHost()
-    ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${label}</button>`
+    ? `<button id="start" ${blocked ? "disabled" : ""}>${label}</button>`
     : "<p>O dono da sala começa a partida.</p>";
 }
 function gameOverControl(tournament, tournamentFinished) {
@@ -45,6 +48,17 @@ function gameOverControl(tournament, tournamentFinished) {
   return isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "<p>O dono da sala recomeça.</p>";
 }
 const iAmSpectator = () => Boolean(state?.me?.spectator);
+
+// ===== SE FODE JUNTO — DUPLAS (o cliente só desenha o que o servidor manda) =====
+const isDoubles = () => state?.mode === "doubles";
+const teamById = (id) => (state?.teams || []).find((team) => team.id === id) || null;
+const teamOfPlayer = (player) => teamById(player?.teamId);
+const myTeam = () => teamOfPlayer(me());
+const teamNames = (team) => (team?.members || []).map((member) => member.name);
+const teamTitle = (team) => teamNames(team).join(" + ") || team?.name || "Dupla";
+// A cor nunca fica sozinha: símbolo e nome da dupla vão junto em todo lugar.
+const partnerOf = (player) => teamNames(teamOfPlayer(player)).filter((name) => name !== player?.name).join(", ");
+const cardKey = (card) => card?.uid || card?.id;
 
 function showToast(text) {
   toast.textContent = text;
@@ -210,6 +224,9 @@ function runSounds() {
       else if (melou) { playSfx("melada", 0.6); narrate(`🍯 Melou, mas ${w} levou a mão`); }
       else { playSfx("trick", 0.6); narrate(`${w} levou a mão`); }
     }
+    // Parceiro que anula parceiro rouba a narração: é o momento mais cruel do modo.
+    const ownGoal = (tr.partnerMelada || [])[0];
+    if (ownGoal) narrate(`💥 ${ownGoal.names[0]} meleu o próprio parceiro. A dupla se fodeu junta.`);
     sfxTrack.trickKey = trickKey;
   }
   // apostas: toca quando entra uma aposta nova
@@ -460,6 +477,16 @@ function genRoomPassword() {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
 }
+const createMode = () => document.querySelector('input[name="create-mode"]:checked')?.value || "classic";
+const createDecks = () => Number(document.querySelector('input[name="create-decks"]:checked')?.value || 1);
+// O modo em dupla mostra a explicação curta e a escolha de como formar as equipes.
+function syncCreateMode() {
+  const doubles = createMode() === "doubles";
+  $("#create-mode-hint").classList.toggle("hidden", !doubles);
+  $("#create-teams-row").classList.toggle("hidden", !doubles);
+}
+document.querySelectorAll('input[name="create-mode"]').forEach((radio) => radio.addEventListener("change", syncCreateMode));
+
 $("#quick").onclick = () => join("quick-match");
 $("#create").onclick = () => {
   $("#create-name").value = "";
@@ -468,6 +495,10 @@ $("#create").onclick = () => {
   $("#create-tourney").checked = false;
   $("#create-pass-row").classList.add("hidden");
   $("#create-tourney-row").classList.add("hidden");
+  document.querySelector('input[name="create-mode"][value="classic"]').checked = true;
+  document.querySelector('input[name="create-decks"][value="1"]').checked = true;
+  $("#create-teams").value = "random";
+  syncCreateMode();
   $("#create-modal").showModal();
 };
 $("#create-close").onclick = () => $("#create-modal").close();
@@ -488,6 +519,9 @@ $("#create-start").onclick = () => {
     password: isPrivate ? $("#create-password").value : "",
     isTournament,
     tournamentGames: Number($("#create-games").value),
+    mode: createMode(),
+    deckCount: createDecks(),
+    teamSetup: $("#create-teams").value,
   });
 };
 
@@ -513,7 +547,7 @@ function renderRoomList(list) {
     return `
     <button type="button" class="room-row ${r.inProgress ? "in-progress" : ""} ${full ? "full" : ""}" data-code="${r.code}">
       <span class="room-row-main">
-        <span class="room-row-name">${r.isPrivate ? '<span class="room-lock" title="Sala privada">🔒</span>' : ""}${escapeHtml(r.name)}${r.isTournament ? ' <span class="room-badge">⚡ TORNEIO</span>' : ""}</span>
+        <span class="room-row-name">${r.isPrivate ? '<span class="room-lock" title="Sala privada">🔒</span>' : ""}${escapeHtml(r.name)}${r.isTournament ? ' <span class="room-badge">⚡ TORNEIO</span>' : ""}${r.mode === "doubles" ? ' <span class="room-badge doubles">👥 DUPLAS</span>' : ""}${r.deckCount > 1 ? ' <span class="room-badge">🃏 2 BARALHOS</span>' : ""}</span>
         <span class="room-row-status">${full ? "mesa cheia · entre para assistir" : r.inProgress ? "em jogo · entre para assistir" : "aguardando jogadores"}</span>
       </span>
       <span class="room-row-count">${r.count}/${r.max}</span>
@@ -1409,6 +1443,36 @@ function tournamentStandingsHtml({ podium = false } = {}) {
   return `<section class="tournament-standings"><div>⚡ QUADRO DO TORNEIO</div>${rows}</section>`;
 }
 
+// Painel resumido por dupla — 🔴 AERTON + DUDU · Meta 3 | Ganhas 2 | ❤️ 7.
+// Vem inteiro do estado do servidor, então acompanha em tempo real cada aposta,
+// rodada, perda de vidas, queda, bot assumindo e eliminação.
+function renderTeamsPanel() {
+  const panel = $("#teams-panel");
+  const teams = state.teams || [];
+  const show = isDoubles() && teams.length > 0 && state.phase !== "lobby";
+  panel.classList.toggle("hidden", !show);
+  if (!show) { panel.innerHTML = ""; return; }
+  panel.innerHTML = teams.map((team) => {
+    const mine = team.id === me()?.teamId;
+    const waiting = (team.pending || [])
+      .map((id) => state.players.find((player) => player.id === id)?.name)
+      .filter(Boolean);
+    const status = team.eliminated
+      ? '<span class="team-status out">ELIMINADA</span>'
+      : waiting.length && state.phase === "bidding"
+        ? `<span class="team-status">falta ${escapeHtml(waiting.join(" e "))}</span>`
+        : "";
+    return `<div class="team-row ${mine ? "mine" : ""} ${team.eliminated ? "out" : ""}" style="--team:${team.color}">
+      <span class="team-badge">${team.symbol} ${escapeHtml(team.label)}</span>
+      <b class="team-names">${escapeHtml(teamTitle(team))}</b>
+      <span class="team-stat">META <i>${team.bid}</i></span>
+      <span class="team-stat">GANHAS <i>${team.wins}</i></span>
+      <span class="team-lives" title="Vidas da dupla">❤️ ${team.lives}</span>
+      ${status}
+    </div>`;
+  }).join("");
+}
+
 function renderTournamentBar() {
   const bar = $("#tournament-bar");
   const tournament = state.tournament;
@@ -1432,13 +1496,24 @@ function matchStandingsHtml() {
       ? `SOBREVIVEU · ${entry.lives} vida${entry.lives === 1 ? "" : "s"}`
       : `ELIMINADO NA MÃO ${entry.eliminatedAtRound}`;
     const mine = entry.id === state.me?.id;
-    return `<div class="match-rank-row ${entry.survived ? "survivor" : ""} ${mine ? "mine" : ""}"><span class="match-rank-pos">${position}</span><span class="match-rank-name">${escapeHtml(entry.name)}</span><span class="match-rank-detail">${detail}</span></div>`;
+    const team = entry.teamName ? ` <small class="match-rank-team">${escapeHtml(entry.teamName)}</small>` : "";
+    return `<div class="match-rank-row ${entry.survived ? "survivor" : ""} ${mine ? "mine" : ""}"><span class="match-rank-pos">${position}</span><span class="match-rank-name">${escapeHtml(entry.name)}${team}</span><span class="match-rank-detail">${detail}</span></div>`;
   }).join("");
   return `<section class="match-ranking"><div class="match-rank-title">CLASSIFICAÇÃO DA PARTIDA</div>${rows}</section>`;
 }
 
 function matchPodiumHtml() {
   if (!state.medalMatch) return '<p class="medal-note">Esta partida teve menos de 5 jogadores humanos e não distribuiu medalhas.</p>';
+  // Em dupla o pódio é das equipes: uma linha por dupla, com as duas medalhas juntas.
+  if (isDoubles()) {
+    const teams = (state.teams || []).filter((team) => team.position && team.position <= 3).sort((a, b) => a.position - b.position);
+    if (teams.length < 3) return "";
+    return `<section class="match-podium"><div class="match-rank-title">PÓDIO DAS DUPLAS</div><div class="podium-places">${teams.map((team) => {
+      const medal = ["🥇", "🥈", "🥉"][team.position - 1];
+      const mine = team.id === me()?.teamId ? "mine" : "";
+      return `<div class="podium-place place-${team.position} ${mine}"><span>${medal}</span><b>${escapeHtml(teamTitle(team))}</b><small>${team.symbol} ${escapeHtml(team.label)} · ${team.position}º lugar</small></div>`;
+    }).join("")}</div></section>`;
+  }
   const entries = (state.medalStandings || []).slice(0, 3);
   if (entries.length < 3) return "";
   return `<section class="match-podium"><div class="match-rank-title">PÓDIO DA PARTIDA</div><div class="podium-places">${entries.map((entry) => {
@@ -1532,6 +1607,7 @@ function render() {
   runSounds();
   renderWatchers();
   renderTournamentBar();
+  renderTeamsPanel();
   renderPot();
   renderSeats();
   maybeGuardBid();
@@ -1587,9 +1663,10 @@ function renderSeats() {
     const fodeu = state.phase === "round_end" && player.roundLoss > 0;
     const play = state.table.find((item) => item.playerId === player.id);
     const foreheadCard = forehead && !isMe ? player.foreheadCard : null;
-    const melada = play && (state.melada || []).includes(play.card.id);
+    // Com dois baralhos, duas cartas iguais são objetos diferentes: a melada é por cópia.
+    const melada = play && (state.melada || []).includes(cardKey(play.card));
     // "just-played": anima a entrada só na 1ª vez que a carta aparece (ver playedSeen)
-    const playKey = play ? `${state.round}-${state.trick}-${play.card.id}` : "";
+    const playKey = play ? `${state.round}-${state.trick}-${cardKey(play.card)}` : "";
     const freshPlay = play && !playedSeen.has(playKey);
     if (freshPlay) playedSeen.add(playKey);
     // combo: quantas vazas seguidas este jogador levou (>=2 vira badge no lugar do "LEVOU")
@@ -1630,10 +1707,17 @@ function renderSeats() {
       : escapeHtml((player.name[0] || "?").toUpperCase());
     const banner = player.banner && player.banner !== "novato" ? player.banner : null;
     const bannerRibbon = banner ? `<div class="seat-banner">${escapeHtml(bannerTitle(banner))}</div>` : "";
+    // Dupla: cor + símbolo + nome do parceiro. Quem não enxerga a cor continua
+    // sabendo de que equipe é o assento pelo rótulo.
+    const team = teamOfPlayer(player);
+    const partner = partnerOf(player);
+    const teamRibbon = team
+      ? `<div class="seat-team">${team.symbol} ${escapeHtml(team.label)}${partner ? ` · com ${escapeHtml(partner)}` : ""}</div>`
+      : "";
 
     return `
       <div class="seat-card-slot" style="--cos:${cos};--sin:${sin}">${cardZone}</div>
-      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${voiceRoster.has(player.id) ? "in-voice" : ""} ${speaking.has(player.id) ? "speaking" : ""} ${banner ? `has-banner banner-${banner}` : ""}" style="--cos:${cos};--sin:${sin}" aria-label="Abrir perfil de ${escapeHtml(player.name)}">
+      <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${voiceRoster.has(player.id) ? "in-voice" : ""} ${speaking.has(player.id) ? "speaking" : ""} ${banner ? `has-banner banner-${banner}` : ""} ${team ? `in-team team-${team.key}` : ""}" style="--cos:${cos};--sin:${sin}${team ? `;--team:${team.color}` : ""}" aria-label="Abrir perfil de ${escapeHtml(player.name)}${team ? `, ${team.label}` : ""}">
         <div class="turn-flag">VEZ</div>
         <div class="voice-badge" title="No chat de voz">🎙️</div>
         ${foreheadOnSeat}
@@ -1644,6 +1728,7 @@ function renderSeats() {
           <div class="avatar ${avatarSource ? "profile-photo" : ""}">${avatar}</div>
           <div class="seat-info">
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
+            ${teamRibbon}
             <div class="seat-meta">${meta}</div>
             <div class="hearts" title="${lives} vidas"><span class="hearts-full">${hearts}</span><span class="hearts-compact">${compactHearts}</span></div>
           </div>
@@ -1720,11 +1805,81 @@ function tableTallyHtml() {
   const items = order.map((player) => {
     const mine = player.id === state.me?.id;
     const value = player.bid == null ? "—" : playing ? `${player.wins}/${player.bid}` : String(player.bid);
-    const classes = ["tally-item", player.bid == null ? "pending" : "", mine ? "me" : ""].filter(Boolean).join(" ");
-    return `<span class="${classes}"><b>${escapeHtml(mine ? "você" : player.name)}</b><i>${value}</i></span>`;
+    const team = teamOfPlayer(player);
+    const classes = ["tally-item", player.bid == null ? "pending" : "", mine ? "me" : "", team && team.id === me()?.teamId ? "partner" : ""].filter(Boolean).join(" ");
+    return `<span class="${classes}"><b>${team ? `${team.symbol} ` : ""}${escapeHtml(mine ? "você" : player.name)}</b><i>${value}</i></span>`;
   }).join("");
   const label = playing ? "FEZ/APOSTA · SOMA" : "SOMA";
-  return `<div class="table-tally" aria-label="Apostas da mesa">${items}<span class="tally-sum">${label} <i>${total}</i>/${state.handSize}</span></div>`;
+  // Em dupla, a meta que vale é a da equipe — a soma da mesa continua sendo a regra do pé.
+  const teamLine = isDoubles() && myTeam()
+    ? `<span class="tally-team">SUA DUPLA <i>${myTeam().wins}/${myTeam().bid}</i></span>`
+    : "";
+  return `<div class="table-tally" aria-label="Apostas da mesa">${items}${teamLine}<span class="tally-sum">${label} <i>${total}</i>/${state.handSize}</span></div>`;
+}
+
+// ===== Duplas na sala de espera: prévia, sorteio e organização manual =====
+// Nada disso decide a partida: o dono sugere e o SERVIDOR valida e guarda.
+const lobbyTeamCount = () => Math.max(Math.ceil(state.players.length / 2), (state.teamSetup?.groups || []).length, 2);
+const lobbyPalette = (index) => (state.teamPalette || [])[index % Math.max(1, (state.teamPalette || []).length)]
+  || { symbol: "⚪", label: `DUPLA ${index + 1}`, color: "#8b8b82" };
+
+function lobbyGroups() {
+  const groups = state.teamSetup?.groups || [];
+  return Array.from({ length: lobbyTeamCount() }, (_, index) => groups[index] || []);
+}
+
+function manualTeamPickerHtml(groups) {
+  const rows = state.players.map((player) => {
+    const current = groups.findIndex((group) => group.includes(player.id));
+    const options = groups.map((group, index) => {
+      const palette = lobbyPalette(index);
+      const full = group.length >= 2 && index !== current;
+      return `<option value="${index}" ${index === current ? "selected" : ""} ${full ? "disabled" : ""}>${escapeHtml(palette.label)}${full ? " (cheia)" : ""}</option>`;
+    }).join("");
+    return `<label class="team-pick"><span>${escapeHtml(player.name)}</span><select data-team-for="${player.id}" aria-label="Dupla de ${escapeHtml(player.name)}"><option value="-1" ${current < 0 ? "selected" : ""}>sem dupla</option>${options}</select></label>`;
+  }).join("");
+  return `<div class="team-picker">${rows}</div>`;
+}
+
+function doublesLobbyHtml() {
+  if (!isDoubles()) return "";
+  const setup = state.teamSetup || { mode: "random", groups: [] };
+  const groups = lobbyGroups();
+  const nameById = (id) => state.players.find((player) => player.id === id)?.name || "";
+  const preview = groups.map((members, index) => {
+    const palette = lobbyPalette(index);
+    const names = members.map(nameById).filter(Boolean);
+    const mine = members.includes(state.me?.id);
+    return `<div class="lobby-team ${mine ? "mine" : ""}" style="--team:${palette.color}">
+      <span class="team-badge">${palette.symbol} ${escapeHtml(palette.label)}</span>
+      <b>${names.length ? escapeHtml(names.join(" + ")) : "vaga livre"}</b>
+      ${names.length === 1 ? "<small>falta 1</small>" : ""}
+    </div>`;
+  }).join("");
+  const warn = doublesReady() ? "" : '<p class="lobby-warn">⚠️ O modo em dupla precisa de 4, 6 ou 8 jogadores.</p>';
+  const controls = isHost() ? `<div class="team-controls">
+      <button type="button" id="teams-random" class="ghost ${setup.mode === "random" ? "active" : ""}">🎲 SORTEAR</button>
+      <button type="button" id="teams-manual" class="ghost ${setup.mode === "manual" ? "active" : ""}">✍️ ORGANIZAR NA MÃO</button>
+    </div>${setup.mode === "manual" ? manualTeamPickerHtml(groups) : ""}` : "";
+  return `<section class="lobby-teams">
+    <div class="lobby-teams-title">👥 SE FODE JUNTO · ${state.players.length} na mesa</div>
+    <p class="lobby-teams-hint">As apostas e rodadas vencidas são somadas. As vidas pertencem à dupla.</p>
+    ${preview}${warn}${controls}</section>`;
+}
+
+function emitManualTeams(panel) {
+  const groups = Array.from({ length: lobbyTeamCount() }, () => []);
+  panel.querySelectorAll("[data-team-for]").forEach((select) => {
+    const index = Number(select.value);
+    if (index >= 0 && groups[index]) groups[index].push(select.dataset.teamFor);
+  });
+  socket.emit("set-teams", { mode: "manual", groups });
+}
+
+function bindTeamControls(panel) {
+  $("#teams-random")?.addEventListener("click", () => socket.emit("set-teams", { mode: "random" }));
+  $("#teams-manual")?.addEventListener("click", () => socket.emit("set-teams", { mode: "manual", groups: lobbyGroups() }));
+  panel.querySelectorAll("[data-team-for]").forEach((select) => { select.onchange = () => emitManualTeams(panel); });
 }
 
 // Lista de expulsão do dono: todo mundo da sala menos ele — jogadores, bots e quem assiste.
@@ -1754,8 +1909,11 @@ function renderAction() {
     const url = roomUrl(state.code) + (state.isPrivate && state.inviteToken ? `&convite=${state.inviteToken}` : "");
     const waText = encodeURIComponent(`Bora jogar Se Fode! 🃏 Entra na minha sala (${state.code}): ${url}`);
     const tournament = state.tournament;
-    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO DE MEDALHAS" : "SALA DE ESPERA"}</div><h3>${state.players.length < 2 ? "CHAME MAIS ALGUÉM" : "A MESA TÁ PRONTA"}</h3>
-      <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. Com 5 ou mais jogadores, cada pódio vale medalhas; o campeão leva um troféu.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}</p>
+    const ready = isDoubles() ? doublesReady() : state.players.length >= 2;
+    const deckNote = state.deckCount > 1 ? " Mesa com <b>2 baralhos</b> (80 cartas)." : "";
+    panel.innerHTML = `<div class="panel-title">${tournament ? "TORNEIO DE MEDALHAS" : isDoubles() ? "SE FODE JUNTO — DUPLAS" : "SALA DE ESPERA"}</div><h3>${ready ? "A MESA TÁ PRONTA" : "CHAME MAIS ALGUÉM"}</h3>
+      <p>${tournament ? `Serão ${tournament.totalGames} partidas na mesma mesa. Com 5 ou mais jogadores, cada pódio vale medalhas; o campeão leva um troféu.` : `Convide a galera pelo link ou pelo código <b>${state.code}</b>.`}${deckNote}</p>
+      ${doublesLobbyHtml()}
       ${state.isPrivate ? `<div class="lobby-pass"><span class="lobby-pass-label">🔒 SALA PRIVADA · SENHA</span><span class="lobby-pass-value">${escapeHtml(state.password || "—")}</span><button id="copy-pass" type="button" class="ghost">COPIAR</button></div>` : ""}
       <div class="share">
         <input id="share-url" readonly value="${escapeHtml(url)}" aria-label="Link da sala" />
@@ -1772,6 +1930,7 @@ function renderAction() {
       ${lobbyStartControl(tournament)}
       ${rankingHtml()}`;
     bindKickButtons(panel);
+    bindTeamControls(panel);
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
     $("#share-url").onclick = (event) => event.target.select();
     $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast(state.isPrivate ? "Link de convite copiado!" : "Link copiado!"); };
@@ -1822,13 +1981,22 @@ function renderAction() {
   }
   if (state.phase === "round_end") {
     const losers = state.roundLosers || [];
-    const list = losers.length
-      ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
-      : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
+    // Em dupla o resumo é por equipe: quem cravou também aparece, com a conta fechada.
+    const teamSummary = (state.teamResults || []).map((result) => `
+      <div class="team-result ${result.lost ? "lost" : "clean"} ${result.eliminated ? "eliminated" : ""}" style="--team:${result.color}">
+        <b>${result.symbol} ${escapeHtml(result.name)} ${result.lost ? "SE FODEU" : "CRAVOU"}</b>
+        <span>Apostou ${result.bid} · Ganhou ${result.wins} · ${result.lost ? `Perdeu ${result.lost} vida${result.lost > 1 ? "s" : ""}` : "Nenhuma vida perdida"}${result.eliminated ? " · DUPLA ELIMINADA" : ""}</span>
+        <small>${escapeHtml(result.names.join(" + "))} · ❤️ ${result.lives}</small>
+      </div>`).join("");
+    const list = isDoubles()
+      ? `<div class="team-results">${teamSummary}</div>`
+      : losers.length
+        ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
+        : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
     const kickHtml = kickListHtml();
     // Sem host pra clicar: a próxima mão começa sozinha; qualquer um pode pular a espera.
     const nextControl = '<p class="auto-next">Próxima mão começando…</p><button id="next" class="ghost">PULAR ESPERA</button>';
-    panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${kickHtml}${nextControl}`;
+    panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>${isDoubles() ? "COMO FICOU CADA DUPLA" : "QUEM SE FODEU"}</h3>${list}${kickHtml}${nextControl}`;
     bindKickButtons(panel);
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
     return;

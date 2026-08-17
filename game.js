@@ -2,13 +2,23 @@ export const SUITS = ["♦", "♠", "♥", "♣"];
 export const RANKS = ["4", "5", "6", "7", "Q", "J", "K", "A", "2", "3"];
 export const FIXED_MANILHAS = ["7♦", "A♠", "7♥", "4♣"];
 
-export function makeDeck() {
-  return RANKS.flatMap((rank) => SUITS.map((suit) => ({
+export const DECK_SIZE = RANKS.length * SUITS.length;
+
+// A mesa pode usar um ou dois baralhos. O `id` continua sendo a identidade da carta
+// (força, manilha, desenho); o `uid` distingue as cópias entre si — sem ele, duas
+// cartas iguais na mesma vaza seriam o mesmo objeto para a melada e para a animação.
+export function makeDeck(copies = 1) {
+  const decks = Math.max(1, Math.floor(Number(copies) || 1));
+  return Array.from({ length: decks }, (_, copy) => RANKS.flatMap((rank) => SUITS.map((suit) => ({
     id: `${rank}${suit}`,
+    uid: copy === 0 ? `${rank}${suit}` : `${rank}${suit}~${copy + 1}`,
     rank,
     suit,
-  })));
+  })))).flat();
 }
+
+export const cardId = (card) => card?.id ?? `${card?.rank}${card?.suit}`;
+export const cardUid = (card) => card?.uid ?? cardId(card);
 
 export function shuffle(deck, random = Math.random) {
   const result = [...deck];
@@ -30,9 +40,19 @@ export function cardStrength(card) {
 }
 
 // Cartas do baralho que ainda podem estar com os oponentes (baralho − conhecidas).
-export function remainingDeck(known) {
-  const ids = new Set((known || []).map((card) => card.id ?? `${card.rank}${card.suit}`));
-  return makeDeck().filter((card) => !ids.has(card.id));
+// Com dois baralhos a conta é por quantidade: ver um 3♦ não elimina a outra cópia dele.
+export function remainingDeck(known, copies = 1) {
+  const seen = new Map();
+  for (const card of known || []) {
+    const id = cardId(card);
+    seen.set(id, (seen.get(id) || 0) + 1);
+  }
+  return makeDeck(copies).filter((card) => {
+    const left = seen.get(card.id) || 0;
+    if (left <= 0) return true;
+    seen.set(card.id, left - 1);
+    return false;
+  });
 }
 
 // Fração das cartas desconhecidas que empatam/superam a carta (empate pesa metade,
@@ -58,10 +78,10 @@ export function cardWinProbability(card, unknown, opponents) {
 
 // Aposta sugerida: soma das probabilidades de cada carta ganhar sua vaza,
 // escalando com o nº de oponentes. Corrige o 3 (não é imbatível) e valoriza manilhas.
-export function suggestedBid(hand, difficulty, playerCount) {
+export function suggestedBid(hand, difficulty, playerCount, copies = 1) {
   if (difficulty === "easy") return null;
   const opponents = Math.max(1, playerCount - 1);
-  const unknown = remainingDeck(hand);
+  const unknown = remainingDeck(hand, copies);
   const expected = hand.reduce((sum, card) => sum + cardWinProbability(card, unknown, opponents), 0);
   return Math.min(hand.length, Math.round(expected));
 }
@@ -134,17 +154,25 @@ export function trickOutcome(plays) {
     groups.set(play.strength, group);
   }
   const melada = [];
+  const meladaPairs = []; // quem anulou quem, aos pares — usado para narrar a melada entre parceiros
   const survivors = [];
   for (const group of groups.values()) {
     const ordered = group.sort((a, b) => a.index - b.index);
     const canceled = ordered.length - (ordered.length % 2);
-    for (let i = 0; i < canceled; i += 1) melada.push(ordered[i].card.id);
+    for (let i = 0; i < canceled; i += 2) {
+      melada.push(cardUid(ordered[i].card), cardUid(ordered[i + 1].card));
+      meladaPairs.push({
+        playerIds: [ordered[i].playerId, ordered[i + 1].playerId],
+        cards: [ordered[i].card, ordered[i + 1].card],
+      });
+    }
     if (ordered.length % 2 === 1) survivors.push(ordered.at(-1));
   }
   const best = survivors.length ? survivors.reduce((top, play) => (play.strength > top.strength ? play : top)) : null;
   return {
     winner: best ? { playerId: best.playerId, card: best.card, strength: best.strength } : null,
     melada,
+    meladaPairs,
   };
 }
 
@@ -169,8 +197,8 @@ export function resolveTrickScore({ pot = 0, lastWinnerId = null }, winnerId, la
   return { credit: null, pot: lastTrick ? 0 : accumulated, lastWinnerId, took: 0, potWinnerId: null, potAmount: 0 };
 }
 
-export function nextHandSize(current, direction, activePlayers) {
-  const maximum = Math.max(1, Math.floor(40 / activePlayers));
+export function nextHandSize(current, direction, activePlayers, deckSize = DECK_SIZE) {
+  const maximum = Math.max(1, Math.floor(deckSize / activePlayers));
   if (direction === -1 && current <= 1) {
     return { handSize: Math.min(2, maximum), direction: 1 };
   }
@@ -225,6 +253,168 @@ export function finalStandingsFrom(players) {
     survived: !player.eliminated,
     eliminatedAtRound: player.eliminatedAtRound ?? null,
   }));
+}
+
+// ===== SE FODE JUNTO — DUPLAS =====
+// A modalidade é só um rótulo na sala: as regras de força, melada, bolo e aposta
+// continuam as mesmas. O que muda é de quem são as vidas (da dupla), como a meta
+// é formada (soma das apostas dos parceiros) e quem é eliminado (os dois juntos).
+export const GAME_MODES = { CLASSIC: "classic", DOUBLES: "doubles" };
+export const TEAM_SIZE = 2;
+export const DOUBLES_PLAYER_COUNTS = [4, 6, 8];
+export const DOUBLES_SETUP_MESSAGE = "O modo em dupla precisa de 4, 6 ou 8 jogadores.";
+export const DOUBLES_TEAMS_MESSAGE = "Cada dupla precisa de exatamente dois jogadores, e ninguém pode ficar de fora.";
+// Cor + símbolo + nome: a dupla nunca é identificada só pela cor (acessibilidade).
+export const TEAM_PALETTE = [
+  { key: "vermelha", label: "VERMELHA", name: "DUPLA VERMELHA", color: "#e2564a", symbol: "🔴" },
+  { key: "azul", label: "AZUL", name: "DUPLA AZUL", color: "#4b8ee0", symbol: "🔵" },
+  { key: "verde", label: "VERDE", name: "DUPLA VERDE", color: "#46a878", symbol: "🟢" },
+  { key: "amarela", label: "AMARELA", name: "DUPLA AMARELA", color: "#d7a531", symbol: "🟡" },
+];
+
+// Sala antiga, registro salvo antes desta versão ou payload sem modalidade: clássico.
+export function normalizeGameMode(value) {
+  return value === GAME_MODES.DOUBLES ? GAME_MODES.DOUBLES : GAME_MODES.CLASSIC;
+}
+export const isDoublesMode = (value) => normalizeGameMode(value) === GAME_MODES.DOUBLES;
+
+// Mesa em dupla só fecha com 4, 6 ou 8: par, com no mínimo duas duplas completas.
+export function doublesSetupError(playerCount) {
+  return DOUBLES_PLAYER_COUNTS.includes(playerCount) ? null : DOUBLES_SETUP_MESSAGE;
+}
+
+export function randomTeamGroups(playerIds, random = Math.random) {
+  const shuffled = shuffle(playerIds, random);
+  const groups = [];
+  for (let index = 0; index < shuffled.length; index += TEAM_SIZE) groups.push(shuffled.slice(index, index + TEAM_SIZE));
+  return groups;
+}
+
+// Validação da escalação manual — a mesma roda no servidor, que é a autoridade:
+// duplas completas, ninguém de fora, ninguém em duas duplas, ninguém inventado.
+export function teamGroupsError(playerIds, groups) {
+  if (!Array.isArray(groups) || groups.length !== playerIds.length / TEAM_SIZE) return DOUBLES_TEAMS_MESSAGE;
+  const seen = new Set();
+  for (const group of groups) {
+    if (!Array.isArray(group) || group.length !== TEAM_SIZE) return DOUBLES_TEAMS_MESSAGE;
+    for (const id of group) {
+      if (!playerIds.includes(id) || seen.has(id)) return DOUBLES_TEAMS_MESSAGE;
+      seen.add(id);
+    }
+  }
+  return seen.size === playerIds.length ? null : DOUBLES_TEAMS_MESSAGE;
+}
+
+// A reserva da dupla é a soma do que dois jogadores teriam no clássico — a constante
+// de vidas continua vindo de fora, para não existir um "10" solto no código.
+export function createTeams(groups, startingLives) {
+  return groups.map((playerIds, index) => ({
+    ...TEAM_PALETTE[index % TEAM_PALETTE.length],
+    id: `team-${index + 1}`,
+    index,
+    playerIds: [...playerIds],
+    lives: startingLives * TEAM_SIZE,
+    eliminated: false,
+    eliminatedAtRound: null,
+    position: null,
+  }));
+}
+
+export function teamOf(teams, playerId) {
+  return (teams || []).find((team) => team.playerIds.includes(playerId)) || null;
+}
+
+export function teamMembers(team, players) {
+  return (team?.playerIds || []).map((id) => (players || []).find((player) => player.id === id)).filter(Boolean);
+}
+
+// Meta e resultado da dupla são DERIVADOS dos parceiros: nada é guardado em dobro.
+export function teamTally(team, players) {
+  const members = teamMembers(team, players);
+  return {
+    bid: members.reduce((sum, player) => sum + (player.bid ?? 0), 0),
+    wins: members.reduce((sum, player) => sum + (player.wins || 0), 0),
+    pending: members.filter((player) => player.bid == null && !player.eliminated && !player.spectator).map((player) => player.id),
+    members,
+  };
+}
+
+// Dano da mão: a diferença é da DUPLA, não de cada jogador. Vidas nunca ficam negativas.
+export function teamHandOutcome(team, players) {
+  const { bid, wins } = teamTally(team, players);
+  const lost = Math.abs(bid - wins);
+  const lives = Math.max(0, team.lives - lost);
+  return { bid, wins, lost, lives, eliminated: team.lives - lost <= 0 };
+}
+
+export function teamLabel(team, players) {
+  const names = teamMembers(team, players).map((player) => player.name);
+  return names.length ? names.join(" + ") : team?.name || "Dupla";
+}
+
+// Parceiros se sentam alternados: a1, b1, c1, a2, b2, c2 — ninguém joga colado no
+// próprio parceiro (nem no fecho da roda), em qualquer quantidade de duplas.
+export function interleaveTeams(groups) {
+  const order = [];
+  for (let seat = 0; seat < TEAM_SIZE; seat += 1) {
+    for (const group of groups) if (group[seat]) order.push(group[seat]);
+  }
+  return order;
+}
+
+// A dupla sai do jogo quando zera as vidas OU quando os dois integrantes já saíram
+// (desistência de ambos). Enquanto sobrar um parceiro de pé, a dupla segue jogando.
+export function teamIsOut(team, players) {
+  if (team.eliminated) return true;
+  const members = teamMembers(team, players);
+  return members.length > 0 && members.every((player) => player.eliminated || player.spectator);
+}
+
+export function activeTeams(teams, players) {
+  return (teams || []).filter((team) => !teamIsOut(team, players));
+}
+
+// Classificação por DUPLA, com o mesmo critério do clássico e sem depender da ordem
+// de iteração: sobreviventes primeiro (mais vidas acima); entre as eliminadas, quem
+// caiu por último fica acima; empate na mesma mão desempata por vidas e, por fim,
+// pelo nome da dupla (estável e determinístico).
+export function teamStandingsFrom(teams) {
+  const survivors = (teams || []).filter((team) => !team.eliminated)
+    .sort((a, b) => b.lives - a.lives || a.name.localeCompare(b.name, "pt-BR"));
+  const eliminated = (teams || []).filter((team) => team.eliminated)
+    .sort((a, b) => (b.eliminatedAtRound ?? -1) - (a.eliminatedAtRound ?? -1)
+      || b.lives - a.lives
+      || a.name.localeCompare(b.name, "pt-BR"));
+  return [...survivors, ...eliminated].map((team, index) => ({ ...team, position: index + 1 }));
+}
+
+// Mesma forma de saída do finalStandingsFrom, para o resto do sistema (medalhas,
+// histórico, pódio) não precisar saber se a partida foi em dupla: os dois parceiros
+// recebem exatamente a mesma colocação.
+export function doublesStandingsFrom(teams, players) {
+  return teamStandingsFrom(teams).flatMap((team) => teamMembers(team, players)
+    .filter((player) => !player.spectator)
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .map((player) => ({
+      position: team.position,
+      id: player.id,
+      name: player.name,
+      lives: Math.max(0, team.lives),
+      survived: !team.eliminated,
+      eliminatedAtRound: team.eliminatedAtRound ?? null,
+      teamId: team.id,
+      teamName: team.name,
+    })));
+}
+
+// Melada entre parceiros: só conta quando as duas cartas anuladas são da MESMA dupla.
+export function partnerMeladas(meladaPairs, teams) {
+  return (meladaPairs || [])
+    .map((pair) => {
+      const team = teamOf(teams, pair.playerIds[0]);
+      return team && team.playerIds.includes(pair.playerIds[1]) ? { team, playerIds: pair.playerIds, cards: pair.cards } : null;
+    })
+    .filter(Boolean);
 }
 
 // ===== Ranking global por medalhas =====
