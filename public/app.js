@@ -29,34 +29,20 @@ const cardStrength = (card) => {
 const cardHtml = (card, extra = "") => card ? `<div class="card ${isRed(card) ? "red" : ""} ${state?.manilhas?.includes(card.id) ? "manilha" : ""} ${extra}"><span>${card.rank}${card.suit}</span><span class="big-suit">${card.suit}</span><span style="transform:rotate(180deg)">${card.rank}${card.suit}</span></div>` : "";
 const me = () => state?.players.find((player) => player.id === state.me?.id);
 const isHost = () => state?.hostId === state.me?.id;
-// Solo/privada: o host controla começar/recomeçar. Pública: é por votação (2/3).
-const hostControlled = () => state?.isPrivate || state?.solo;
+// Começar, recomeçar e tirar gente da mesa é sempre do dono da sala.
 function lobbyStartControl(tournament) {
   const label = tournament ? "COMEÇAR O TORNEIO" : "COMEÇAR O CAOS";
-  if (hostControlled()) {
-    return isHost()
-      ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${label}</button>`
-      : "<p>O dono da sala começa a partida.</p>";
-  }
-  const v = state.vote || {};
-  if (v.startCountdown != null) return `<div class="vote-count"><b>Começando em ${v.startCountdown}s…</b><span>Ainda dá pra mais gente entrar</span></div>`;
-  if ((v.voters || 0) < 2) return `<p class="vote-hint">Precisam de <b>2 jogadores</b> pra começar — chame mais gente!</p>`;
-  return `<button id="vote-start" class="vote-btn ${v.iVotedStart ? "voted" : ""}">${v.iVotedStart ? "✓ VOCÊ VOTOU" : "VOTAR PRA COMEÇAR"} <span class="vote-tally">${v.startCount}/${v.startNeeded}</span></button>`;
+  return isHost()
+    ? `<button id="start" ${state.players.length < 2 ? "disabled" : ""}>${label}</button>`
+    : "<p>O dono da sala começa a partida.</p>";
 }
 function gameOverControl(tournament, tournamentFinished) {
-  if (hostControlled()) {
-    if (tournament) {
-      return tournamentFinished
-        ? (isHost() ? '<button id="restart">RECOMEÇAR TORNEIO</button>' : "<p>O dono recomeça o torneio.</p>")
-        : (isHost() ? `<button id="next-tournament">PRÓXIMA PARTIDA · ${tournament.completedGames + 1}/${tournament.totalGames}</button>` : "<p>Esperando o dono iniciar a próxima partida.</p>");
-    }
-    return isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "<p>O dono da sala recomeça.</p>";
+  if (tournament) {
+    return tournamentFinished
+      ? (isHost() ? '<button id="restart">RECOMEÇAR TORNEIO</button>' : "<p>O dono recomeça o torneio.</p>")
+      : (isHost() ? `<button id="next-tournament">PRÓXIMA PARTIDA · ${tournament.completedGames + 1}/${tournament.totalGames}</button>` : "<p>Esperando o dono iniciar a próxima partida.</p>");
   }
-  const v = state.vote || {};
-  const label = (tournament && !tournamentFinished)
-    ? `VOTAR PRÓXIMA · ${tournament.completedGames + 1}/${tournament.totalGames}`
-    : (tournament && tournamentFinished) ? "VOTAR RECOMEÇAR" : "VOTAR JOGAR DE NOVO";
-  return `<button id="vote-restart" class="vote-btn ${v.iVotedRestart ? "voted" : ""}">${v.iVotedRestart ? "✓ VOCÊ VOTOU" : label} <span class="vote-tally">${v.restartCount}/${v.restartNeeded}</span></button>`;
+  return isHost() ? '<button id="restart">JOGAR DE NOVO</button>' : "<p>O dono da sala recomeça.</p>";
 }
 const iAmSpectator = () => Boolean(state?.me?.spectator);
 
@@ -825,12 +811,10 @@ function recentGameLabel(game) {
   return `${date} · ${game.mode || "Partida"}`;
 }
 
-// Botão de abrir votação de expulsão (só faz sentido com 3+ jogadores e ninguém votando ainda).
-function nominateExpelBtn(currentPlayer) {
-  const seated = state?.players?.filter((p) => !p.isBot && !p.spectator).length || 0;
-  const can = currentPlayer && !state?.solo && currentPlayer.id !== state?.me?.id
-    && !currentPlayer.isBot && !currentPlayer.spectator && !state?.expel && !iAmSpectator() && seated >= 3;
-  return can ? `<button id="nominate-expel" class="player-nominate">⚖️ Votar pra expulsar ${escapeHtml(currentPlayer.name)}</button>` : "";
+// Botão de tirar da mesa: só o dono vê, e nunca em si mesmo nem no modo solo.
+function kickPlayerBtn(currentPlayer) {
+  const can = currentPlayer && isHost() && !state?.solo && currentPlayer.id !== state?.me?.id;
+  return can ? `<button id="kick-player" class="player-kick">🚪 Tirar ${escapeHtml(currentPlayer.name)} da sala</button>` : "";
 }
 function renderPlayerCard(profile, currentPlayer = null) {
   const body = $("#player-card-body");
@@ -853,8 +837,12 @@ function renderPlayerCard(profile, currentPlayer = null) {
     <div class="player-stat-grid"><div><b>${stats.games}</b><span>PARTIDAS</span></div><div><b>${stats.wins}</b><span>VITÓRIAS</span></div><div><b>${stats.rate}%</b><span>APROVEITAMENTO</span></div></div>
     <div class="player-points-grid"><div><b>${profile.goldMedals || 0}</b><span>🥇 OURO</span></div><div><b>${profile.silverMedals || 0}</b><span>🥈 PRATA</span></div><div><b>${profile.bronzeMedals || 0}</b><span>🥉 BRONZE</span></div><div><b>${profile.tournamentTitles || 0}</b><span>🏆 TROFÉUS</span></div></div>
     <section class="player-history"><div class="player-history-title">HISTÓRICO RECENTE</div>${profile.historyAvailable === false ? '<p class="player-history-empty">O histórico começa a ser salvo nas próximas partidas.</p>' : games ? `<ul>${games}</ul>` : '<p class="player-history-empty">Ainda não terminou uma partida.</p>'}</section>
-    ${nominateExpelBtn(currentPlayer)}`;
-  $("#nominate-expel")?.addEventListener("click", () => { socket.emit("nominate-expel", currentPlayer.id); $("#player-card").close(); });
+    ${kickPlayerBtn(currentPlayer)}`;
+  $("#kick-player")?.addEventListener("click", () => {
+    if (!confirm(`Tirar ${currentPlayer.name} da sala? Ele não volta nesta mesa.`)) return;
+    socket.emit("remove-player", currentPlayer.id);
+    $("#player-card").close();
+  });
 }
 
 async function openPlayerCard(player) {
@@ -1498,7 +1486,6 @@ function renderWatchers() {
   const el = $("#watchers");
   const list = (state.spectators || []).filter((watcher) => watcher.id !== state.me?.id);
   el.classList.toggle("hidden", list.length === 0);
-  el.classList.toggle("under-vote", Boolean(state.expel)); // no mobile some durante a votação (evita sobrepor a barra)
   el.innerHTML = list.length
     ? `👁️ ${list.length} assistindo: ${list.map((watcher) => escapeHtml(watcher.name)).join(", ")}`
     : "";
@@ -1519,60 +1506,6 @@ function maybeGuardBid() {
   setEmoteOpen(false);
   bidGuardUntil = Date.now() + 600;
   setTimeout(() => { if (state) render(); }, 640); // reabilita os botões depois do delay
-}
-
-// Barra da votação de expulsão. Fica no topo, em fluxo (nunca cobre a mesa/mão no mobile).
-// Mostra quem votou o quê (sim/não/pendente) e, ao terminar, o resultado por um tempinho.
-function renderExpel() {
-  const bar = $("#expel-bar");
-  const e = state.expel;
-  if (!e) { bar.classList.add("hidden"); bar.innerHTML = ""; return; }
-  bar.classList.remove("hidden");
-  bar.classList.toggle("resolved", Boolean(e.resolved));
-  const tally = e.tally.map((t) => `<span class="ev-chip ${t.vote}">${t.vote === "yes" ? "✓" : t.vote === "no" ? "✗" : "•"} ${escapeHtml(t.name)}</span>`).join("");
-  let head = "", actions = "";
-  if (e.resolved === "approved") {
-    head = `<span class="ev-result yes">✓ ${escapeHtml(e.targetName)} foi expulso pela mesa</span>`;
-  } else if (e.resolved === "failed") {
-    head = `<span class="ev-result no">✗ Sem votos suficientes — ${escapeHtml(e.targetName)} fica na mesa</span>`;
-  } else if (e.amTarget) {
-    head = `<span class="ev-title">A mesa está votando pra te tirar… <b class="ev-timer">${e.countdown}s</b></span>`;
-  } else {
-    head = `<span class="ev-title">Expulsar <b>${escapeHtml(e.targetName)}</b>? <span class="ev-count">${e.yesCount}/${e.needed}</span> <b class="ev-timer">${e.countdown}s</b></span>`;
-    if (e.amEligible && !e.myVote) actions = `<div class="ev-actions"><button id="expel-yes" class="ev-btn yes">EXPULSAR</button><button id="expel-no" class="ev-btn no">MANTER</button></div>`;
-    else if (e.myVote) actions = `<div class="ev-mine">você votou <b>${e.myVote === "yes" ? "EXPULSAR" : "MANTER"}</b></div>`;
-  }
-  bar.innerHTML = `<div class="ev-row"><div class="ev-head">${head}</div>${actions}</div><div class="ev-tally">${tally}</div>`;
-  $("#expel-yes")?.addEventListener("click", () => socket.emit("vote-expel", true));
-  $("#expel-no")?.addEventListener("click", () => socket.emit("vote-expel", false));
-}
-
-// No DESKTOP a barra do topo some no scroll — então a votação vira um card na lateral direita
-// (dentro do action-panel), com um usuário por linha e o voto de cada um. Só aparece com votação.
-function expelSideHtml(e) {
-  const rows = e.tally.map((t) => `<div class="es-row ${t.vote}"><span class="es-name">${escapeHtml(t.name)}</span><span class="es-vote">${t.vote === "yes" ? "✓ expulsar" : t.vote === "no" ? "✗ manter" : "aguardando"}</span></div>`).join("");
-  let head = "", actions = "";
-  if (e.resolved === "approved") head = `<div class="es-result yes">✓ ${escapeHtml(e.targetName)} foi expulso</div>`;
-  else if (e.resolved === "failed") head = `<div class="es-result no">✗ Sem votos suficientes</div>`;
-  else if (e.amTarget) head = `<div class="es-title">A mesa vota pra te tirar <b class="es-timer">${e.countdown}s</b></div>`;
-  else {
-    head = `<div class="es-title">Expulsar <b>${escapeHtml(e.targetName)}</b>? <span class="es-count">${e.yesCount}/${e.needed}</span> <b class="es-timer">${e.countdown}s</b></div>`;
-    if (e.amEligible && !e.myVote) actions = `<div class="es-actions"><button class="es-btn yes" data-ev="yes">EXPULSAR</button><button class="es-btn no" data-ev="no">MANTER</button></div>`;
-    else if (e.myVote) actions = `<div class="es-mine">você votou <b>${e.myVote === "yes" ? "EXPULSAR" : "MANTER"}</b></div>`;
-  }
-  return `<div class="es-head">${head}</div><div class="es-list">${rows}</div>${actions}`;
-}
-function renderExpelSide() {
-  const panel = $("#action-panel");
-  if (!panel) return;
-  const e = state.expel;
-  if (!e) return; // renderAction já resetou o innerHTML; nada a fazer
-  const card = document.createElement("div");
-  card.className = `expel-side${e.resolved ? " resolved" : ""}`;
-  card.innerHTML = expelSideHtml(e);
-  panel.prepend(card);
-  card.querySelector('[data-ev="yes"]')?.addEventListener("click", () => socket.emit("vote-expel", true));
-  card.querySelector('[data-ev="no"]')?.addEventListener("click", () => socket.emit("vote-expel", false));
 }
 
 function render() {
@@ -1596,7 +1529,6 @@ function render() {
   $("#emote-toggle").classList.toggle("hidden", lobbyTools); // figurinhas valem também no solo (offline)
   renderAutoBar();
   renderSpectatorBar();
-  renderExpel();
   runSounds();
   renderWatchers();
   renderTournamentBar();
@@ -1604,7 +1536,6 @@ function render() {
   renderSeats();
   maybeGuardBid();
   renderAction();
-  renderExpelSide();
   renderHand();
   maybeStartTurnClock();
   maybeCelebrate();
@@ -1796,6 +1727,26 @@ function tableTallyHtml() {
   return `<div class="table-tally" aria-label="Apostas da mesa">${items}<span class="tally-sum">${label} <i>${total}</i>/${state.handSize}</span></div>`;
 }
 
+// Lista de expulsão do dono: todo mundo da sala menos ele — jogadores, bots e quem assiste.
+// Numa mão em andamento, quem é tirado tem a mão terminada por um bot e some ao fim dela.
+function kickListHtml() {
+  if (!isHost() || state.solo) return "";
+  const status = (player) => player.isBot ? "bot"
+    : player.spectator ? "assistindo"
+    : !player.connected ? "caiu"
+    : player.auto ? "automático" : "na ativa";
+  const targets = [...state.players, ...(state.spectators || [])].filter((player) => player.id !== state.me?.id);
+  if (!targets.length) return "";
+  const buttons = targets.map((player) => `<button class="kick-btn" data-kick="${player.id}" data-kick-name="${escapeHtml(player.name)}">✕ ${escapeHtml(player.name)} <small>${status(player)}</small></button>`).join("");
+  return `<div class="kick-list"><div class="kick-title">TIRAR DA SALA</div>${buttons}</div>`;
+}
+function bindKickButtons(panel) {
+  panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => {
+    if (!confirm(`Tirar ${button.dataset.kickName} da sala? Não volta nesta mesa.`)) return;
+    socket.emit("remove-player", button.dataset.kick);
+  });
+}
+
 function renderAction() {
   const panel = $("#action-panel");
   if (state.phase === "lobby") {
@@ -1817,10 +1768,11 @@ function renderAction() {
         <button id="lobby-emote-toggle" type="button" aria-label="Abrir figurinhas" title="Figurinhas">😄</button>
         ${state.solo ? "" : '<button id="lobby-chat-toggle" type="button" aria-label="Abrir chat da sala" title="Chat da sala">💬</button>'}
       </div>
+      ${kickListHtml()}
       ${lobbyStartControl(tournament)}
       ${rankingHtml()}`;
+    bindKickButtons(panel);
     $("#start")?.addEventListener("click", () => socket.emit("start-game"));
-    $("#vote-start")?.addEventListener("click", () => socket.emit("vote-start"));
     $("#share-url").onclick = (event) => event.target.select();
     $("#copy-link").onclick = async () => { await navigator.clipboard.writeText(url); showToast(state.isPrivate ? "Link de convite copiado!" : "Link copiado!"); };
     $("#copy-pass")?.addEventListener("click", async () => { await navigator.clipboard.writeText(state.password || ""); showToast("Senha copiada!"); });
@@ -1873,29 +1825,16 @@ function renderAction() {
     const list = losers.length
       ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
       : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
-    // Dono pode tirar da mesa quem está no automático (bot ativo) ou caiu.
-    const removable = (isHost() && !state.solo && !state.tournament)
-      ? state.players.filter((player) => player.id !== state.hostId && (player.isBot || !player.connected || player.auto))
-      : [];
-    const kickHtml = removable.length
-      ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : !player.connected ? "caiu" : "automático"}</small></button>`).join("")}</div>`
-      : "";
+    const kickHtml = kickListHtml();
     // Sem host pra clicar: a próxima mão começa sozinha; qualquer um pode pular a espera.
     const nextControl = '<p class="auto-next">Próxima mão começando…</p><button id="next" class="ghost">PULAR ESPERA</button>';
     panel.innerHTML = `<div class="panel-title">FIM DA MÃO</div><h3>QUEM SE FODEU</h3>${list}${kickHtml}${nextControl}`;
-    panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
+    bindKickButtons(panel);
     $("#next")?.addEventListener("click", () => socket.emit("next-round"));
     return;
   }
   if (state.phase === "game_over") {
-    // Bots e jogadores ausentes (que caíram ou saíram) que o dono pode tirar antes de recomeçar.
-    // No modo solo (offline) não faz sentido tirar bots — só vale em salas online.
-    const removable = (isHost() && !state.solo && !state.tournament)
-      ? state.players.filter((player) => player.id !== state.me?.id && (player.isBot || !player.connected || player.auto))
-      : [];
-    const kickHtml = removable.length
-      ? `<div class="kick-list"><div class="kick-title">TIRAR DA MESA</div>${removable.map((player) => `<button class="kick-btn" data-kick="${player.id}">✕ ${escapeHtml(player.name)} <small>${player.isBot ? "bot" : "ausente"}</small></button>`).join("")}</div>`
-      : "";
+    const kickHtml = kickListHtml();
     const lr = state.lastResult;
     const championHtml = lr
       ? `<div class="champion"><span class="champion-name">🏆 ${escapeHtml(lr.name)}</span>${lr.streak >= 2 ? `<span class="champion-streak">🔥 venceu as últimas ${lr.streak} partidas</span>` : lr.wins >= 3 ? `<span class="champion-streak">👑 ${lr.wins} vitórias na sala</span>` : ""}</div>`
@@ -1905,10 +1844,9 @@ function renderAction() {
     const tournamentControls = gameOverControl(tournament, tournamentFinished);
     const panelTitle = tournamentFinished ? "TORNEIO ENCERRADO" : "FIM DE JOGO";
     panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
-    panel.querySelectorAll("[data-kick]").forEach((button) => button.onclick = () => socket.emit("remove-player", button.dataset.kick));
+    bindKickButtons(panel);
     $("#next-tournament")?.addEventListener("click", () => socket.emit("next-tournament-game"));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
-    $("#vote-restart")?.addEventListener("click", () => socket.emit("vote-restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);
     return;
   }

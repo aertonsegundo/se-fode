@@ -480,34 +480,6 @@ function publicState(room, viewerId) {
     // senha e convite só interessam a quem já está dentro (para convidar/compartilhar).
     password: room.password || null,
     inviteToken: room.inviteToken,
-    // Votação (sala pública): começar / jogar de novo. Privada usa host, não vota.
-    vote: {
-      voters: room.players.filter((p) => !p.isBot && p.connected && !p.spectator).length,
-      startCount: room.startVotes ? room.startVotes.size : 0,
-      startNeeded: Math.ceil(room.players.filter((p) => !p.isBot && p.connected && !p.spectator).length * 2 / 3),
-      iVotedStart: room.startVotes ? room.startVotes.has(viewerId) : false,
-      startCountdown: room.startCountdownEndsAt ? Math.max(0, Math.ceil((room.startCountdownEndsAt - Date.now()) / 1000)) : null,
-      restartCount: room.restartVotes ? room.restartVotes.size : 0,
-      restartNeeded: Math.ceil(room.players.filter((p) => !p.isBot && p.connected && !p.spectator).length * 2 / 3),
-      iVotedRestart: room.restartVotes ? room.restartVotes.has(viewerId) : false,
-    },
-    // Votação de expulsão em curso (roda em paralelo, não interrompe a partida). Votos públicos.
-    expel: room.expelVote ? (() => {
-      const vote = room.expelVote;
-      const eligible = expelEligible(room, vote.targetId);
-      return {
-        targetName: playerById(room, vote.targetId)?.name || "",
-        needed: eligible.length,
-        yesCount: [...vote.votes.values()].filter(Boolean).length,
-        // Lista pública: cada um que pode votar e seu voto (sim / não / pendente).
-        tally: eligible.map((p) => ({ name: p.name, vote: vote.votes.has(p.id) ? (vote.votes.get(p.id) ? "yes" : "no") : "pending" })),
-        amTarget: vote.targetId === viewerId,
-        amEligible: eligible.some((p) => p.id === viewerId),
-        myVote: vote.votes.has(viewerId) ? (vote.votes.get(viewerId) ? "yes" : "no") : null,
-        countdown: vote.resolved ? 0 : Math.max(0, Math.ceil((vote.endsAt - Date.now()) / 1000)),
-        resolved: vote.resolved, // null | "approved" | "failed"
-      };
-    })() : null,
     phase: room.phase,
     hostId: room.hostId,
     dealerId: room.dealerId,
@@ -622,6 +594,7 @@ function newRoom(code, host) {
     inviteToken: randomUUID(), // link de convite entra direto, sem senha
     quickMatch: false,   // sala pública de "partida rápida"
     hostId: host.id,
+    banned: new Set(),   // userIds que o dono tirou da sala: não voltam nem pelo código
     players: [],
     phase: "lobby",
     dealerId: null,
@@ -748,30 +721,7 @@ function maybeAutoAdvance(room) {
   }, NEXT_ROUND_MS);
 }
 
-const START_COUNTDOWN_MS = 10000; // votação de início: contagem pra outros entrarem antes de começar
-// Quem vota: humanos conectados e sentados (não-bot, não-espectador).
-function eligibleVoters(room) {
-  return room.players.filter((p) => !p.isBot && p.connected && !p.spectator);
-}
-function clearVotes(room) {
-  if (room.startCountdownTimer) { clearInterval(room.startCountdownTimer); room.startCountdownTimer = null; }
-  room.startCountdownEndsAt = null;
-  room.startVotes?.clear();
-  room.restartVotes?.clear();
-  closeExpelVote(room); // votação de expulsão não carrega pra próxima partida
-}
-function cancelStartCountdown(room) {
-  if (room.startCountdownTimer) { clearInterval(room.startCountdownTimer); room.startCountdownTimer = null; }
-  room.startCountdownEndsAt = null;
-}
-// Alguém saiu/caiu durante a contagem: se não dá mais pra começar (fase mudou ou < 2 jogadores),
-// cancela a contagem NA HORA (não espera os 10s acabarem).
-function maybeCancelStartCountdown(room) {
-  if (room.startCountdownTimer && (room.phase !== "lobby" || eligibleVoters(room).length < 2)) {
-    cancelStartCountdown(room);
-  }
-}
-// Ações reutilizadas pelo host (sala privada) e pela votação (sala pública).
+// Ações do dono da mesa: começar, recomeçar e avançar o torneio.
 function doStartGame(room) {
   room.players = room.players.filter((player) => player.isBot || player.connected);
   promoteSpectators(room);
@@ -783,7 +733,6 @@ function doStartGame(room) {
     room.tournament.finished = false;
     room.tournament.trophyAwarded = false;
   }
-  clearVotes(room);
   startGame(room);
   return null;
 }
@@ -797,103 +746,49 @@ function doRestart(room) {
     room.tournament.scores = Object.fromEntries(room.tournament.playerIds
       .map((id) => [id, { goldMedals: 0, silverMedals: 0, bronzeMedals: 0, wins: 0, lastPosition: null }]));
   }
-  clearVotes(room);
   startGame(room);
   return null;
 }
 function doNextTournament(room) {
   if (!room.tournament) return "Sem torneio.";
   if (room.tournament.finished) return "O torneio já terminou.";
-  clearVotes(room);
   startGame(room);
   return null;
 }
-// Votação de início (sala pública): 2/3 dos votantes e no mínimo 3 → contagem de 10s → começa.
-function evaluateStartVote(room) {
-  if (!room.startVotes) return;
-  const voters = eligibleVoters(room);
-  for (const id of [...room.startVotes]) if (!voters.some((p) => p.id === id)) room.startVotes.delete(id);
-  // Mínimo de 2 jogadores. Com 2, ceil(2·2/3)=2 → os dois precisam aceitar.
-  const need = Math.ceil(voters.length * 2 / 3);
-  const enough = voters.length >= 2 && room.startVotes.size >= need;
-  if (enough && !room.startCountdownTimer) {
-    room.startCountdownEndsAt = Date.now() + START_COUNTDOWN_MS;
-    room.startCountdownTimer = setInterval(() => {
-      // Cancela na hora se a fase mudou ou caiu abaixo do mínimo de 2 jogadores.
-      if (room.phase !== "lobby" || eligibleVoters(room).length < 2) {
-        cancelStartCountdown(room);
-        broadcast(room);
-        return;
-      }
-      if (room.startCountdownEndsAt - Date.now() <= 0) {
-        cancelStartCountdown(room);
-        doStartGame(room);
-      } else {
-        broadcast(room); // tique a cada segundo pra atualizar o contador
-      }
-    }, 1000);
+// ===== Expulsão pelo dono da mesa =====
+// O dono tira quem quiser: bot, ausente ou jogador na ativa. Se houver mão em andamento,
+// um bot a termina por ele (pra não travar a rodada) e a saída vale no fim da mão; fora de
+// mão ativa sai na hora. Quem é tirado não volta a esta sala, nem pelo código.
+function kickFromRoom(room, target) {
+  target.expelled = true;
+  target.resumeToken = null;
+  if (target.userId) room.banned.add(target.userId);
+  if (target.disconnectTimer) { clearTimeout(target.disconnectTimer); target.disconnectTimer = null; }
+  if (room.autoTurnId === target.id && room.botTimer) {
+    clearTimeout(room.botTimer);
+    room.botTimer = null;
+    room.autoTurnId = null;
   }
-  maybeCancelStartCountdown(room);
-}
-
-// ===== Votação de expulsão =====
-const EXPEL_VOTE_MS = 15000;   // janela da votação; roda em paralelo (não interrompe a partida)
-const EXPEL_RESULT_MS = 4500;  // tempo mostrando o resultado (aprovado / sem votos) antes de sumir
-// Quem pode votar: humanos conectados e sentados, MENOS o indicado (ele não vota).
-function expelEligible(room, targetId) {
-  return room.players.filter((p) => !p.isBot && p.connected && !p.spectator && p.id !== targetId);
-}
-function closeExpelVote(room) {
-  if (room.expelTimer) { clearInterval(room.expelTimer); room.expelTimer = null; }
-  if (room.expelClearTimer) { clearTimeout(room.expelClearTimer); room.expelClearTimer = null; }
-  room.expelVote = null;
-}
-function approveExpel(room, target) {
-  target.expelled = true; // não volta nesta partida
-  if (["bidding", "playing", "trick_reveal"].includes(room.phase)) {
-    target.auto = true;   // um bot fecha a mão por ele
-    target.quit = true;   // e ele sai de vez ao fim da mão (scoreRound)
+  if (target.socketId) io.to(target.socketId).emit("expelled", "O dono da mesa tirou você da sala.");
+  target.connected = false;
+  target.socketId = null;
+  const activeHand = ["bidding", "playing", "trick_reveal"].includes(room.phase);
+  const inGame = !["lobby", "game_over"].includes(room.phase);
+  if (inGame && !target.spectator) {
+    // Mesma regra de quem sai por conta própria: a cadeira some só na próxima partida,
+    // pra não furar a mão em curso nem sumir da classificação desta.
+    target.quit = true;
+    if (activeHand) {
+      target.auto = true; // um bot fecha a mão por ele
+    } else {
+      target.eliminated = true;
+      target.eliminatedAtRound ??= room.round;
+      target.lives = 0;
+    }
   } else {
-    room.players = room.players.filter((p) => p.id !== target.id); // fora de mão ativa: sai já
-    transferHost(room);
+    room.players = room.players.filter((item) => item.id !== target.id);
   }
-  if (target.socketId) io.to(target.socketId).emit("expelled", "A mesa votou pra te tirar da partida.");
-}
-// Resolve a votação (aprovada/sem-votos): para a contagem, mostra o resultado com a lista por um
-// tempinho (pra todos verem quem votou o quê) e então limpa.
-function resolveExpel(room, outcome) {
-  const vote = room.expelVote;
-  if (!vote || vote.resolved) return;
-  vote.resolved = outcome;
-  if (room.expelTimer) { clearInterval(room.expelTimer); room.expelTimer = null; }
-  room.expelClearTimer = setTimeout(() => { room.expelVote = null; room.expelClearTimer = null; broadcast(room); }, EXPEL_RESULT_MS);
-}
-function evaluateExpelVote(room) {
-  const vote = room.expelVote;
-  if (!vote || vote.resolved) return;
-  const target = playerById(room, vote.targetId);
-  if (!target || target.isBot || target.spectator || target.expelled) { closeExpelVote(room); return; }
-  const eligible = expelEligible(room, vote.targetId);
-  if (eligible.length < 2) { closeExpelVote(room); return; } // 2 jogadores: sem votação de expulsão
-  for (const id of [...vote.votes.keys()]) if (!eligible.some((p) => p.id === id)) vote.votes.delete(id);
-  const yes = [...vote.votes.values()].filter(Boolean).length;
-  if (yes >= eligible.length) { approveExpel(room, target); resolveExpel(room, "approved"); } // unânime a favor
-  else if (vote.votes.size >= eligible.length) resolveExpel(room, "failed"); // todos votaram, mas teve "não"
-}
-// Abre a votação (uma por vez). nominatorId=null quando é automática (jogador virou bot); quem abre já vota "sim".
-function openExpelVote(room, targetId, nominatorId) {
-  if (room.expelVote) return;
-  const target = playerById(room, targetId);
-  if (!target || target.isBot || target.spectator || target.eliminated || target.expelled) return;
-  if (expelEligible(room, targetId).length < 2) return; // partidas de 2 pessoas não têm votação
-  room.expelVote = { targetId, votes: new Map(nominatorId ? [[nominatorId, true]] : []), endsAt: Date.now() + EXPEL_VOTE_MS, resolved: null };
-  room.expelTimer = setInterval(() => {
-    const vote = room.expelVote;
-    if (!vote || vote.resolved) { clearInterval(room.expelTimer); room.expelTimer = null; return; }
-    if (vote.endsAt - Date.now() <= 0) resolveExpel(room, "failed"); // tempo acabou sem unanimidade
-    broadcast(room); // tique pro contador
-  }, 1000);
-  evaluateExpelVote(room); // pode já resolver (ex.: nomeador é o único elegível)
+  transferHost(room);
 }
 
 // Expulsa um jogador da partida por inatividade repetida: um bot termina a mão dele
@@ -968,7 +863,6 @@ function scheduleAutomaticTurn(room) {
         expelPlayer(room, player);
         return broadcast(room);
       }
-      openExpelVote(room, player.id, null); // virou bot por inatividade → abre votação de expulsão
     }
     playAutomatically(room, player);
   }, delay);
@@ -1432,6 +1326,7 @@ io.on("connection", (socket) => {
     // Salas públicas no lobby, com vaga, sem o nome já ocupado.
     const open = [...rooms.values()].filter((r) => !r.isPrivate && !r.solo && r.phase === "lobby"
       && seatedPlayers(r).length < 8
+      && !r.banned.has(socket.data.user.id)
       && !r.players.some((p) => p.name.toLowerCase() === name.toLowerCase()));
     if (open.length) {
       const room = open[Math.floor(Math.random() * open.length)]; // sala aleatória
@@ -1440,7 +1335,7 @@ io.on("connection", (socket) => {
       room.players.push(player);
       sendSession(socket, room, player);
       transferHost(room);
-      notice(socket, "Você entrou numa partida rápida. Votem pra começar!");
+      notice(socket, "Você entrou numa partida rápida. O dono da mesa começa.");
       broadcast(room);
       return;
     }
@@ -1452,7 +1347,7 @@ io.on("connection", (socket) => {
     room.quickMatch = true;
     rooms.set(code, room);
     sendSession(socket, room, player);
-    notice(socket, "Criamos uma partida rápida. Chame a galera e votem pra começar!");
+    notice(socket, "Criamos uma partida rápida. Chame a galera e comece quando quiser!");
     broadcast(room);
   });
 
@@ -1464,6 +1359,7 @@ io.on("connection", (socket) => {
     const room = rooms.get(code);
     if (!name) return notice(socket, "Digite seu nome.");
     if (!room) return notice(socket, "Sala não encontrada.");
+    if (room.banned.has(socket.data.user.id)) return notice(socket, "O dono tirou você desta sala.");
     // Troca de dispositivo: a mesma conta já está sentada e CONECTADA aqui (outro
     // aparelho). Assume a cadeira neste dispositivo — dispensa senha (é o dono do assento).
     const mySeat = room.players.find((p) => !p.isBot && p.userId && p.userId === socket.data.user.id);
@@ -1534,6 +1430,7 @@ io.on("connection", (socket) => {
     code = cleanCode(code);
     const room = rooms.get(code);
     if (!room) return notice(socket, "Sala não encontrada.");
+    if (room.banned.has(socket.data.user.id)) return notice(socket, "O dono tirou você desta sala.");
     const ghost = room.players.find((p) => !p.isBot && !p.connected && p.userId && p.userId === socket.data.user.id);
     if (ghost) {
       if (["bidding", "playing", "trick_reveal"].includes(room.phase)) ghost.quit = true; // bot termina a mão, aí sai
@@ -1549,25 +1446,13 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
+  // Quem manda na mesa é o dono — em qualquer sala, pública ou privada.
   socket.on("start-game", () => {
     const room = rooms.get(socket.data.roomCode);
-    // Só sala privada tem host que começa; nas públicas é por votação (vote-start).
-    if (!room || !(room.isPrivate || room.solo) || socket.data.playerId !== room.hostId) return;
+    if (!room || socket.data.playerId !== room.hostId) return;
     if (room.phase !== "lobby") return notice(socket, "Essa partida já começou.");
     const err = doStartGame(room);
     if (err) notice(socket, err);
-  });
-
-  // Voto pra começar (sala pública): 2/3 e ≥3 jogadores disparam a contagem de 10s.
-  socket.on("vote-start", () => {
-    const room = rooms.get(socket.data.roomCode);
-    const player = room && playerById(room, socket.data.playerId);
-    if (!room || !player || player.isBot || player.spectator || room.isPrivate || room.solo) return;
-    if (room.phase !== "lobby") return;
-    room.startVotes = room.startVotes || new Set();
-    room.startVotes.has(player.id) ? room.startVotes.delete(player.id) : room.startVotes.add(player.id);
-    evaluateStartVote(room);
-    broadcast(room);
   });
 
   socket.on("bid", (rawBid) => {
@@ -1649,8 +1534,7 @@ io.on("connection", (socket) => {
 
   socket.on("next-tournament-game", () => {
     const room = rooms.get(socket.data.roomCode);
-    // Privada: host avança. Pública: por votação (vote-restart).
-    if (!room || !(room.isPrivate || room.solo) || socket.data.playerId !== room.hostId) return;
+    if (!room || socket.data.playerId !== room.hostId) return;
     if (!room.tournament || room.phase !== "game_over") return;
     const err = doNextTournament(room);
     if (err) notice(socket, err);
@@ -1658,78 +1542,28 @@ io.on("connection", (socket) => {
 
   socket.on("restart", () => {
     const room = rooms.get(socket.data.roomCode);
-    // Privada: host reinicia. Pública: por votação (vote-restart).
-    if (!room || !(room.isPrivate || room.solo) || socket.data.playerId !== room.hostId) return;
+    if (!room || socket.data.playerId !== room.hostId) return;
     if (room.phase !== "game_over") return;
     const err = doRestart(room);
     if (err) notice(socket, err);
   });
 
-  // Voto pra jogar de novo (sala pública, fim de jogo): 2/3 dos votantes.
-  socket.on("vote-restart", () => {
-    const room = rooms.get(socket.data.roomCode);
-    const player = room && playerById(room, socket.data.playerId);
-    if (!room || !player || player.isBot || player.spectator || room.isPrivate || room.solo) return;
-    if (room.phase !== "game_over") return;
-    room.restartVotes = room.restartVotes || new Set();
-    room.restartVotes.has(player.id) ? room.restartVotes.delete(player.id) : room.restartVotes.add(player.id);
-    const voters = eligibleVoters(room);
-    for (const id of [...room.restartVotes]) if (!voters.some((p) => p.id === id)) room.restartVotes.delete(id);
-    const need = Math.ceil(voters.length * 2 / 3);
-    if (voters.length >= 2 && room.restartVotes.size >= need) {
-      const err = (room.tournament && !room.tournament.finished) ? doNextTournament(room) : doRestart(room);
-      if (err) broadcast(room);
-    } else {
-      broadcast(room);
-    }
-  });
-
-  // Nomear alguém pra votação de expulsão (qualquer jogador; roda em paralelo, sem parar o jogo).
-  socket.on("nominate-expel", (targetId) => {
-    const room = rooms.get(socket.data.roomCode);
-    const player = room && playerById(room, socket.data.playerId);
-    if (!room || !player || player.isBot || player.spectator) return;
-    if (String(targetId) === player.id) return; // não nomeia a si mesmo
-    openExpelVote(room, String(targetId), player.id);
-    broadcast(room);
-  });
-
-  // Votar SIM/NÃO na expulsão em curso (o indicado não vota; precisa ser unânime entre os outros).
-  socket.on("vote-expel", (value) => {
-    const room = rooms.get(socket.data.roomCode);
-    const player = room && playerById(room, socket.data.playerId);
-    if (!room || !player || player.isBot || player.spectator || !room.expelVote || room.expelVote.resolved) return;
-    if (player.id === room.expelVote.targetId) return;
-    if (!expelEligible(room, room.expelVote.targetId).some((p) => p.id === player.id)) return;
-    room.expelVote.votes.set(player.id, value !== false); // true = sim (padrão); false = não
-    evaluateExpelVote(room);
-    broadcast(room);
-  });
-
-  // O dono da sala pode tirar da mesa bots e jogadores ausentes (que caíram ou saíram)
-  // ao fim da partida — antes disso não era possível e eles voltavam sozinhos no restart.
+  // O dono tira quem quiser da mesa: bot, ausente ou jogador na ativa, a qualquer momento.
   socket.on("remove-player", (targetId) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || socket.data.playerId !== room.hostId) return;
-    if (room.tournament && room.phase !== "lobby") return notice(socket, "A escalação do torneio fica fechada até ele terminar.");
-    if (!["game_over", "lobby", "round_end"].includes(room.phase)) return notice(socket, "Só dá pra tirar jogador fora da partida ou entre as mãos.");
     const target = playerById(room, String(targetId || ""));
     if (!target || target.id === room.hostId) return;
-    if (!target.isBot && target.connected && !target.auto) return notice(socket, "Esse jogador ainda está na ativa.");
-    if (target.disconnectTimer) { clearTimeout(target.disconnectTimer); target.disconnectTimer = null; }
-    if (room.autoTurnId === target.id && room.botTimer) {
-      clearTimeout(room.botTimer);
-      room.botTimer = null;
-      room.autoTurnId = null;
-    }
-    target.resumeToken = null; // removido de propósito: não reconecta mais nesta sala
-    room.players = room.players.filter((item) => item.id !== target.id);
-    transferHost(room);
-    // Removido entre as mãos: pode acabar o jogo (sobrou 1) ou liberar o auto-avanço.
+    kickFromRoom(room, target);
+    // Tirado entre as mãos: pode acabar o jogo (sobrou 1) ou liberar o auto-avanço.
     if (room.phase === "round_end") {
       if (activePlayers(room).length <= 1) return endGame(room);
       broadcast(room);
       return maybeAutoAdvance(room);
+    }
+    // Tirado no lobby/fim de jogo pode esvaziar a mesa de humanos: agenda a limpeza da sala.
+    if (!room.players.some((item) => !item.isBot && item.connected)) {
+      room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
     broadcast(room);
   });
@@ -1793,8 +1627,6 @@ io.on("connection", (socket) => {
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
-    maybeCancelStartCountdown(room); // saiu durante a contagem de início → cancela na hora
-    if (room.expelVote) evaluateExpelVote(room); // saiu um votante/indicado → reavalia a expulsão
     if (gameInProgress && !activeHand && activePlayers(room).length <= 1) return endGame(room);
     broadcast(room);
   });
@@ -1826,15 +1658,12 @@ io.on("connection", (socket) => {
         player.disconnectTimer = null;
         if (player.connected || player.eliminated) return;
         player.auto = true;
-        openExpelVote(room, player.id, null); // caiu e um bot assumiu → abre votação de expulsão
         broadcast(room);
       }, RECONNECT_GRACE_MS);
     }
     if (!room.players.some((item) => !item.isBot && item.connected)) {
       room.cleanupTimer = setTimeout(() => { rooms.delete(room.code); broadcastRoomList(); }, 5 * 60 * 1000);
     }
-    maybeCancelStartCountdown(room); // caiu durante a contagem de início → cancela na hora
-    if (room.expelVote) evaluateExpelVote(room); // caiu um votante/indicado → reavalia a expulsão
     broadcast(room);
   });
 });
