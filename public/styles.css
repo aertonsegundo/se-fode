@@ -975,3 +975,23 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
   .game[data-acting="1"] .tally-team i { font-style:normal; font-size:.7rem; font-weight:900; color:var(--acid); }
   .game[data-acting="1"] .tally-item.partner { border-color:#8d897e; }
 }
+
+/* ===== Compartilhar o pódio ===== */
+.podium-dialog { border:0; border-radius:14px; padding:1.6rem; max-width:420px; width:92vw; max-height:92vh; overflow:auto; background:#1c1b16; color:var(--paper); box-shadow:0 24px 60px #000a; }
+.podium-dialog::backdrop { background:#000b; backdrop-filter:blur(2px); }
+.podium-dialog h2 { font:1.9rem "Archivo Black",sans-serif; letter-spacing:-.03em; margin:.1em 0 .7em; }
+.podium-preview { border-radius:10px; overflow:hidden; background:#121210; min-height:180px; display:flex; align-items:center; justify-content:center; }
+.podium-preview img { display:block; width:100%; height:auto; }
+.podium-loading { color:#8d897e; font-size:.8rem; font-weight:600; padding:3rem 0; }
+.podium-actions { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:1rem; }
+.podium-actions button, .podium-actions .wa { text-align:center; padding:.75rem .5rem; font-weight:800; font-size:.74rem; letter-spacing:.04em; border:0; border-radius:7px; text-decoration:none; }
+.podium-actions .podium-primary { grid-column:1/-1; background:var(--acid); color:var(--ink); }
+.podium-actions .ghost { background:#2b2922; color:var(--paper); }
+.podium-actions .ghost:hover { background:#37342a; }
+.podium-actions .wa { display:block; }
+.podium-actions #podium-copy { grid-column:1/-1; }
+.podium-hint { color:#8d897e; font-size:.7rem; line-height:1.4; margin:.9rem 0 0; }
+/* Botão que abre o modal, no painel de fim de jogo */
+/* Secundário: quem manda no fim de jogo é o botão de jogar de novo. */
+.action-panel .share-podium-btn { width:100%; margin:.7rem 0 .2rem; padding:.75rem; border:2px solid var(--acid); border-radius:8px; background:transparent; box-shadow:none; color:var(--acid); font-weight:800; font-size:.76rem; letter-spacing:.06em; }
+.action-panel .share-podium-btn:hover { background:#d8ff4518; }

@@ -357,6 +357,22 @@
     </section>
     <p class="fine">Uma <b>mão</b> tem várias <b>rodadas</b> — uma para cada carta. Na mão de uma carta, a sua fica na testa: todos veem, menos você. Em toda mão, o último a apostar não pode fazer a soma das apostas bater com o número de cartas.</p>
   </dialog>
+  <!-- Arte do pódio pra mandar no grupo. A imagem é gerada no canvas ao abrir. -->
+  <dialog id="podium-modal" class="podium-dialog">
+    <button id="podium-close" class="close" aria-label="Fechar">×</button>
+    <div class="kicker">FIM DE PARTIDA</div>
+    <h2>COMPARTILHAR PÓDIO</h2>
+    <div id="podium-preview" class="podium-preview" aria-live="polite">
+      <div class="podium-loading">Montando a arte…</div>
+    </div>
+    <div id="podium-actions" class="podium-actions">
+      <button id="podium-share" type="button" class="podium-primary hidden">COMPARTILHAR</button>
+      <a id="podium-whatsapp" class="wa" target="_blank" rel="noopener">WHATSAPP</a>
+      <button id="podium-download" type="button" class="ghost">BAIXAR ARTE</button>
+      <button id="podium-copy" type="button" class="ghost hidden">COPIAR IMAGEM</button>
+    </div>
+    <p id="podium-hint" class="podium-hint"></p>
+  </dialog>
   <div id="deal-animation" class="deal-animation" aria-hidden="true"></div>
   <div id="toast" role="status"></div>
   <script src="/socket.io/socket.io.js"></script>

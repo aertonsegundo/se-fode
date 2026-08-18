@@ -1,4 +1,5 @@
 import { createClient } from "/vendor/supabase.js";
+import { buildPodiumCard, canvasToBlob } from "/podium-art.js";
 
 // O callback é executado em CADA handshake/reconexão. Assim o Socket.IO nunca
 // reaproveita um access token antigo depois de o Supabase renová-lo.
@@ -559,6 +560,7 @@ function renderRoomList(list) {
 $("#code").addEventListener("input", (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 $("#rules-open").onclick = () => $("#rules").showModal();
 $("#rules-close").onclick = () => $("#rules").close();
+$("#podium-close").onclick = () => $("#podium-modal").close();
 $("#copy-code").onclick = async () => {
   // Sala privada: copia o link de CONVITE (entra sem senha). Pública: link normal da sala.
   const url = roomUrl(state.code) + (state.isPrivate && state.inviteToken ? `&convite=${state.inviteToken}` : "");
@@ -1537,6 +1539,125 @@ function matchPodiumHtml() {
   }).join("")}</div></section>`;
 }
 
+// ===== Compartilhar o pódio =====
+// Monta os dados da arte a partir do estado de fim de partida. Em torneio
+// encerrado o pódio é o quadro de medalhas; nas demais, a classificação da
+// partida (que existe mesmo sem medalhas, inclusive no solo).
+function podiumShareData() {
+  const tournament = state.tournament;
+  const finishedTournament = Boolean(tournament?.finished && tournament.standings?.length);
+  const date = new Date().toLocaleDateString("pt-BR");
+
+  const entries = finishedTournament
+    ? tournament.standings.map((entry) => ({
+        position: entry.position,
+        id: entry.id,
+        name: entry.name,
+        detail: `🥇 ${entry.goldMedals || 0} · 🥈 ${entry.silverMedals || 0} · 🥉 ${entry.bronzeMedals || 0}`,
+      }))
+    : (state.matchStandings || []).map((entry) => ({
+        position: entry.position,
+        id: entry.id,
+        name: entry.name,
+        detail: entry.survived
+          ? `${entry.lives} vida${entry.lives === 1 ? "" : "s"}`
+          : `caiu na mão ${entry.eliminatedAtRound ?? "?"}`,
+      }));
+  if (entries.length < 2) return null;
+
+  const withPhoto = entries.map((entry) => {
+    const player = state.players.find((item) => item.id === entry.id);
+    return { ...entry, photo: photoUrlFor(player?.photoUrl || player?.avatarKey || null) };
+  });
+
+  const parts = [];
+  if (state.solo) parts.push("MODO SOLO");
+  else if (state.code) parts.push(`SALA ${state.code}`);
+  if (finishedTournament) parts.push(`${tournament.totalGames} PARTIDAS`);
+  parts.push(`${entries.length} JOGADORES`);
+  parts.push(date);
+
+  return {
+    title: finishedTournament ? "TORNEIO ENCERRADO" : "PÓDIO DA PARTIDA",
+    subtitle: parts.join(" · "),
+    podium: withPhoto.slice(0, 3),
+    rest: withPhoto.slice(3),
+    footer: location.host,
+  };
+}
+
+function podiumShareText(data) {
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = data.podium.map((entry, index) => `${medals[index]} ${entry.name} — ${entry.detail}`);
+  return `🃏 SE FODE — ${data.title}\n${data.subtitle}\n\n${lines.join("\n")}\n\nJogue em ${location.origin}`;
+}
+
+let podiumBlob = null;
+async function openPodiumShare() {
+  const data = podiumShareData();
+  if (!data) { showToast("Sem classificação pra compartilhar."); return; }
+  const modal = $("#podium-modal");
+  const preview = $("#podium-preview");
+  const hint = $("#podium-hint");
+  const shareBtn = $("#podium-share");
+  const copyBtn = $("#podium-copy");
+  const fileName = `se-fode-podio-${state.code || "solo"}.png`;
+
+  preview.innerHTML = '<div class="podium-loading">Montando a arte…</div>';
+  shareBtn.classList.add("hidden");
+  copyBtn.classList.add("hidden");
+  hint.textContent = "";
+  podiumBlob = null;
+  if (!modal.open) modal.showModal();
+
+  $("#podium-whatsapp").href = `https://wa.me/?text=${encodeURIComponent(podiumShareText(data))}`;
+
+  let canvas;
+  try {
+    canvas = await buildPodiumCard(data);
+    podiumBlob = await canvasToBlob(canvas);
+  } catch (error) {
+    console.error(error);
+    preview.innerHTML = '<div class="podium-loading">Não deu pra gerar a arte. Tente de novo.</div>';
+    hint.textContent = "Você ainda pode mandar o resultado em texto pelo WhatsApp.";
+    return;
+  }
+
+  const url = URL.createObjectURL(podiumBlob);
+  preview.innerHTML = `<img src="${url}" alt="Arte do pódio da partida" />`;
+
+  const file = new File([podiumBlob], fileName, { type: "image/png" });
+  const canShareFile = Boolean(navigator.canShare?.({ files: [file] }));
+  if (canShareFile) {
+    shareBtn.classList.remove("hidden");
+    shareBtn.onclick = async () => {
+      try {
+        await navigator.share({ files: [file], text: podiumShareText(data) });
+      } catch (error) {
+        if (error?.name !== "AbortError") showToast("Não deu pra compartilhar.");
+      }
+    };
+  }
+  if (navigator.clipboard?.write && window.ClipboardItem) {
+    copyBtn.classList.remove("hidden");
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": podiumBlob })]);
+        showToast("Imagem copiada!");
+      } catch { showToast("Seu navegador não deixou copiar a imagem."); }
+    };
+  }
+  $("#podium-download").onclick = () => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+  };
+  hint.textContent = canShareFile
+    ? "Compartilhar abre o WhatsApp com a imagem pronta pra mandar no grupo."
+    : "O link do WhatsApp leva só o texto — baixe a arte e anexe na conversa.";
+}
+
 let celebratedKey = null;
 function maybeCelebrate() {
   const result = state.lastResult;
@@ -2038,8 +2159,9 @@ function renderAction() {
     const tournamentFinished = tournament?.finished;
     const tournamentControls = gameOverControl(tournament, tournamentFinished);
     const panelTitle = tournamentFinished ? "TORNEIO ENCERRADO" : "FIM DE JOGO";
-    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}<button id="share-podium" type="button" class="share-podium-btn">📸 COMPARTILHAR PÓDIO</button>${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     bindKickButtons(panel);
+    $("#share-podium")?.addEventListener("click", openPodiumShare);
     $("#next-tournament")?.addEventListener("click", () => socket.emit("next-tournament-game"));
     $("#restart")?.addEventListener("click", () => socket.emit("restart"));
     $("#leave2")?.addEventListener("click", leaveRoom);
