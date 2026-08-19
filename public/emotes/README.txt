@@ -1,12 +1,12 @@
 Imagens dos emotes
 ==================
 
-Coloque aqui os arquivos de imagem dos emotes. Cada emote procura por
-/emotes/<chave>.png. Se o arquivo NÃO existir, o jogo mostra o emoji
-Unicode correspondente como fallback.
+Coloque aqui os arquivos de imagem dos emotes. Cada emote procura primeiro por
+/emotes/<chave>.webp e depois por /emotes/<chave>.png. Se nenhum existir, o jogo
+mostra o emoji Unicode correspondente como fallback.
 
-Formatos aceitos pelo navegador: use .png (recomendado, com fundo
-transparente). Tamanho sugerido: ~128x128px.
+Formato recomendado: .webp com fundo transparente e o .png mantido como
+fallback quando necessário. Tamanho sugerido: ~128x128px.
 
 Nomes de arquivo esperados (exatamente estes):
 

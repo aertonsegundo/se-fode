@@ -35,7 +35,7 @@ export const BANNER_KEYS = BANNERS.filter((banner) => !banner.auto).map((banner)
 // Avatares prontos que o usuário pode escolher (arquivos em /avatars/players/<key>.webp).
 export const AVATAR_KEYS = ["jogador-1", "jogador-2", "jogador-3", "jogador-4", "jogador-5"];
 
-// Figurinhas nativas (têm imagem estática em /emotes/<key>.png; image_url fica null).
+// Figurinhas nativas (preferem /emotes/<key>.webp, com fallback PNG; image_url fica null).
 // Servem de seed inicial da tabela emotes.
 export const BUILTIN_EMOTES = [
   { key: "joia", emoji: "👍", title: "Joia" },

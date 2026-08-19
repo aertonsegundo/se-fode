@@ -94,21 +94,43 @@ async function join(kind, extra = {}) {
 const roomUrl = (code) => `${location.origin}/?sala=${code}`;
 
 // ===== Efeitos sonoros (Web Audio: baixa latência, permite sobreposição) =====
-const SFX_NAMES = ["card", "deal", "bid", "trick", "pot", "manilha", "zap", "zap-card", "melada", "lose", "eliminated", "turn", "win"];
 const MAX_SFX_DUR = 1.8;   // corta QUALQUER áudio em ~1.8s (independente do arquivo/uso)
 let sfxMuted = localStorage.getItem("sfxMuted") === "1";
 let audioCtx = null;
 const sfxBuffers = {};
+const pendingSfx = {};
 const sfxLastAt = {};      // anti-spam: última vez que cada som tocou
-async function loadSfx() {
+
+function getAudioContext() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+async function getSfx(name) {
+  if (sfxBuffers[name]) return sfxBuffers[name];
+  if (pendingSfx[name]) return pendingSfx[name];
+  pendingSfx[name] = (async () => {
+    try {
+      const response = await fetch(`/sfx/${encodeURIComponent(name)}.mp3`);
+      if (!response.ok) return null;
+      const data = await response.arrayBuffer();
+      const buffer = await getAudioContext().decodeAudioData(data);
+      sfxBuffers[name] = buffer;
+      return buffer;
+    } catch {
+      return null;
+    } finally {
+      delete pendingSfx[name];
+    }
+  })();
+  return pendingSfx[name];
+}
+
+async function playSfx(name, vol = 0.6) {
+  if (sfxMuted) return;
   try {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    await Promise.all(SFX_NAMES.map(async (name) => {
-      try {
-        const buf = await (await fetch(`/sfx/${name}.mp3`)).arrayBuffer();
-        sfxBuffers[name] = await audioCtx.decodeAudioData(buf);
-      } catch {}
-    }));
+    const buffer = await getSfx(name);
+    playBuffer(buffer, { vol, key: name, minGap: 60 });
   } catch {}
 }
 // Toca um AudioBuffer com corte de duração (MAX_SFX_DUR) e anti-spam (gap mínimo por chave).
@@ -134,20 +156,34 @@ function playBuffer(buffer, { vol = 0.6, key = null, minGap = 60, maxDur = MAX_S
   src.start();
   src.stop(t0 + dur);
 }
-function playSfx(name, vol = 0.6) {
-  playBuffer(sfxBuffers[name], { vol, key: name, minGap: 60 });
-}
 // Som do emote (escolhido no dashboard): carrega sob demanda de /emotes/sounds e toca
 // com corte de duração + anti-spam (gap maior, pois emotes podem ser repetidos rápido).
 const emoteSfxBuffers = {};
-async function playEmoteSound(file) {
-  if (sfxMuted || !audioCtx || !file) return;
-  try {
-    if (!emoteSfxBuffers[file]) {
-      const buf = await (await fetch(`/emotes/sounds/${encodeURIComponent(file)}`)).arrayBuffer();
-      emoteSfxBuffers[file] = await audioCtx.decodeAudioData(buf);
+const pendingEmoteSfx = {};
+async function getEmoteSfx(file) {
+  if (emoteSfxBuffers[file]) return emoteSfxBuffers[file];
+  if (pendingEmoteSfx[file]) return pendingEmoteSfx[file];
+  pendingEmoteSfx[file] = (async () => {
+    try {
+      const response = await fetch(`/emotes/sounds/${encodeURIComponent(file)}`);
+      if (!response.ok) return null;
+      const data = await response.arrayBuffer();
+      const buffer = await getAudioContext().decodeAudioData(data);
+      emoteSfxBuffers[file] = buffer;
+      return buffer;
+    } catch {
+      return null;
+    } finally {
+      delete pendingEmoteSfx[file];
     }
-    playBuffer(emoteSfxBuffers[file], { vol: 0.7, key: `emote:${file}`, minGap: 500 });
+  })();
+  return pendingEmoteSfx[file];
+}
+async function playEmoteSound(file) {
+  if (sfxMuted || !file) return;
+  try {
+    const buffer = await getEmoteSfx(file);
+    playBuffer(buffer, { vol: 0.7, key: `emote:${file}`, minGap: 500 });
   } catch { /* ignora */ }
 }
 // O navegador bloqueia áudio até um gesto do usuário: retoma o contexto no 1º toque.
@@ -164,7 +200,6 @@ document.getElementById("sfx-toggle")?.addEventListener("click", () => {
   if (!sfxMuted) playSfx("bid", 0.4); // feedback ao religar
 });
 updateSfxToggle();
-loadSfx();
 
 // ===== Dinâmicas: narração da mesa + sequências (combos) =====
 const nameOf = (id) => state?.players.find((p) => p.id === id)?.name || "Alguém";
@@ -1263,7 +1298,12 @@ function setChatOpen(open) {
 }
 
 let emoteOpen = false;
+let emoteBarBuilt = false;
 function setEmoteOpen(open) {
+  if (open && !emoteBarBuilt) {
+    buildEmoteBar();
+    emoteBarBuilt = true;
+  }
   emoteOpen = open;
   $("#emote-bar").classList.toggle("hidden", !open);
   $("#emote-toggle").classList.toggle("active", open);
@@ -1300,7 +1340,7 @@ $("#chat-form").addEventListener("submit", (event) => {
 
 // ===== Emotes =====
 // A lista de figurinhas vem do servidor (gerenciável no dashboard). Cada uma usa
-// imageUrl (upload) OU cai para /emotes/<key>.png e, por fim, para o emoji.
+// imageUrl (upload) OU cai para /emotes/<key>.webp, PNG e, por fim, emoji.
 let emoteList = [];
 let emoteById = {};
 let emoteCooldown = 0;
@@ -1314,15 +1354,27 @@ async function loadEmotes() {
 function setEmotes(list) {
   emoteList = list;
   emoteById = Object.fromEntries(list.map((emote) => [emote.key, emote]));
-  buildEmoteBar();
+  emoteBarBuilt = false;
+  if (emoteOpen) {
+    buildEmoteBar();
+    emoteBarBuilt = true;
+  }
 }
 
 function emoteMedia(emote, cls) {
   const img = document.createElement("img");
   img.className = cls;
-  img.src = emote.imageUrl || `/emotes/${emote.key}.png`;
   img.alt = emote.emoji || "";
+  img.decoding = "async";
+  const sources = [emote.imageUrl, emote.key && `/emotes/${emote.key}.webp`, emote.key && `/emotes/${emote.key}.png`].filter(Boolean);
+  let sourceIndex = 0;
+  img.src = sources[sourceIndex] || "";
   img.onerror = () => {
+    sourceIndex += 1;
+    if (sources[sourceIndex]) {
+      img.src = sources[sourceIndex];
+      return;
+    }
     const span = document.createElement("span");
     span.className = cls;
     span.textContent = emote.emoji || "❓";
@@ -1357,7 +1409,7 @@ function buildEmoteBar() {
   bar.appendChild(close);
 }
 
-socket.on("emotes", (list) => setEmotes(list || [])); // atualiza a barra ao vivo
+socket.on("emotes", (list) => setEmotes(list || [])); // invalida; reconstrói apenas se estiver aberta
 socket.on("emote", (payload) => spawnEmote(payload));
 loadEmotes();
 

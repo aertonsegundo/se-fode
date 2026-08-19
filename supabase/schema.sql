@@ -329,7 +329,7 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- Figurinhas (emotes) gerenciáveis pelo admin no dashboard.
--- image_url null => usa a imagem estática /emotes/<key>.png (built-in) ou o emoji.
+-- image_url null => usa /emotes/<key>.webp, com fallback PNG/emoji (built-in).
 -- ---------------------------------------------------------------------------
 create table if not exists public.emotes (
   key         text primary key,
