@@ -149,9 +149,19 @@ function renderEmotes(list) {
     const media = document.createElement("div");
     media.className = "emote-media";
     const img = document.createElement("img");
-    img.src = emote.imageUrl || `/emotes/${emote.key}.png`;
     img.alt = "";
-    img.onerror = () => { media.innerHTML = ""; const span = document.createElement("span"); span.className = "emote-emoji-fallback"; span.textContent = emote.emoji || "❓"; media.appendChild(span); };
+    const sources = [emote.imageUrl, `/emotes/${emote.key}.webp`, `/emotes/${emote.key}.png`].filter(Boolean);
+    let sourceIndex = 0;
+    img.src = sources[sourceIndex];
+    img.onerror = () => {
+      sourceIndex += 1;
+      if (sources[sourceIndex]) { img.src = sources[sourceIndex]; return; }
+      media.innerHTML = "";
+      const span = document.createElement("span");
+      span.className = "emote-emoji-fallback";
+      span.textContent = emote.emoji || "❓";
+      media.appendChild(span);
+    };
     media.appendChild(img);
     card.appendChild(media);
 

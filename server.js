@@ -56,7 +56,12 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, "public"), {
   etag: true,
   setHeaders: (res, filePath) => {
-    if (/\.(html|css|js)$/.test(filePath)) res.setHeader("Cache-Control", "no-cache");
+    const ext = path.extname(filePath).toLowerCase();
+    if ([".html", ".css", ".js"].includes(ext)) {
+      res.setHeader("Cache-Control", "no-cache");
+    } else if ([".png", ".webp", ".jpg", ".jpeg", ".svg", ".ico", ".avif", ".mp3", ".ogg", ".wav", ".m4a", ".woff", ".woff2"].includes(ext)) {
+      res.setHeader("Cache-Control", "public, max-age=2592000");
+    }
   },
 }));
 app.get("/health", (_req, res) => res.json({ ok: true, rooms: rooms.size }));
