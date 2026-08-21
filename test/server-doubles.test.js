@@ -456,3 +456,26 @@ test("fim de partida entrega títulos apoiados em contadores reais", async () =>
 
   sockets.forEach((socket) => socket.emit("leave-room"));
 });
+
+// ===== Chegada pelo link, antes de ter conta =====
+// A tela de entrada mostra a mesa que chamou (nome, lugares, situação). Isso só é
+// possível porque a lista da home é servida a quem ainda não tem conta — a conta
+// segue obrigatória para ENTRAR na sala, não para ver que ela existe.
+test("quem ainda não tem conta enxerga a mesa do convite na lista da home", async () => {
+  const { host, code } = await makeRoom(["Anfitriao"]);
+  host.emit("create-room"); // já criada; garante que a sala está de pé
+  const visitante = io(URL, { transports: ["websocket"], forceNew: true }); // sem auth: deslogado
+  open.push(visitante);
+  await once(visitante, "connect");
+  visitante.emit("watch-lobby");
+  const [lista] = await once(visitante, "rooms");
+  const sala = lista.find((room) => room.code === code);
+  assert.ok(sala, "a sala aparece para o visitante deslogado");
+  assert.ok(sala.name, "com nome");
+  assert.equal(typeof sala.count, "number");
+  assert.equal(typeof sala.max, "number");
+  assert.equal(sala.count >= 1, true);
+  assert.equal(Object.hasOwn(sala, "password"), false, "e nunca com a senha");
+  visitante.disconnect();
+  host.emit("leave-room");
+});

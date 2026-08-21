@@ -36,8 +36,11 @@ mesa de dois baralhos e Torneio de Medalhas.
 - Cria-se a sala no navegador, compartilha-se código ou link; sala privada gera senha.
 - Partida ao vivo por Socket.IO; queda de conexão devolve o jogador à cadeira, e um bot assume
   o turno de quem não volta para a mesa não travar.
-- Login é obrigatório (contas no Supabase); perfil com foto, banners atribuídos por admin,
-  ranking global de vitórias e dashboard de administração.
+- Login é obrigatório e continua sendo: **quem chega pelo link do grupo cria conta antes de
+  jogar** (decisão do dono, 21/08/2026). Nada de convidado, anônimo ou "só assistir sem conta" —
+  qualquer desenho da chegada trabalha dentro dessa regra, apresentando o convite bem em vez de
+  contorná-lo. Contas no Supabase; perfil com foto, banners atribuídos por admin, ranking global
+  de vitórias e dashboard de administração.
 - Deploy em Render; páginas públicas de conteúdo (`/fodinha-online`, `/como-jogar`, `/regras`)
   existem para o Google indexar e explicar o jogo a quem chega de fora.
 
@@ -71,7 +74,8 @@ tela alguma.
 
 1. A mesa é o produto. Nenhum painel deve custar a leitura da mesa no celular.
 2. A derrota é conteúdo. Num jogo chamado Se Fode, quem se fodeu merece tanto desenho quanto quem ganhou.
-3. O fim de partida é a porta de entrada: tem que se explicar sozinho para quem não estava jogando.
+3. O fim de partida é a porta de entrada: tem que se explicar sozinho para quem não estava jogando —
+   e a conta é parte do caminho, não um obstáculo a ser escondido.
 4. A voz da turma vale mais que a neutralidade — mas nunca às custas de o jogador entender a regra.
 5. Ninguém trava a mesa: queda, ausência e desistência têm saída automática.
 

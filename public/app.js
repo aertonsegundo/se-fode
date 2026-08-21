@@ -589,7 +589,7 @@ $("#join").onclick = () => joinRoomByCode($("#code").value);
 
 // Lista de salas ao vivo na home (canal "lobby").
 function watchLobby() { if (socket.connected) socket.emit("watch-lobby"); }
-socket.on("rooms", (list) => renderRoomList(list));
+socket.on("rooms", (list) => { lastRoomList = list; renderRoomList(list); renderInviteStatus(list); });
 function renderRoomList(list) {
   const el = $("#room-list");
   if (!el) return;
@@ -854,6 +854,30 @@ function showAuthScreen() {
   authScreen.classList.remove("hidden");
   home.classList.add("hidden");
   game.classList.add("hidden");
+  if (!sharedCode) return;
+  $("#auth-invite").classList.remove("hidden");
+  $("#auth-invite-room").textContent = `MESA ${sharedCode}`;
+  // Quem vem de um link quase nunca tem conta ainda: abre no cadastro, com o
+  // "já tem conta? entrar" logo abaixo para quem já tem.
+  setAuthMode("signup");
+  renderInviteStatus(lastRoomList);
+}
+
+// A mesa do convite, com dado real: o socket conecta e assina a lista de salas
+// antes do login, então dá para dizer quantos já estão lá sem afrouxar a conta.
+let lastRoomList = null;
+function renderInviteStatus(list) {
+  const el = $("#auth-invite-status");
+  if (!el || !sharedCode) return;
+  if (!list) { el.textContent = "procurando a mesa…"; return; }
+  const sala = list.find((room) => room.code === sharedCode);
+  if (!sala) {
+    el.textContent = "essa mesa não está mais aberta — entre e crie a sua";
+    return;
+  }
+  const cheia = sala.count >= sala.max;
+  const situacao = cheia ? "mesa cheia · dá pra assistir" : sala.inProgress ? "em jogo · dá pra assistir" : "esperando gente";
+  el.textContent = `${sala.name} · ${sala.count} de ${sala.max} lugares · ${situacao}`; // textContent já escapa
 }
 
 function showLoggedIn() {
@@ -961,9 +985,16 @@ let authMode = "login";
 function setAuthMode(mode) {
   authMode = mode;
   const signup = mode === "signup";
-  $("#auth-title").textContent = signup ? "CRIAR CONTA" : "ENTRAR";
-  $("#auth-sub").textContent = signup ? "Crie sua conta para jogar." : "Faça login para jogar.";
-  $("#auth-submit").textContent = signup ? "CRIAR CONTA" : "ENTRAR";
+  // Quem chega pelo link do grupo cai aqui antes de ver o jogo. A conta continua
+  // obrigatória; o que muda é a tela dizer para onde essa conta leva.
+  const convite = Boolean(sharedCode);
+  $("#auth-title").textContent = signup ? (convite ? "ENTRE NA MESA" : "CRIAR CONTA") : "ENTRAR";
+  $("#auth-sub").textContent = signup
+    ? (convite ? "Crie sua conta e você cai direto na mesa que te chamou." : "Crie sua conta para jogar.")
+    : (convite ? "Entre e você cai direto na mesa que te chamou." : "Faça login para jogar.");
+  $("#auth-submit").textContent = signup
+    ? (convite ? "CRIAR CONTA E ENTRAR" : "CRIAR CONTA")
+    : (convite ? "ENTRAR NA MESA" : "ENTRAR");
   $("#auth-name-label").classList.toggle("hidden", !signup);
   $("#auth-name").classList.toggle("hidden", !signup);
   $("#auth-toggle").innerHTML = signup ? "Já tem conta? <b>Entrar</b>" : "Não tem conta? <b>Criar conta</b>";
