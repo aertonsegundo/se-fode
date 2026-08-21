@@ -1486,14 +1486,16 @@ function renderPot() {
   const el = $("#pot");
   const show = state.pot > 0 && ["playing", "trick_reveal"].includes(state.phase);
   el.classList.toggle("hidden", !show);
-  if (show) el.innerHTML = `🔥 ACUMULOU · A RODADA VALE ×${state.pot + 1}`;
+  // Duas escritas do mesmo aviso (padrão das vidas): a longa no desktop, a curta no
+  // celular — na faixa estreita a versão longa quebrava linha e roubava altura da mesa.
+  if (show) el.innerHTML = `<span class="pot-full">🔥 ACUMULOU · A RODADA VALE ×${state.pot + 1}</span><span class="pot-compact">🔥 RODADA ×${state.pot + 1}</span>`;
 }
 
 function renderAutoBar() {
   const bar = $("#auto-bar");
   const active = me()?.auto && state.phase !== "lobby" && state.phase !== "game_over";
   bar.classList.toggle("hidden", !active);
-  bar.innerHTML = active ? '<span>🤖 Modo automático ligado — um bot está jogando por você.</span><button id="take-control">ASSUMIR CONTROLE</button>' : "";
+  bar.innerHTML = active ? '<span>🤖 Um bot está jogando no seu lugar.</span><button id="take-control">VOLTAR A JOGAR</button>' : "";
   $("#take-control")?.addEventListener("click", () => socket.emit("toggle-auto", false));
 }
 
@@ -1585,6 +1587,22 @@ function matchStandingsHtml() {
   return `<section class="match-ranking"><div class="match-rank-title">CLASSIFICAÇÃO DA PARTIDA</div>${rows}</section>`;
 }
 
+// O paredão: um título por jogador, cada um lastreado num número da partida. É a
+// metade que faltava no fim de jogo — o pódio conta quem ganhou, isto conta o resto.
+function matchTitlesHtml() {
+  const titles = state.matchTitles || [];
+  if (!titles.length) return "";
+  const linhas = titles.map((title) => {
+    const mine = title.playerId === state.me?.id;
+    return `<div class="title-card ${mine ? "mine" : ""}">
+      <b>${escapeHtml(title.label)}</b>
+      <span class="title-who">${mine ? "você" : escapeHtml(title.name)}</span>
+      <small>${escapeHtml(title.detail)}</small>
+    </div>`;
+  }).join("");
+  return `<section class="match-titles"><div class="match-rank-title">OS TÍTULOS DA PARTIDA</div><div class="title-cards">${linhas}</div></section>`;
+}
+
 function matchPodiumHtml() {
   if (!state.medalMatch) return '<p class="medal-note">Esta partida teve menos de 5 jogadores humanos e não distribuiu medalhas.</p>';
   // Em dupla o pódio é das equipes: uma linha por dupla, com as duas medalhas juntas.
@@ -1647,6 +1665,9 @@ function podiumShareData() {
   return {
     title: finishedTournament ? "TORNEIO ENCERRADO" : "PÓDIO DA PARTIDA",
     subtitle: parts.join(" · "),
+    // A manchete vem do servidor com lastro em contador; sem títulos na partida, ela
+    // cai no campeão, e sem campeão o card volta a ser só o pódio.
+    headline: state.matchHeadline || null,
     podium: withPhoto.slice(0, 3),
     rest: withPhoto.slice(3),
     footer: location.host,
@@ -1656,7 +1677,10 @@ function podiumShareData() {
 function podiumShareText(data) {
   const medals = ["🥇", "🥈", "🥉"];
   const lines = data.podium.map((entry, index) => `${medals[index]} ${entry.name} — ${entry.detail}`);
-  return `🃏 SE FODE — ${data.title}\n${data.subtitle}\n\n${lines.join("\n")}\n\nJogue em ${location.origin}`;
+  const manchete = data.headline
+    ? `\n\n${data.headline.label}: ${data.headline.name}${data.headline.detail ? ` — ${data.headline.detail}` : ""}`
+    : "";
+  return `🃏 SE FODE — ${data.title}\n${data.subtitle}${manchete}\n\n${lines.join("\n")}\n\nJogue em ${location.origin}`;
 }
 
 let podiumBlob = null;
@@ -1887,18 +1911,25 @@ function renderSeats() {
     // A minha entra virada: mantém as cadeiras do mesmo tamanho (sem carta, o meu
     // card ficava mais alto e encavalava nos vizinhos) e lembra que a carta é minha
     // e eu é que não vejo.
-    const foreheadOnSeat = !play && (foreheadCard || (forehead && isMe))
+    const foreheadOnSeat = !play && (foreheadCard || (forehead && isMe && state.me?.hasForeheadCard))
       ? `<div class="forehead-card">${foreheadCard ? cardHtml(foreheadCard) : '<div class="card mystery-card">?</div>'}</div>`
       : "";
 
     // Em dupla a cadeira mostra só o que é individual: aposta e rodadas ganhas.
     // Vidas são da equipe e ficam num lugar só, no placar da lateral.
-    const meta = isDoubles()
-      ? (state.phase === "lobby" ? "na sala" : `Aposta ${player.bid ?? "—"} · Ganhas ${player.wins}`)
+    // Na cadeira cabe pouco: durante a aposta o que importa é o número pedido, e
+    // depois é o placar contra ele. "aposta 3 · fez 1" gastava duas linhas dizendo
+    // o mesmo que "1 de 3" — e a forma longa continua no title, para quem parar em cima.
+    const placar = player.bid == null
+      ? null
+      : state.phase === "bidding" ? `pediu ${player.bid}` : `${player.wins} de ${player.bid}`;
+    const meta = state.phase === "lobby"
+      ? "na sala"
       : player.bid == null
         // "apostando…" só pra quem está escolhendo AGORA (a vez dele); quem ainda vai apostar fica neutro.
-        ? (state.phase === "lobby" ? "na sala" : state.phase === "bidding" ? (state.turnId === player.id ? "apostando…" : "—") : "—")
-        : `aposta ${player.bid} · fez ${player.wins}`;
+        ? (state.phase === "bidding" && state.turnId === player.id ? "apostando…" : "—")
+        : placar;
+    const metaTitle = player.bid == null ? "" : ` title="fez ${player.wins} de ${player.bid} apostada${player.bid === 1 ? "" : "s"}"`;
     const lives = player.lives > 0 ? player.lives : 0;
     const hearts = lives > 0 ? "♥".repeat(lives) : "×";
     const compactHearts = lives > 0 ? `♥ ×${lives}` : "×";
@@ -1941,7 +1972,7 @@ function renderSeats() {
             ${bannerChip}
             <b>${escapeHtml(player.name)}${isMe ? " (você)" : ""}${player.isBot ? '<span class="bot-chip">BOT</span>' : ""}</b>
             ${teamLine}
-            <div class="seat-meta">${meta}</div>
+            <div class="seat-meta"${metaTitle}>${meta}</div>
             ${livesBlock}
           </div>
           ${foreheadOnSeat}
@@ -2000,7 +2031,7 @@ function animateDeal() {
 
 function turnClockHtml() {
   if (state.solo) return "";
-  return `<div class="turn-timer"><i id="turn-bar"></i></div><small class="turn-hint">Modo automático em <b id="turn-secs">${TURN_SECONDS}</b>s se você não jogar</small>`;
+  return `<div class="turn-timer"><i id="turn-bar"></i></div><small class="turn-hint">Se você não jogar em <b id="turn-secs">${TURN_SECONDS}</b>s, um bot joga por você</small>`;
 }
 
 // No mobile o painel da vez vira um sheet fixo que cobre a parte de baixo da
@@ -2168,8 +2199,18 @@ function renderAction() {
       ? `<div class="bid-hand">${[...state.me.hand].sort((a, b) => cardStrength(a) - cardStrength(b)).map((card) => cardHtml(card)).join("")}</div>`
       : "";
     const guarded = Date.now() < bidGuardUntil; // trava breve pós-abertura (anti-misclick)
+    // O pé precisava fazer a conta sozinho: "a soma não pode dar 8" não diz quanto a
+    // mesa já pediu nem qual número ficou proibido. O servidor manda allowedBids —
+    // o que falta ali é exatamente o número barrado.
+    const pedidoAteAgora = state.players
+      .filter((player) => !player.eliminated && player.bid != null)
+      .reduce((soma, player) => soma + player.bid, 0);
+    const proibido = Array.from({ length: state.handSize + 1 }, (_, bid) => bid)
+      .find((bid) => !state.allowedBids.includes(bid));
     const bidHint = isLast
-      ? `Você é o pé: a soma não pode dar ${state.handSize}.`
+      ? proibido == null
+        ? `Você fecha a aposta (é o pé) e pode pedir qualquer número: a mesa já pediu ${pedidoAteAgora} de ${state.handSize}.`
+        : `Você fecha a aposta (é o pé). A mesa já pediu ${pedidoAteAgora} de ${state.handSize}, então <b>${proibido}</b> está proibido — a soma não pode fechar certinho.`
       : isDoubles() ? "Sua aposta soma com a do parceiro. Errar custa vidas da dupla." : "Escolha sua aposta. Errar custa vidas.";
     panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>${isDoubles() ? "FAÇA SUA APOSTA" : "QUANTAS VOCÊ LEVA?"}</h3><p>${bidHint}</p>${teamScoreHtml()}${handPreview}${tableTallyHtml()}<div class="bids ${guarded ? "guarded" : ""}">${Array.from({ length: state.handSize + 1 }, (_, bid) => `<button data-bid="${bid}" ${state.allowedBids.includes(bid) && !guarded ? "" : "disabled"}>${bid}</button>`).join("")}</div>${turnClockHtml()}`;
     panel.querySelectorAll("[data-bid]").forEach((button) => button.onclick = () => socket.emit("bid", Number(button.dataset.bid)));
@@ -2181,7 +2222,17 @@ function renderAction() {
       panel.innerHTML = `<div class="panel-title">RODADA NA TESTA</div><h3>JOGUE NO ESCURO</h3><p>Sua carta vai sozinha — todo mundo vê, menos você.</p>${teamScoreHtml()}${tableTallyHtml()}`;
       return;
     }
-    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>Clique numa carta da sua mão.</p>${teamScoreHtml()}${tableTallyHtml()}${turnClockHtml()}`;
+    // "Clique numa carta da sua mão" só repetia o título. No lugar dele vai o dado que
+    // muda a escolha: quanto falta para bater a sua aposta.
+    const meta = state.me.bid ?? 0;
+    const feitas = me()?.wins ?? 0;
+    const faltam = meta - feitas;
+    const progresso = faltam > 0
+      ? `Você pediu ${meta} e fez ${feitas}: ainda precisa de ${faltam}.`
+      : faltam === 0
+        ? `Você pediu ${meta} e já fez ${feitas}: daqui em diante é segurar.`
+        : `Você pediu ${meta} e já fez ${feitas}: passou da conta e vai perder ${Math.abs(faltam)} vida${Math.abs(faltam) > 1 ? "s" : ""}.`;
+    panel.innerHTML = `<div class="panel-title">SUA VEZ</div><h3>ESCOLHA UMA CARTA</h3><p>${progresso}</p>${teamScoreHtml()}${tableTallyHtml()}${turnClockHtml()}`;
     return;
   }
   if (state.phase === "trick_reveal") {
@@ -2215,7 +2266,14 @@ function renderAction() {
     const list = isDoubles()
       ? `<div class="team-results">${teamSummary}</div>`
       : losers.length
-        ? `<div class="fodeu-list">${losers.map((loser) => `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""}"><b>${escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""}${loser.eliminated ? " · ELIMINADO" : ""}</span></div>`).join("")}</div>`
+        ? `<div class="fodeu-list">${losers.map((loser) => {
+            const mine = loser.id === state.me?.id;
+            // Quem perdeu vida precisa saber quantas sobraram — é o que decide se dá pra respirar.
+            const saldo = loser.eliminated
+              ? "sem vidas · ELIMINADO"
+              : `restam ${loser.lives} vida${loser.lives > 1 ? "s" : ""}`;
+            return `<div class="fodeu-item ${loser.eliminated ? "eliminated" : ""} ${mine ? "me" : ""}"><b>${mine ? "Você" : escapeHtml(loser.name)}</b><span>−${loser.lost} vida${loser.lost > 1 ? "s" : ""} · ${saldo}</span></div>`;
+          }).join("")}</div>`
         : '<p class="fodeu-none">Ninguém se fodeu — todo mundo cravou. 😤</p>';
     const kickHtml = kickListHtml();
     // Sem host pra clicar: a próxima mão começa sozinha; qualquer um pode pular a espera.
@@ -2235,7 +2293,7 @@ function renderAction() {
     const tournamentFinished = tournament?.finished;
     const tournamentControls = gameOverControl(tournament, tournamentFinished);
     const panelTitle = tournamentFinished ? "TORNEIO ENCERRADO" : "FIM DE JOGO";
-    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}<button id="share-podium" type="button" class="share-podium-btn">📸 COMPARTILHAR PÓDIO</button>${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
+    panel.innerHTML = `<div class="panel-title">${panelTitle}</div><h3>${escapeHtml(state.message)}</h3>${championHtml}${matchPodiumHtml()}${matchTitlesHtml()}${matchStandingsHtml()}${tournament ? tournamentStandingsHtml({ podium: tournamentFinished }) : ""}<button id="share-podium" type="button" class="share-podium-btn">📸 COMPARTILHAR PÓDIO</button>${rankingHtml()}${kickHtml}${tournamentControls}<button id="leave2" class="ghost">SAIR DA SALA</button>`;
     bindKickButtons(panel);
     $("#share-podium")?.addEventListener("click", openPodiumShare);
     $("#next-tournament")?.addEventListener("click", () => socket.emit("next-tournament-game"));
@@ -2244,14 +2302,23 @@ function renderAction() {
     return;
   }
   const current = state.players.find((player) => player.id === state.turnId);
+  // Quem já caiu não está esperando a própria vez: o texto de mesa não serve pra ele.
+  if (me()?.eliminated) {
+    panel.innerHTML = `<div class="panel-title">VOCÊ CAIU</div><h3>ASSISTINDO DAQUI</h3><p>${me().eliminatedAtRound ? `Suas vidas acabaram na mão ${me().eliminatedAtRound}.` : "Suas vidas acabaram."} A partida segue — fica de olho em quem se fode agora.</p>${teamScoreHtml()}`;
+    return;
+  }
   panel.innerHTML = `<div class="panel-title">AGORA</div><h3>${current ? `VEZ DE ${escapeHtml(current.name)}` : "SEGURA AÍ"}</h3><p>${state.phase === "bidding" ? "A aposta está rodando a mesa." : "A carta vem aí."}</p>${teamScoreHtml()}`;
 }
 
 function renderHand() {
   const hand = $("#hand");
   if (iAmSpectator() || state.phase === "lobby" || state.phase === "game_over") { hand.innerHTML = ""; return; }
+  // hasForeheadCard vem do servidor: quem foi eliminado está numa mão de 1 carta
+  // sem carta nenhuma, e via um "?" mentiroso na doca.
   if (state.handSize === 1) {
-    hand.innerHTML = `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div></div></div>`;
+    hand.innerHTML = state.me?.hasForeheadCard
+      ? `<div class="foreheads"><div class="forehead"><div class="card mystery-card">?</div></div></div>`
+      : "";
     return;
   }
   // Mão organizada por força: mais fraca à esquerda, mais forte à direita.
@@ -2259,7 +2326,10 @@ function renderHand() {
   hand.innerHTML = sorted.map((card) => cardHtml(card)).join("");
   hand.querySelectorAll(".card").forEach((element, index) => {
     element.onclick = () => {
-      if (state.phase !== "playing" || state.turnId !== state.me.id) return showToast("Ainda não é sua vez.");
+      if (state.phase !== "playing" || state.turnId !== state.me.id) {
+        const dono = state.players.find((player) => player.id === state.turnId);
+        return showToast(dono && dono.id !== state.me.id ? `Ainda não é sua vez — quem joga é ${dono.name}.` : "Ainda não é sua vez.");
+      }
       socket.emit("play-card", sorted[index].id);
     };
   });

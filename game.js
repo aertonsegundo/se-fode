@@ -490,3 +490,104 @@ export function tournamentStandingsFrom(entries) {
       || a.name.localeCompare(b.name, "pt-BR"))
     .map((entry, index) => ({ ...entry, position: index + 1 }));
 }
+
+// ===== Fim de partida: contadores e títulos =====
+// A partida inteira passa pelo servidor, mas nada ficava guardado por jogador: o
+// histórico é uma lista de frases. Sem contador não há zoeira com lastro — e a
+// derrota é o que o fim de jogo tem de mais interessante para contar.
+export function emptyMatchStats() {
+  return { maos: 0, vazas: 0, manilhas: 0, meladas: 0, dano: 0, cravadas: 0, maiorCombo: 0, comboAtual: 0 };
+}
+
+// Cada título precisa de um número que o justifique e de um piso, para não premiar
+// ruído ("melou 1 vez" não é título). Um jogador leva no máximo um.
+const TITLE_RULES = [
+  {
+    key: "melado",
+    label: "MÃO DE MELADO",
+    pick: (entries) => best(entries, (e) => e.stats.meladas, 2),
+    detail: (e) => `melou ${e.stats.meladas} vezes`,
+  },
+  {
+    key: "primeiro-a-cair",
+    label: "PRIMEIRO A CAIR",
+    pick: (entries) => {
+      const caidos = entries.filter((e) => e.eliminated && e.eliminatedAtRound);
+      if (caidos.length < 2) return null; // com um eliminado só, "primeiro" não diz nada
+      return caidos.reduce((first, e) => (e.eliminatedAtRound < first.eliminatedAtRound ? e : first));
+    },
+    detail: (e) => `caiu na mão ${e.eliminatedAtRound}`,
+  },
+  {
+    key: "olho-grande",
+    label: "OLHO MAIOR QUE A BARRIGA",
+    pick: (entries) => best(entries, (e) => e.stats.dano, 3),
+    detail: (e) => `torrou ${e.stats.dano} vidas errando aposta`,
+  },
+  {
+    key: "rodo",
+    label: "PASSOU O RODO",
+    pick: (entries) => best(entries, (e) => e.stats.maiorCombo, 3),
+    detail: (e) => `${e.stats.maiorCombo} rodadas seguidas`,
+  },
+  {
+    key: "manilheiro",
+    label: "SÓ ANDA COM MANILHA",
+    pick: (entries) => best(entries, (e) => e.stats.manilhas, 3),
+    detail: (e) => `baixou ${e.stats.manilhas} manilhas`,
+  },
+  {
+    key: "cravador",
+    label: "CRAVOU SEM SUAR",
+    pick: (entries) => best(entries, (e) => e.stats.cravadas, 3),
+    detail: (e) => `cravou ${e.stats.cravadas} mãos`,
+  },
+  {
+    key: "alface",
+    label: "MÃO DE ALFACE",
+    // Só vale para quem jogou a partida inteira sem levar quase nada.
+    pick: (entries) => {
+      const candidatos = entries.filter((e) => e.stats.maos >= 3 && e.stats.vazas <= 1);
+      if (!candidatos.length) return null;
+      return candidatos.reduce((pior, e) => (e.stats.vazas < pior.stats.vazas ? e : pior));
+    },
+    detail: (e) => (e.stats.vazas === 0 ? "não levou uma rodada sequer" : "levou uma rodada na partida inteira"),
+  },
+];
+
+// Maior valor acima do piso; empate resolvido pela ordem de chegada (determinístico).
+function best(entries, value, floor) {
+  let top = null;
+  for (const entry of entries) {
+    const v = value(entry);
+    if (v < floor) continue;
+    if (!top || v > value(top)) top = entry;
+  }
+  return top;
+}
+
+// entries: [{ id, name, eliminated, eliminatedAtRound, position, stats }]
+export function matchTitles(entries) {
+  const pool = (entries || []).filter((entry) => entry && entry.stats);
+  const usados = new Set();
+  const titles = [];
+  for (const rule of TITLE_RULES) {
+    const alvo = rule.pick(pool.filter((entry) => !usados.has(entry.id)));
+    if (!alvo) continue;
+    usados.add(alvo.id);
+    titles.push({ playerId: alvo.id, name: alvo.name, key: rule.key, label: rule.label, detail: rule.detail(alvo) });
+  }
+  return titles;
+}
+
+// A manchete do card compartilhado: a zoeira vem antes da medalha, e só cai no
+// campeão quando a partida não rendeu nenhum título.
+export function matchHeadline(titles, champion) {
+  const ordem = ["melado", "olho-grande", "alface", "primeiro-a-cair", "rodo", "manilheiro", "cravador"];
+  for (const key of ordem) {
+    const found = (titles || []).find((title) => title.key === key);
+    if (found) return { kind: "title", name: found.name, label: found.label, detail: found.detail };
+  }
+  if (champion) return { kind: "champion", name: champion, label: "GANHOU A PARADA", detail: "" };
+  return null;
+}

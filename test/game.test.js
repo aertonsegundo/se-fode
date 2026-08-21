@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay } from "../game.js";
+import { makeDeck, FIXED_MANILHAS, isManilha, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalForPosition, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, unlockedBannerKeys, remainingDeck, cardWinProbability, chooseBotPlay, emptyMatchStats, matchTitles, matchHeadline } from "../game.js";
 
 const C = (id) => ({ id, rank: id.slice(0, -1), suit: id.slice(-1) });
 
@@ -260,4 +260,64 @@ test("bot que precisa ganhar tudo joga a mais forte", () => {
   const hand = [C("5♦"), C("A♦")];
   const chosen = chooseBotPlay({ hand, bid: 2, wins: 0, table: [], after: [{ needsMore: 2, cardsLeft: 2 }], unknown: remainingDeck(hand) });
   assert.equal(chosen.id, "A♦");
+});
+
+// ===== Fim de partida: títulos da zoeira =====
+const S = (over = {}) => ({ ...emptyMatchStats(), ...over });
+const E = (id, name, stats, over = {}) => ({ id, name, stats: S(stats), eliminated: false, eliminatedAtRound: null, ...over });
+
+test("título só sai com número que o justifique", () => {
+  // Melou uma vez só não vira título; duas, sim.
+  assert.equal(matchTitles([E("a", "Ana", { meladas: 1 })]).length, 0);
+  const [titulo] = matchTitles([E("a", "Ana", { meladas: 2 })]);
+  assert.equal(titulo.key, "melado");
+  assert.equal(titulo.detail, "melou 2 vezes");
+});
+
+test("cada jogador leva no máximo um título, e vence a regra mais forte", () => {
+  const titles = matchTitles([
+    E("a", "Ana", { meladas: 4, dano: 9, maiorCombo: 5 }),
+    E("b", "Bento", { meladas: 2, dano: 4 }),
+  ]);
+  const donos = titles.map((t) => t.playerId);
+  assert.equal(new Set(donos).size, donos.length);
+  assert.equal(titles.find((t) => t.key === "melado").playerId, "a"); // 4 > 2
+  assert.equal(titles.find((t) => t.key === "olho-grande").playerId, "b"); // Ana já tinha título
+});
+
+test("'primeiro a cair' exige pelo menos dois eliminados", () => {
+  const so_um = matchTitles([E("a", "Ana", {}, { eliminated: true, eliminatedAtRound: 3 })]);
+  assert.equal(so_um.find((t) => t.key === "primeiro-a-cair"), undefined);
+  const dois = matchTitles([
+    E("a", "Ana", {}, { eliminated: true, eliminatedAtRound: 5 }),
+    E("b", "Bento", {}, { eliminated: true, eliminatedAtRound: 2 }),
+  ]);
+  const primeiro = dois.find((t) => t.key === "primeiro-a-cair");
+  assert.equal(primeiro.playerId, "b");
+  assert.equal(primeiro.detail, "caiu na mão 2");
+});
+
+test("mão de alface exige partida inteira jogada, não vitória rápida", () => {
+  assert.equal(matchTitles([E("a", "Ana", { maos: 2, vazas: 0 })]).length, 0); // saiu cedo demais
+  const [alface] = matchTitles([E("a", "Ana", { maos: 6, vazas: 0 })]);
+  assert.equal(alface.key, "alface");
+  assert.equal(alface.detail, "não levou uma rodada sequer");
+});
+
+test("empate no mesmo número é resolvido de forma estável", () => {
+  const entries = [E("a", "Ana", { meladas: 3 }), E("b", "Bento", { meladas: 3 })];
+  assert.equal(matchTitles(entries)[0].playerId, "a");
+  assert.equal(matchTitles(entries)[0].playerId, "a"); // duas rodadas, mesmo resultado
+});
+
+test("manchete prefere a zoeira; sem título nenhum, sobra o campeão", () => {
+  const titles = matchTitles([
+    E("a", "Ana", { manilhas: 4 }),
+    E("b", "Bento", { meladas: 3 }),
+  ]);
+  const headline = matchHeadline(titles, "Ana");
+  assert.equal(headline.kind, "title");
+  assert.equal(headline.name, "Bento"); // melado ganha de manilheiro
+  assert.deepEqual(matchHeadline([], "Ana"), { kind: "champion", name: "Ana", label: "GANHOU A PARADA", detail: "" });
+  assert.equal(matchHeadline([], null), null);
 });

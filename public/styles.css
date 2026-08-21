@@ -134,6 +134,9 @@ button { cursor:pointer; }
 .action-panel button:disabled { opacity:.3; cursor:not-allowed; box-shadow:none; }
 .fodeu-list { display:flex; flex-direction:column; gap:.4rem; margin:.3rem 0 .8rem; }
 .fodeu-item { display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; padding:.5rem .65rem; background:#3a2320; border-left:3px solid var(--red); }
+/* A sua linha na lista de quem se fodeu: é a que você procura primeiro. */
+.fodeu-item.me { background:#4a2b26; box-shadow:inset 0 0 0 1px #8c2f27; }
+.fodeu-item.me b { color:var(--paper); }
 .fodeu-item b { font-size:.9rem; }
 .fodeu-item span { font-size:.66rem; color:#ffb3ad; font-weight:700; letter-spacing:.04em; }
 .fodeu-item.eliminated { opacity:.75; }
@@ -144,6 +147,10 @@ button { cursor:pointer; }
 .table-tally { display:none; }
 .bids { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; }
 .bids button { margin:0; box-shadow:none; padding:.7rem .2rem; }
+/* O número barrado pelo pé era só um botão apagado (contraste ~2,6:1 no dígito).
+   Riscado, ele diz "proibido" sem depender de cor nem de opacidade. A trava breve
+   pós-abertura (.guarded) desabilita todos, e ali o risco não se aplica. */
+.bids:not(.guarded) button[disabled] { opacity:.55; text-decoration:line-through; text-decoration-thickness:2px; }
 .bids.guarded { opacity:.5; transition:opacity .2s; } /* trava breve anti-misclick ao abrir */
 .hand { min-height:150px; padding-top:1.5rem; display:flex; justify-content:center; align-items:flex-end; }
 .hand .card { margin-left:-15px; transition:.18s; cursor:pointer; }
@@ -225,8 +232,13 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .manilhas-fixas b { color:var(--paper); }
 .manilhas-fixas .red-text { color:#ff7b72; }
 .empty-table { color:#ffffff44; font:clamp(.8rem,2.2vw,1.1rem)/1.2 "Archivo Black"; letter-spacing:.08em; text-align:center; z-index:2; }
-.pot { position:absolute; top:5%; left:50%; transform:translateX(-50%); z-index:6; background:var(--red); color:#fff; font:.72rem "Archivo Black"; letter-spacing:.06em; padding:.32rem .7rem; border-radius:6px; box-shadow:0 4px 12px #000a; white-space:nowrap; animation:pot-pop .3s ease; }
-@keyframes pot-pop { from { transform:translateX(-50%) scale(.8); } to { transform:translateX(-50%) scale(1); } }
+/* Faixa acima da mesa: manilhas à esquerda, bolo acumulado à direita. O bolo era
+   absoluto no topo do feltro (z6) e apagava o nome, a aposta e as vidas de dois
+   assentos (z2) — justo quando saber quem apostou o quê mais importa. */
+.table-strip { display:flex; align-items:center; justify-content:center; gap:.7rem; }
+.pot-compact { display:none; }
+.pot { flex:0 0 auto; background:var(--red); color:#fff; font:.72rem "Archivo Black"; letter-spacing:.06em; padding:.3rem .65rem; border-radius:6px; box-shadow:0 4px 12px #000a; white-space:nowrap; animation:pot-pop .3s ease; }
+@keyframes pot-pop { from { transform:scale(.86); } to { transform:scale(1); } }
 @media (prefers-reduced-motion:reduce) { .pot { animation:none; } }
 
 .seats { position:absolute; inset:0; z-index:3; pointer-events:none; }
@@ -313,18 +325,26 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .action-panel { order:2; }
   /* Em celulares largos a mesa não fica travada em 440px: ela aproveita a
      largura disponível e deixa cartas/assentos realmente legíveis. */
-  .poker { max-width:560px; aspect-ratio:5/6; --seat-rx:37%; --seat-ry:45%; --card-rx:20%; --card-ry:25%; }
-  .seat { width:98px; padding:.4rem .45rem; border-radius:11px; }
+  /* Anel mais aberto na vertical: é o espaço entre duas cadeiras vizinhas que
+     decide se elas se encavalam, e encolher a fonte para caber já não era opção. */
+  .poker { max-width:560px; aspect-ratio:5/6; --seat-rx:37%; --seat-ry:50%; --card-rx:20%; --card-ry:25%; }
+  /* A cadeira precisa caber no espaço vertical entre duas vizinhas do anel: com 8
+     lugares numa tela de 667px de altura, quatro pares se encavalavam. */
+  .seat { width:98px; padding:.26rem .42rem; border-radius:11px; }
   /* No mobile, encosta as manilhas à esquerda e empilha rótulo/símbolos: assim
      saem de baixo do assento do jogador do topo (que fica no centro). */
+  .table-strip { justify-content:space-between; gap:.4rem; }
+  .pot-full { display:none; }
+  .pot-compact { display:inline; }
   .manilhas-fixas { text-align:left; margin:0 0 .15rem .1rem; line-height:1.35; }
+  .pot { font-size:.62rem; padding:.26rem .5rem; }
   .manilhas-fixas span { display:block; margin:0 0 .05rem; }
   .seat-tag { font-size:.52rem; }
-  .seat-body { grid-template-columns:1.7rem 1fr; gap:.4rem; }
-  .seat .avatar { width:1.7rem; height:1.7rem; font-size:.8rem; }
-  .seat-info b { font-size:.72rem; }
-  .seat-meta { font-size:.62rem; }
-  .seat .hearts { font-size:.7rem; letter-spacing:0; font-weight:900; }
+  .seat-body { grid-template-columns:1.55rem 1fr; gap:.35rem; }
+  .seat .avatar { width:1.55rem; height:1.55rem; font-size:.75rem; }
+  .seat-info b { font-size:.71rem; line-height:1.1; }
+  .seat-meta { font-size:.6rem; line-height:1.12; margin:.02rem 0; }
+  .seat .hearts { font-size:.68rem; line-height:1.15; letter-spacing:0; font-weight:900; }
   .hearts-full { display:none; }
   .hearts-compact { display:inline; white-space:nowrap; }
   .seat-card .card { width:44px; height:64px; font-size:.72rem; padding:.28rem; }
@@ -335,7 +355,7 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .forehead-card .card .big-suit { font-size:.82rem; }
   .forehead-card .mystery-card { font-size:.95rem; }
   .forehead-card .card span:last-child { display:none; } /* carta miúda: um canto de valor basta */
-  .poker[data-forehead="1"] { --seat-rx:34%; --seat-ry:47%; }
+  .poker[data-forehead="1"] { --seat-rx:36%; --seat-ry:49%; }
   .poker[data-forehead="1"] .seat { width:104px; padding:.26rem .3rem; }
   .poker[data-forehead="1"] .seat-body { gap:.3rem; }
   /* Texto miúdo e justo: quem define a altura da cadeira passa a ser a carta, e é
@@ -686,6 +706,21 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 
 .match-podium { margin:.8rem 0; padding:.75rem; border:1px solid #d8ff4555; border-radius:9px; background:#25241e; }.podium-places { display:flex; align-items:flex-end; justify-content:center; gap:.4rem; margin-top:.55rem; }.podium-place { flex:1; min-height:4.5rem; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:.15rem; padding:.45rem .2rem; border-radius:7px; text-align:center; background:#302d22; }.podium-place span { font-size:1.35rem; }.podium-place b { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.7rem; }.podium-place small { color:#a9a599; font-size:.5rem; }.podium-place.place-1 { min-height:6rem; order:2; background:#443c19; }.podium-place.place-2 { order:1; }.podium-place.place-3 { order:3; }.podium-place.mine { outline:2px solid var(--acid); }.medal-note { margin:.8rem 0; padding:.65rem .7rem; border-left:3px solid #8d897e; background:#25241e; color:#b9b4a6; font-size:.7rem; line-height:1.35; }
 
+/* Paredão dos títulos: mesma família do pódio, mas em vermelho — aqui não se
+   comemora, se cobra. Um cartão por título, o seu com a borda acesa. */
+.match-titles { margin:.8rem 0; padding:.75rem; border:1px solid #8c2f2755; border-radius:9px; background:#241e1d; }
+.match-titles .match-rank-title { background:transparent; padding:0 0 .5rem; color:#ff8a80; }
+/* Uma lista com divisórias, não uma pilha de cartões dentro de um cartão. */
+.title-cards { display:grid; }
+.title-card { display:grid; grid-template-columns:1fr auto; align-items:baseline; gap:.1rem .6rem; padding:.55rem .35rem; text-align:left; }
+.title-card + .title-card { border-top:1px solid #3d302e; }
+.title-card b { font:.72rem/1.25 "Archivo Black",sans-serif; letter-spacing:.02em; color:#ffb3ad; }
+.title-card .title-who { font-size:.74rem; font-weight:800; color:var(--paper); text-align:right; white-space:nowrap; }
+.title-card small { grid-column:1 / -1; font-size:.68rem; color:#a7a396; }
+.title-card.mine { background:#3a2320; border-radius:6px; }
+.title-card.mine + .title-card { border-top-color:transparent; }
+.title-card.mine .title-who { color:var(--acid); }
+
 .ranking-rules { margin:1.25rem 0 0; padding:.85rem 1rem; background:#27251e; border-left:4px solid var(--acid); color:var(--paper); }
 .ranking-rules > b { display:block; font-size:.66rem; letter-spacing:.14em; color:var(--acid); }.ranking-rules ul { margin:.55rem 0 0; padding-left:1.15rem; }.ranking-rules li { margin:.48rem 0; font-size:.76rem; line-height:1.35; }
 
@@ -815,6 +850,10 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
     flex:0 0 auto;
     width:auto;
     height:min(60dvh, calc(120vw - 1.7rem), 42rem);
+    /* Sem este teto a mesa transbordava o palco nas telas baixas (320x568: 341px
+       de mesa dentro de 221px de palco) e o resultado da vaza ficava ATRÁS dos
+       assentos, sem rolagem de escape. */
+    max-height:100%;
     max-width:calc(100vw - 1.4rem);
     aspect-ratio:5/6;
   }
@@ -936,7 +975,7 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .switch-text small { font-size:.69rem; line-height:1.25; color:#8d897e; }
 .switch-input { position:absolute; opacity:0; width:0; height:0; }
 .switch-track { position:relative; flex:0 0 auto; width:38px; height:22px; border-radius:999px; background:#35332a; border:1px solid #45433a; transition:background .16s ease, border-color .16s ease; }
-.switch-track::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#8d897e; transition:transform .18s cubic-bezier(.3,.8,.4,1.15), background .16s ease; }
+.switch-track::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#8d897e; transition:transform .18s cubic-bezier(.32,.72,.28,1), background .16s ease; }
 .switch-input:checked + .switch-track { background:#7d2a23; border-color:#a8382e; }
 .switch-input:checked + .switch-track::after { transform:translateX(16px); background:var(--paper); }
 .switch-input:focus-visible + .switch-track { outline:2px solid var(--blue); outline-offset:2px; }
@@ -970,6 +1009,15 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 .create-modal[open]::backdrop { opacity:1; }
 @starting-style { .create-modal[open]::backdrop { opacity:0; } }
 @media (max-width:360px) { .segment b { font-size:.71rem; } .segment small { font-size:.63rem; } }
+/* Telas de 320px: sem a foto, "aposta X · fez Y" cabe numa linha só e a cadeira
+   encolhe o suficiente para as oito não se encavalarem. A carta e o placar da mão
+   valem mais que o avatar num anel desse tamanho. */
+@media (max-width:340px) {
+  /* Com 7 na mesa dois lugares ficam lado a lado no topo: a cadeira precisa ser
+     mais estreita que a distância entre eles. */
+  .seat { width:88px; }
+  .poker[data-forehead="1"] .seat { width:86px; }
+}
 @media (prefers-reduced-motion:reduce) {
   .create-modal, .create-modal::backdrop, .create-modal .primary, .segment, .switch-track, .switch-track::after { transition:none; }
   .create-modal .primary.is-loading::after { animation:none; }

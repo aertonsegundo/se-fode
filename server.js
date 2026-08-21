@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
-import { makeDeck, shuffle, FIXED_MANILHAS, DECK_SIZE, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, playerPresence, unlockedBannerKeys, remainingDeck, chooseBotPlay, GAME_MODES, TEAM_SIZE, TEAM_PALETTE, DOUBLES_PLAYER_COUNTS, normalizeGameMode, isDoublesMode, doublesSetupError, teamGroupsError, randomTeamGroups, createTeams, teamOf, teamMembers, teamTally, teamHandOutcome, teamLabel, interleaveTeams, activeTeams, teamIsOut, teamStandingsFrom, doublesStandingsFrom, partnerMeladas } from "./game.js";
+import { makeDeck, isManilha, shuffle, FIXED_MANILHAS, DECK_SIZE, cardStrength, trickWinner, trickOutcome, resolveTrickScore, nextHandSize, validBidOptions, suggestedBid, winStreak, rankingFrom, finalStandingsFrom, tournamentStandingsFrom, medalAwardsForStandings, tournamentHumanCount, tournamentParticipantIdForUser, canResumeAsPlayer, playerPresence, unlockedBannerKeys, remainingDeck, chooseBotPlay, GAME_MODES, TEAM_SIZE, TEAM_PALETTE, DOUBLES_PLAYER_COUNTS, normalizeGameMode, isDoublesMode, doublesSetupError, teamGroupsError, randomTeamGroups, createTeams, teamOf, teamMembers, teamTally, teamHandOutcome, teamLabel, interleaveTeams, activeTeams, teamIsOut, teamStandingsFrom, doublesStandingsFrom, partnerMeladas , emptyMatchStats, matchTitles, matchHeadline } from "./game.js";
 import { publicConfig, profileFromToken, gameProfileById, verifyToken, ensureProfile, listUsers, leaderboard, publicPlayerProfile, setUserName, setUserBanner, setUserPhoto, recordGame, awardTournamentTrophy, selfTest, listEmotes, createEmote, setEmoteActive, setEmoteSound, deleteEmote, seedEmotes, BANNERS, BANNER_KEYS, AVATAR_KEYS, BUILTIN_EMOTES } from "./supabase.js";
 
 const app = express();
@@ -622,6 +622,8 @@ function publicState(room, viewerId) {
     // Classificação da partida é congelada no endGame (antes de promover espectadores).
     matchStandings: room.phase === "game_over" ? (room.matchStandings || []) : [],
     medalStandings: room.phase === "game_over" ? (room.medalStandings || []) : [],
+    matchTitles: room.phase === "game_over" ? (room.matchTitles || []) : [],
+    matchHeadline: room.phase === "game_over" ? (room.matchHeadline || null) : null,
     medalMatch: room.phase === "game_over" ? Boolean(room.medalMatch) : false,
     tournament: tournamentState(room),
     lastResult,
@@ -676,6 +678,7 @@ function publicState(room, viewerId) {
       wins: player.wins,
       roundLoss: player.roundLoss ?? null,
       eliminated: player.eliminated,
+      eliminatedAtRound: player.eliminatedAtRound ?? null, // a mão em que caiu, pra tela dele dizer a verdade
       connected: player.connected,
       // Presença vem pronta do servidor: sentado e conectado, caído ou com bot no lugar.
       presence: playerPresence(player),
@@ -861,13 +864,13 @@ function newRoom(code, host) {
 }
 
 function createPlayer(socket, name) {
-  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, quit: false, afkStrikes: 0, expelled: false, hand: [], teamId: null, userId: null, banner: "novato", photoUrl: null };
+  const player = { id: randomUUID(), socketId: socket.id, resumeToken: randomUUID(), name, lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, auto: false, quit: false, afkStrikes: 0, expelled: false, hand: [], teamId: null, userId: null, banner: "novato", photoUrl: null, stats: emptyMatchStats() };
   applyProfile(player, socket.data.user);
   return player;
 }
 
 function createBot(code, index) {
-  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, isBot: true, hand: [], teamId: null };
+  return { id: `bot-${code}-${index}`, name: BOT_NAMES[index], lives: STARTING_LIVES, bid: null, wins: 0, roundLoss: null, eliminated: false, eliminatedAtRound: null, connected: true, isBot: true, hand: [], teamId: null, stats: emptyMatchStats() };
 }
 
 function validBids(room, playerId) {
@@ -897,6 +900,7 @@ function submitPlay(room, playerId, cardId) {
   if (index < 0) return "Essa carta não está na sua mão.";
   const [card] = player.hand.splice(index, 1);
   room.table.push({ playerId: player.id, card });
+  if (isManilha(card)) player.stats.manilhas += 1;
   (room.playedThisHand ||= []).push(card); // memória de cartas da mão (bot difícil)
   advancePlay(room);
   return null;
@@ -1153,6 +1157,7 @@ function startGame(room) {
       .filter((player) => player.userId)
       .map((player) => [player.id, { userId: player.userId, name: player.name }]));
   }
+  for (const player of room.players) player.stats = emptyMatchStats(); // contadores são por partida
   const tournamentPlayers = room.tournament ? new Set(room.tournament.playerIds) : null;
   // Escalação desta partida: quem já estava sentado tem preferência e a arquibancada
   // sobe na ordem de chegada, até onde a mesa comporta. Em dupla, "onde comporta" é
@@ -1252,6 +1257,24 @@ function revealTrick(room) {
   const lastTrick = activePlayers(room)[0].hand.length === 0;
   const outcome = resolveTrickScore({ pot: room.pot, lastWinnerId: room.lastWinnerId }, winner?.playerId || null, lastTrick);
   if (outcome.credit) playerById(room, outcome.credit.playerId).wins += outcome.credit.amount;
+  // Contadores da partida: quem levou a rodada, quantas seguidas, e de quem foi a
+  // carta que melou. É o lastro dos títulos do fim de jogo.
+  for (const player of room.players) {
+    const levou = outcome.credit && outcome.credit.playerId === player.id;
+    if (levou) {
+      player.stats.vazas += outcome.credit.amount;
+      player.stats.comboAtual += 1;
+      player.stats.maiorCombo = Math.max(player.stats.maiorCombo, player.stats.comboAtual);
+    } else if (outcome.credit) {
+      player.stats.comboAtual = 0;
+    }
+  }
+  for (const par of resolved.meladaPairs) {
+    for (const id of par.playerIds) {
+      const dono = playerById(room, id);
+      if (dono) dono.stats.meladas += 1;
+    }
+  }
   room.pot = outcome.pot;
   room.lastWinnerId = outcome.lastWinnerId;
   const took = outcome.took;
@@ -1325,11 +1348,14 @@ function scoreRoundClassic(room) {
     const lost = Math.abs(player.bid - player.wins);
     player.lives -= lost;
     player.roundLoss = lost;
+    player.stats.maos += 1;
+    if (lost > 0) player.stats.dano += lost; else player.stats.cravadas += 1;
     if (player.lives <= 0) {
       player.eliminated = true;
       player.eliminatedAtRound = room.round;
     }
-    if (lost > 0) losers.push({ id: player.id, name: player.name, lost, eliminated: player.eliminated });
+    // lives vai junto: "−2 vidas" sem dizer quantas sobraram é a informação pela metade.
+    if (lost > 0) losers.push({ id: player.id, name: player.name, lost, eliminated: player.eliminated, lives: player.lives });
     results.push(`${player.name}: apostou ${player.bid}, fez ${player.wins}${lost ? ` e perdeu ${lost} vida${lost > 1 ? "s" : ""}` : " — cravou"}`);
   }
   return {
@@ -1352,7 +1378,11 @@ function scoreRoundDoubles(room) {
     const outcome = teamHandOutcome(team, room.players);
     const members = teamMembers(team, room.players);
     team.lives = outcome.lives;
-    for (const member of members) member.roundLoss = outcome.lost;
+    for (const member of members) {
+      member.roundLoss = outcome.lost;
+      member.stats.maos += 1;
+      if (outcome.lost > 0) member.stats.dano += outcome.lost; else member.stats.cravadas += 1;
+    }
     if (outcome.eliminated) {
       team.eliminated = true;
       team.eliminatedAtRound = room.round;
@@ -1532,6 +1562,16 @@ function endGame(room) {
   // mesa: deixa de ser espectador e passa a poder votar/jogar a próxima partida.
   room.matchStandings = standingsOf(seatedPlayers(room));
   room.medalStandings = standingsOf(seatedPlayers(room).filter((player) => player.userId));
+  // Títulos da partida: a zoeira sai de contador, não de invenção. Congelam junto com
+  // a classificação, antes de a arquibancada subir para a mesa.
+  room.matchTitles = matchTitles(seatedPlayers(room).map((player) => ({
+    id: player.id,
+    name: player.name,
+    eliminated: player.eliminated,
+    eliminatedAtRound: player.eliminatedAtRound,
+    stats: player.stats || emptyMatchStats(),
+  })));
+  room.matchHeadline = matchHeadline(room.matchTitles, room.lastWinnerName);
   room.medalMatch = !room.solo && medalPlayerCount >= 5;
   if (!room.tournament) {
     promoteSpectators(room);

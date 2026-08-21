@@ -432,3 +432,27 @@ test("mesa sem ninguém online sai da lista da home", async () => {
   assert.ok(!gone.some((room) => room.code === code));
   watcher.disconnect();
 });
+
+// ===== Fim de partida: títulos com lastro =====
+// Prova a cadeia inteira: contador no servidor → matchTitles → estado do cliente.
+test("fim de partida entrega títulos apoiados em contadores reais", async () => {
+  const { host, sockets } = await makeRoom(["Tit1", "Tit2", "Tit3"]);
+  sockets.forEach((socket) => autopilot(socket, "high")); // aposta alta: queima vida rápido
+  host.emit("start-game");
+  const fim = await until(host, (state) => state.phase === "game_over", "partida terminou", 40000);
+
+  assert.ok(Array.isArray(fim.matchTitles), "matchTitles chega no estado");
+  assert.ok(fim.matchTitles.length > 0, "uma partida inteira rende pelo menos um título");
+  const sentados = new Set(fim.players.map((player) => player.id));
+  for (const titulo of fim.matchTitles) {
+    assert.ok(sentados.has(titulo.playerId), "todo título pertence a alguém da mesa");
+    assert.ok(titulo.label && titulo.detail, "todo título vem com rótulo e o número que o justifica");
+    assert.match(titulo.detail, /\d/, "o detalhe cita um número da partida");
+  }
+  const donos = fim.matchTitles.map((titulo) => titulo.playerId);
+  assert.equal(new Set(donos).size, donos.length, "ninguém leva dois títulos");
+  assert.ok(fim.matchHeadline, "a manchete do card existe");
+  assert.ok(["title", "champion"].includes(fim.matchHeadline.kind));
+
+  sockets.forEach((socket) => socket.emit("leave-room"));
+});

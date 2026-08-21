@@ -117,6 +117,37 @@ function drawHeader(ctx, data) {
   setTracking(ctx, "0px");
 }
 
+// A manchete: quem recebe o print no grupo não conhece ninguém e não estava na
+// mesa. Uma classificação não diz nada a essa pessoa; "FULANO MELOU 6 VEZES" diz.
+// Fica entre o cabeçalho e o pódio, onde nenhum pedestal chega.
+function drawHeadline(ctx, headline) {
+  if (!headline) return;
+  const x = 72;
+  const largura = W - x * 2;
+  // A faixa vive na folga entre o subtítulo e o topo do avatar do 1º lugar (que
+   // começa em y≈390 no layout com lista embaixo). Passar disso é cobrir o pódio.
+  const topo = 288;
+  const altura = 94;
+
+  ctx.fillStyle = headline.kind === "champion" ? "#1f3326" : "#3a1613";
+  ctx.fillRect(x, topo, largura, altura);
+  ctx.fillStyle = headline.kind === "champion" ? ACID : RED;
+  ctx.fillRect(x, topo, 8, altura); // tarja lateral, na linguagem da mesa
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  const size = fittedFont(ctx, headline.label, largura - 60, 44, HEAVY);
+  ctx.font = `${size}px ${HEAVY}`;
+  ctx.fillStyle = PAPER;
+  ctx.fillText(headline.label, x + 30, topo + 48);
+
+  const linha = headline.detail ? `${headline.name} — ${headline.detail}` : headline.name;
+  const sizeDetalhe = fittedFont(ctx, linha, largura - 60, 26, BODY, "700");
+  ctx.font = `700 ${sizeDetalhe}px ${BODY}`;
+  ctx.fillStyle = headline.kind === "champion" ? "#bfe08f" : "#ffb3ad";
+  ctx.fillText(linha, x + 30, topo + 78);
+}
+
 // Pedestais: o 1º no centro e mais alto, 2º à esquerda, 3º à direita.
 function drawPodium(ctx, entries, images, baseY, scale) {
   const gap = 26;
@@ -219,10 +250,10 @@ function drawMedal(ctx, medal, cx, cy, radius) {
 }
 
 // Quem ficou fora do pódio, em linhas enxutas.
-function drawRest(ctx, rest, extraCount) {
+function drawRest(ctx, rest, extraCount, yStart = 890) {
   if (!rest.length) return;
   const x = 72;
-  let y = 890;
+  let y = yStart;
 
   ctx.textAlign = "left";
   setTracking(ctx, "5px");
@@ -286,10 +317,14 @@ export async function buildPodiumCard(data) {
 
   drawBackground(ctx);
   drawHeader(ctx, data);
+  drawHeadline(ctx, data.headline);
   const rest = data.rest.slice(0, 5);
-  // Sem lista embaixo, o pódio cresce e ocupa a arte toda.
-  drawPodium(ctx, podium, images, rest.length ? 820 : 1130, rest.length ? 1 : 1.62);
-  drawRest(ctx, rest, Math.max(0, data.rest.length - 5));
+  // O avatar do 1º lugar é ancorado pela base do círculo, então ele sobe bastante
+  // acima do pedestal: com a faixa da manchete no topo, o pódio desce um degrau
+  // para não passar por cima dela. Sem lista embaixo o pódio já nasce mais baixo.
+  const folgaManchete = data.headline && rest.length ? 74 : 0;
+  drawPodium(ctx, podium, images, (rest.length ? 820 : 1130) + folgaManchete, rest.length ? 1 : 1.62);
+  drawRest(ctx, rest, Math.max(0, data.rest.length - 5), 890 + folgaManchete);
   drawFooter(ctx, data.footer);
   drawNoise(ctx);
 
