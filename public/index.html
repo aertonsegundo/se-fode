@@ -252,22 +252,22 @@
     <button id="solo-start" class="primary">COMEÇAR PARTIDA <b>♠</b></button>
   </dialog>
 
-  <dialog id="create-modal" class="solo-dialog">
+  <dialog id="create-modal" class="solo-dialog create-modal">
     <button id="create-close" class="close">×</button>
     <div class="kicker">NOVA SALA</div>
     <h2>CRIAR SALA</h2>
     <label class="profile-label" for="create-name">NOME DA SALA</label>
-    <input id="create-name" class="modal-input" maxlength="28" placeholder="Ex.: Mesa da firma" autocomplete="off" />
+    <input id="create-name" class="modal-input" maxlength="28" placeholder="Ex.: Mesa da firma" autocomplete="off" autofocus />
 
-    <label class="profile-label">MODO DE JOGO</label>
-    <div class="mode-choices" role="radiogroup" aria-label="Modo de jogo">
-      <label class="mode-choice">
+    <label class="profile-label" id="create-mode-label">MODO DE JOGO</label>
+    <div class="segmented" role="radiogroup" aria-labelledby="create-mode-label">
+      <label class="segment">
         <input type="radio" name="create-mode" value="classic" checked />
-        <span><b>CLÁSSICO</b><small>Cada um por si: as vidas são suas e a aposta também.</small></span>
+        <span><b>CLÁSSICO</b><small>Cada um por si</small></span>
       </label>
-      <label class="mode-choice">
+      <label class="segment">
         <input type="radio" name="create-mode" value="doubles" />
-        <span><b>👥 SE FODE JUNTO — DUPLAS</b><small>Porque, se for para se foder, que seja com um amigo.</small></span>
+        <span><b>DUPLAS</b><small>Jogue com um amigo</small></span>
       </label>
     </div>
     <p id="create-mode-hint" class="mode-hint hidden">As apostas e rodadas vencidas são somadas. As vidas pertencem à dupla. A mesa fecha com <b>4, 6 ou 8</b> jogadores.</p>
@@ -279,35 +279,47 @@
       </select>
     </div>
 
-    <label class="profile-label">BARALHOS NA MESA</label>
-    <div class="mode-choices" role="radiogroup" aria-label="Quantidade de baralhos">
-      <label class="mode-choice">
+    <label class="profile-label" id="create-decks-label">BARALHOS NA MESA</label>
+    <div class="segmented" role="radiogroup" aria-labelledby="create-decks-label">
+      <label class="segment">
         <input type="radio" name="create-decks" value="1" checked />
-        <span><b>1 BARALHO</b><small>40 cartas — o jogo de sempre.</small></span>
+        <span><b>1 BARALHO</b><small>40 cartas</small></span>
       </label>
-      <label class="mode-choice">
+      <label class="segment">
         <input type="radio" name="create-decks" value="2" />
-        <span><b>2 BARALHOS</b><small>80 cartas: mãos maiores e muito mais melação.</small></span>
+        <span><b>2 BARALHOS</b><small>80 cartas</small></span>
       </label>
     </div>
 
-    <label class="modal-check"><input type="checkbox" id="create-private" /> <span>Sala privada (só entra com senha ou convite)</span></label>
-    <div id="create-pass-row" class="hidden">
-      <label class="profile-label" for="create-password">SENHA</label>
-      <div class="pass-row">
-        <input id="create-password" class="modal-input" maxlength="24" placeholder="Defina uma senha" autocomplete="off" />
-        <button type="button" id="create-genpass" class="account-btn">GERAR</button>
+    <div class="switch-list">
+      <label class="switch-row">
+        <span class="switch-text"><b>Sala privada</b><small>Somente convidados podem entrar.</small></span>
+        <input type="checkbox" id="create-private" class="switch-input" />
+        <span class="switch-track" aria-hidden="true"></span>
+      </label>
+      <div id="create-pass-row" class="hidden">
+        <label class="profile-label" for="create-password">SENHA</label>
+        <div class="pass-row">
+          <input id="create-password" class="modal-input" maxlength="24" placeholder="Defina uma senha" autocomplete="off" />
+          <button type="button" id="create-genpass" class="account-btn">GERAR</button>
+        </div>
+      </div>
+      <label class="switch-row">
+        <span class="switch-text"><b>Torneio de Medalhas</b><small>Participe e ganhe medalhas.</small></span>
+        <input type="checkbox" id="create-tourney" class="switch-input" />
+        <span class="switch-track" aria-hidden="true"></span>
+      </label>
+      <div id="create-tourney-row" class="hidden">
+        <label class="profile-label" for="create-games">QUANTAS PARTIDAS?</label>
+        <select id="create-games" aria-label="Quantidade de partidas no torneio">
+          <option value="3" selected>3 partidas</option>
+          <option value="5">5 partidas</option>
+        </select>
       </div>
     </div>
-    <label class="modal-check"><input type="checkbox" id="create-tourney" /> <span>Torneio de Medalhas</span></label>
-    <div id="create-tourney-row" class="hidden">
-      <label class="profile-label" for="create-games">QUANTAS PARTIDAS?</label>
-      <select id="create-games" aria-label="Quantidade de partidas no torneio">
-        <option value="3" selected>3 partidas</option>
-        <option value="5">5 partidas</option>
-      </select>
+    <div class="create-actions">
+      <button id="create-start" class="primary">CRIAR SALA <b>→</b></button>
     </div>
-    <button id="create-start" class="primary">CRIAR SALA <b>→</b></button>
   </dialog>
 
   <dialog id="password-modal" class="solo-dialog">

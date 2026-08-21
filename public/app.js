@@ -546,20 +546,35 @@ $("#create-private").onchange = (e) => {
 };
 $("#create-tourney").onchange = (e) => $("#create-tourney-row").classList.toggle("hidden", !e.target.checked);
 $("#create-genpass").onclick = () => { $("#create-password").value = genRoomPassword(); };
-$("#create-start").onclick = () => {
+// Enquanto o pedido está no ar o botão fica em carregando: o toque repetido no
+// celular chegava a mandar dois "create-room" e abrir duas salas.
+$("#create-start").onclick = async (event) => {
+  const button = event.currentTarget;
+  if (button.dataset.busy === "1") return;
   const isPrivate = $("#create-private").checked;
   const isTournament = $("#create-tourney").checked;
-  $("#create-modal").close();
-  join("create-room", {
-    roomName: $("#create-name").value,
-    isPrivate,
-    password: isPrivate ? $("#create-password").value : "",
-    isTournament,
-    tournamentGames: Number($("#create-games").value),
-    mode: createMode(),
-    deckCount: createDecks(),
-    teamSetup: $("#create-teams").value,
-  });
+  button.dataset.busy = "1";
+  button.disabled = true;
+  button.classList.add("is-loading");
+  button.setAttribute("aria-busy", "true");
+  try {
+    await join("create-room", {
+      roomName: $("#create-name").value,
+      isPrivate,
+      password: isPrivate ? $("#create-password").value : "",
+      isTournament,
+      tournamentGames: Number($("#create-games").value),
+      mode: createMode(),
+      deckCount: createDecks(),
+      teamSetup: $("#create-teams").value,
+    });
+  } finally {
+    button.dataset.busy = "";
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    button.removeAttribute("aria-busy");
+    $("#create-modal").close();
+  }
 };
 
 // Entrar por código/lista: se a sala for privada, o servidor pede senha (modal próprio).

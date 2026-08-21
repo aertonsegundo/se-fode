@@ -5,3 +5,26 @@ node_modules/
 .DS_Store
 npm-debug.log*
 coverage/
+
+# impeccable-ignore-start
+# Saída efêmera, estado de runtime e ajustes por máquina.
+# Sem âncora: .impeccable pode ficar na raiz ou num workspace aninhado.
+# O que é do projeto continua versionado: config.json, live/config.json,
+# design.json, critique/*.md.
+.claude/settings.local.json
+.impeccable/config.local.json
+.impeccable/hook.cache.json
+.impeccable/hook.pending.json
+.impeccable/*.png
+.impeccable/live/server.json
+.impeccable/live/sessions/
+.impeccable/live/previews/
+.impeccable/live/annotations/
+.impeccable/live/cache/
+.impeccable/live/manual-edit-apply-transaction.json
+.impeccable/live/manual-edit-events.jsonl
+.impeccable/live/manual-edit-evidence/
+.impeccable/live/pending-manual-edits.json
+.impeccable/live/deferred-svelte-component-accepts.json
+.impeccable/live/*.png
+# impeccable-ignore-end

@@ -910,15 +910,70 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
    servidor aparece aqui sem tocar no CSS. */
 
 /* Escolha de modo e de baralhos no modal de criar sala */
-.mode-choices { display:grid; gap:.5rem; margin:.15rem 0 .2rem; }
-.mode-choice { display:flex; align-items:flex-start; gap:.6rem; padding:.65rem .75rem; border:2px solid #d6d1c2; border-radius:10px; cursor:pointer; transition:border-color .12s, background .12s; }
-.mode-choice:hover { border-color:var(--ink); }
-.mode-choice input { width:1.1rem; height:1.1rem; margin-top:.1rem; accent-color:var(--red); flex:0 0 auto; }
-.mode-choice span { display:flex; flex-direction:column; gap:.12rem; min-width:0; }
-.mode-choice b { font-size:.82rem; letter-spacing:.02em; }
-.mode-choice small { font-size:.72rem; opacity:.7; line-height:1.25; }
-.mode-choice:has(input:checked) { border-color:var(--red); background:#ff3b301a; }
-.mode-hint { margin:.1rem 0 .4rem; font-size:.76rem; line-height:1.35; opacity:.85; }
+.mode-hint { margin:.35rem 0 .1rem; font-size:.74rem; line-height:1.35; color:#a7a396; }
+
+/* ===== Criar sala: seletor segmentado + switches =====
+   Antes cada opção era um cartão empilhado; a mesma escolha cabe numa linha só.
+   O rádio continua sendo o controle (o servidor lê o mesmo name/value), só que
+   o rótulo inteiro virou o alvo de clique. */
+.segmented { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; background:#211f19; border:1px solid #3a382f; border-radius:11px; margin:.1rem 0 0; }
+.segment { position:relative; display:flex; align-items:center; justify-content:center; text-align:center; padding:.45rem .55rem; border:1px solid transparent; border-radius:8px; cursor:pointer; transition:background .14s ease, border-color .14s ease; }
+.segment input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
+.segment span { display:flex; flex-direction:column; gap:.1rem; min-width:0; }
+.segment b { font-size:.76rem; font-weight:800; letter-spacing:.06em; color:#c7c2b4; }
+.segment small { font-size:.67rem; line-height:1.2; color:#8d897e; }
+.segment:hover { background:#2b2921; }
+.segment:has(input:checked) { background:#331714; border-color:#8c2f27; }
+.segment:has(input:checked) b { color:var(--paper); }
+.segment:has(input:checked) small { color:#bfa19c; }
+.segment:has(input:focus-visible) { outline:2px solid var(--blue); outline-offset:1px; }
+
+.switch-list { margin:.85rem 0 0; border:1px solid #3a382f; border-radius:11px; background:#211f19; }
+.switch-list > *:not(.hidden):not(:first-child) { border-top:1px solid #302e26; }
+.switch-row { display:flex; align-items:center; gap:.9rem; padding:.58rem .8rem; cursor:pointer; }
+.switch-text { display:flex; flex-direction:column; gap:.08rem; min-width:0; flex:1; }
+.switch-text b { font-size:.82rem; font-weight:700; }
+.switch-text small { font-size:.69rem; line-height:1.25; color:#8d897e; }
+.switch-input { position:absolute; opacity:0; width:0; height:0; }
+.switch-track { position:relative; flex:0 0 auto; width:38px; height:22px; border-radius:999px; background:#35332a; border:1px solid #45433a; transition:background .16s ease, border-color .16s ease; }
+.switch-track::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#8d897e; transition:transform .18s cubic-bezier(.3,.8,.4,1.15), background .16s ease; }
+.switch-input:checked + .switch-track { background:#7d2a23; border-color:#a8382e; }
+.switch-input:checked + .switch-track::after { transform:translateX(16px); background:var(--paper); }
+.switch-input:focus-visible + .switch-track { outline:2px solid var(--blue); outline-offset:2px; }
+.switch-list > div:not(.hidden) { padding:.15rem .8rem .75rem; }
+.switch-list > div .profile-label { margin:.55rem 0 .3rem; }
+
+/* O modal em si: mesma identidade, menos altura. */
+.create-modal { padding:1.25rem 1.25rem 0; max-height:min(92dvh,700px); overflow-y:auto; }
+/* Com senha e torneio abertos o modal rola: o botão fica ancorado no rodapé em vez
+   de sumir embaixo do conteúdo. Fundo sólido (nada de gradiente) esconde o que passa. */
+.create-actions { position:sticky; bottom:0; background:#1c1b16; padding:.85rem 0 1.1rem; }
+.create-modal h2 { font-size:1.55rem; margin:.02em 0 0; }
+.create-modal .profile-label { margin:.7rem 0 .3rem; }
+.create-modal .modal-input, .create-modal select { border-width:1px; padding:.55rem .65rem; margin-bottom:0; }
+.create-modal .modal-input:focus, .create-modal select:focus-visible { border-color:var(--acid); box-shadow:0 0 0 3px #d8ff4526; outline:none; }
+.create-modal .pass-row .account-btn { border-width:1px; }
+.create-modal .primary { margin-top:0; padding:.8rem; border-width:1px; transition:filter .14s ease, transform .1s ease; }
+.create-modal .primary:hover:not([disabled]) { filter:brightness(1.07); }
+.create-modal .primary:active:not([disabled]) { transform:translateY(1px); }
+.create-modal .primary:focus-visible { outline:2px solid var(--paper); outline-offset:2px; }
+.create-modal .primary[disabled] { cursor:progress; opacity:.75; }
+.create-modal .primary.is-loading b { display:none; }
+.create-modal .primary.is-loading::after { content:""; width:1rem; height:1rem; border:2px solid #17171340; border-top-color:var(--ink); border-radius:50%; animation:btn-spin .6s linear infinite; }
+@keyframes btn-spin { to { transform:rotate(360deg); } }
+
+/* Entrada e saída suaves (allow-discrete degrada sem quebrar nada onde falta). */
+.create-modal { opacity:0; transform:translateY(10px) scale(.985); transition:opacity .18s ease, transform .18s ease, overlay .18s allow-discrete, display .18s allow-discrete; }
+.create-modal[open] { opacity:1; transform:none; }
+@starting-style { .create-modal[open] { opacity:0; transform:translateY(10px) scale(.985); } }
+.create-modal::backdrop { opacity:0; transition:opacity .18s ease, overlay .18s allow-discrete, display .18s allow-discrete; }
+.create-modal[open]::backdrop { opacity:1; }
+@starting-style { .create-modal[open]::backdrop { opacity:0; } }
+@media (max-width:360px) { .segment b { font-size:.71rem; } .segment small { font-size:.63rem; } }
+@media (prefers-reduced-motion:reduce) {
+  .create-modal, .create-modal::backdrop, .create-modal .primary, .segment, .switch-track, .switch-track::after { transition:none; }
+  .create-modal .primary.is-loading::after { animation:none; }
+}
 
 /* Placar das duplas: coluna compacta na lateral, logo abaixo de "de quem é a vez".
    Sem barras compridas no topo da mesa e sem repetir nomes espalhados pela tela. */
