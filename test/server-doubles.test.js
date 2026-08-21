@@ -404,3 +404,31 @@ test("eventos repetidos não jogam duas vezes nem começam a partida de novo", a
   assert.equal(host.last.round, after.round);
   sockets.forEach((socket) => socket.emit("leave-room"));
 });
+
+// ===== Mesas fantasma na home =====
+// A lista da home mostrava salas em que ninguém estava mais online: quem fechava a
+// aba deixava o assento para trás e a mesa ficava lá, "aguardando jogadores", por horas.
+test("mesa sem ninguém online sai da lista da home", async () => {
+  const { host, code } = await makeRoom(["Fantasma"]);
+  const watcher = await connect("Vigia");
+  const lists = [];
+  watcher.on("rooms", (list) => lists.push(list));
+  watcher.emit("watch-lobby");
+  const [first] = await once(watcher, "rooms");
+  assert.ok(first.some((room) => room.code === code), "mesa com gente online aparece na home");
+
+  host.disconnect(); // fechou a aba: nem "leave-room" chega ao servidor
+  const gone = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("a mesa continuou listada na home")), 5000);
+    const check = (list) => {
+      if (list.some((room) => room.code === code)) return;
+      clearTimeout(timer);
+      watcher.off("rooms", check);
+      resolve(list);
+    };
+    watcher.on("rooms", check);
+    for (const list of lists) check(list);
+  });
+  assert.ok(!gone.some((room) => room.code === code));
+  watcher.disconnect();
+});

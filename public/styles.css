@@ -110,8 +110,14 @@ button { cursor:pointer; }
 .card { width:76px; height:110px; background:#faf7ed; color:#171713; border-radius:6px; border:1px solid #d4cfc0; box-shadow:3px 4px 0 #1115; display:flex; flex-direction:column; justify-content:space-between; padding:.42rem; font:1.25rem "Archivo Black"; text-align:left; position:relative; }
 .card.red { color:#e52e29; }
 .card .big-suit { font-size:2rem; align-self:center; line-height:1; }
-.card.manilha::after { content:"MANILHA"; position:absolute; top:50%; left:100%; transform:translate(-50%,-50%) rotate(90deg); background:var(--acid); color:#171713; font:8px/1 "DM Sans"; font-weight:900; padding:3px 5px; border-radius:3px; white-space:nowrap; letter-spacing:.03em; }
-.seat-card .card.manilha::after { font-size:5.5px; padding:2px 3px; letter-spacing:.01em; border-radius:2px; }
+/* Selo da manilha: mora DENTRO da carta, numa faixa na base alinhada à esquerda.
+   Rotacionado pra fora, ele sumia atrás da carta seguinte (a mão se sobrepõe) e
+   era cortado pela borda da tela na última carta. Na faixa, sempre aparece. */
+.card.manilha::after { content:"MANILHA"; position:absolute; left:0; right:0; bottom:0; background:var(--acid); color:#171713; font:7px/1.55 "DM Sans"; font-weight:900; padding:1px 4px; border-radius:0 0 5px 5px; letter-spacing:.04em; text-align:left; overflow:hidden; }
+/* Cartas miúdas (mesa e testa) não são sobrepostas por nada: o selo cabe centrado,
+   mas só com a palavra bem justa — daí a fonte menor e o padding mínimo. */
+.seat-card .card.manilha::after,
+.forehead-card .card.manilha::after { font-size:5.5px; padding:1px; letter-spacing:0; text-align:center; border-radius:0 0 4px 4px; }
 .deal-animation { position:fixed; inset:0; pointer-events:none; z-index:25; overflow:hidden; }
 .deal-card { position:fixed; width:36px; height:52px; border:2px solid #f1eddf; border-radius:4px; opacity:0; background:repeating-linear-gradient(45deg,#d8ff45 0 4px,#171713 4px 8px); box-shadow:3px 4px 8px #0008; animation:deal-card .72s cubic-bezier(.2,.75,.25,1) var(--delay) forwards; }
 @keyframes deal-card {
@@ -268,12 +274,20 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
 .seat-card.melada { filter:grayscale(.55) brightness(.72); }
 .seat-card.melada .card { box-shadow:0 0 0 2px var(--red),0 4px 10px #000a; }
 .melada-tag { position:absolute; top:-.7rem; left:50%; transform:translateX(-50%) rotate(-6deg); background:var(--red); color:#fff; font:.52rem "Archivo Black"; letter-spacing:.05em; padding:.1rem .38rem; border-radius:3px; z-index:3; white-space:nowrap; box-shadow:0 2px 5px #0007; }
-/* carta na testa: colada na lateral do card do dono, pro lado de fora da mesa (nunca sobre o feltro) */
-.forehead-card { position:absolute; top:50%; z-index:6; pointer-events:none; filter:drop-shadow(0 5px 9px #000b); --fh-gap:6px; }
-.forehead-card.left  { right:calc(100% + var(--fh-gap)); transform:translateY(-50%); }
-.forehead-card.right { left:calc(100% + var(--fh-gap)); transform:translateY(-50%); }
-.forehead-card .card { width:48px; height:70px; font-size:.8rem; padding:.28rem; }
-.forehead-card .card .big-suit { font-size:1.25rem; }
+/* Carta na testa: mora DENTRO do card do dono, à direita do nome. Colada na lateral
+   do assento ela vazava pra fora da mesa e a borda da tela cortava a carta nas mesas
+   cheias (8 lugares no celular). No testa a foto sai: quem manda ali é a carta. */
+.forehead-card { pointer-events:none; filter:drop-shadow(0 4px 8px #000a); }
+.forehead-card .card { width:40px; height:58px; font-size:.7rem; padding:.22rem; border-radius:5px; box-shadow:2px 3px 0 #1115; }
+.forehead-card .card .big-suit { font-size:1rem; }
+.forehead-card .mystery-card { font-size:1.15rem; }
+/* Na mão de 1 carta a cadeira inteira muda: a foto sai (quem manda ali é a carta) e
+   todas ficam do mesmo tamanho — inclusive as de quem já jogou —, senão uma cadeira
+   mais alta encavala na vizinha. O anel também abre um pouco. */
+.poker[data-forehead="1"] { --seat-rx:43%; --seat-ry:48%; }
+.poker[data-forehead="1"] .seat { padding:.3rem .45rem; }
+.poker[data-forehead="1"] .seat-body { grid-template-columns:1fr auto; gap:.4rem; }
+.poker[data-forehead="1"] .avatar { display:none; }
 @keyframes seat-win { 0% { transform:scale(1); } 45% { transform:scale(1.16); } 100% { transform:scale(1.06); } }
 /* carta recém-jogada "cai" na mesa (só na 1ª aparição, ver playedSeen no JS) */
 .seat-card.just-played .card { animation:card-drop .34s cubic-bezier(.2,.9,.25,1.2); }
@@ -315,11 +329,21 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .hearts-compact { display:inline; white-space:nowrap; }
   .seat-card .card { width:44px; height:64px; font-size:.72rem; padding:.28rem; }
   .seat-card .card .big-suit { font-size:1.15rem; }
-  .forehead-card { --fh-gap:4px; }
-  .forehead-card .card { width:38px; height:56px; font-size:.66rem; padding:.24rem; }
-  .forehead-card .card .big-suit { font-size:1.02rem; }
-  /* assentos das extremas laterais: a carta lateral sairia da tela; joga pra cima do card */
-  .forehead-card.edge { left:50%; right:auto; top:auto; bottom:calc(100% + var(--fh-gap)); transform:translateX(-50%); }
+  /* A carta acompanha o tamanho da mesa: fixa, ela encavalava as cadeiras nos
+     celulares mais baixos (a mesa encolhe com a altura da tela, o card não). */
+  .forehead-card .card { width:auto; aspect-ratio:5/7; height:clamp(36px, min(6dvh, 12vw), 48px); font-size:.6rem; padding:.18rem; }
+  .forehead-card .card .big-suit { font-size:.82rem; }
+  .forehead-card .mystery-card { font-size:.95rem; }
+  .forehead-card .card span:last-child { display:none; } /* carta miúda: um canto de valor basta */
+  .poker[data-forehead="1"] { --seat-rx:34%; --seat-ry:47%; }
+  .poker[data-forehead="1"] .seat { width:104px; padding:.26rem .3rem; }
+  .poker[data-forehead="1"] .seat-body { gap:.3rem; }
+  /* Texto miúdo e justo: quem define a altura da cadeira passa a ser a carta, e é
+     ela que sabe encolher junto com a mesa. */
+  .poker[data-forehead="1"] .seat-info b { font-size:.64rem; line-height:1.05; }
+  .poker[data-forehead="1"] .seat-meta { font-size:.54rem; line-height:1.1; margin:0; }
+  .poker[data-forehead="1"] .hearts { font-size:.6rem; line-height:1.1; }
+  .bid-hand .card.manilha::after { font-size:6px; padding:1px 3px; letter-spacing:0; }
   /* "QUEM SE FODEU" (fim da mão) e "FIM DE JOGO" viram um modal centralizado sobre
      a tela: flutuam acima da mesa, com fundo escurecido, sem empurrar os componentes. */
   .game[data-phase="round_end"]::after,
@@ -354,6 +378,10 @@ dialog .fine { border-top:1px solid #aaa; padding-top:1rem; font-size:.76rem; li
   .game[data-acting="1"] .tally-item { display:flex; align-items:center; gap:.32rem; min-width:0; max-width:8.5rem; padding:.22rem .5rem; border:1px solid #3d3b34; border-radius:999px; background:#232219; font-size:.66rem; }
   .game[data-acting="1"] .tally-item b { min-width:0; font-weight:700; color:#c7c2b4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .game[data-acting="1"] .tally-item i { font-style:normal; font-weight:900; color:var(--paper); }
+  /* Mão de 1 carta: o sheet cobre metade da mesa, então a testa de cada um vem junto. */
+  .game[data-acting="1"] .tally-card { font-style:normal; flex:0 0 auto; padding:.05rem .22rem; border-radius:3px; background:#faf7ed; color:#171713; font-size:.68rem; font-weight:900; line-height:1.4; }
+  .game[data-acting="1"] .tally-card.red { color:#e52e29; }
+  .game[data-acting="1"] .tally-card.mystery { background:#3a3830; color:var(--acid); }
   .game[data-acting="1"] .tally-item.pending { opacity:.45; }
   .game[data-acting="1"] .tally-item.me { border-color:var(--acid); }
   .game[data-acting="1"] .tally-item.me i { color:var(--acid); }
@@ -567,6 +595,8 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 @keyframes seat-fire { 0%,100% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 12px var(--bn-glow); } 50% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 22px var(--bn-glow); } }
 .seat.banner-campeao { animation:champ-glow 1.5s ease-in-out infinite; }
 @keyframes champ-glow { 0%,100% { box-shadow:0 0 0 1px var(--bn-glow), 0 0 14px var(--bn-glow); } 50% { box-shadow:0 0 0 2px var(--bn-glow), 0 0 30px var(--bn-glow); } }
+/* Com título, a faixa "VEZ" sobe um degrau: as duas dividem o topo do card. */
+.seat.has-banner .turn-flag { top:-2.05rem; }
 .seat-banner { position:absolute; top:-8px; left:50%; transform:translateX(-50%); background:var(--bn-bg); color:var(--bn-fg); border:1px solid var(--bn); border-radius:999px; padding:.05rem .5rem; font-size:.46rem; font-weight:900; letter-spacing:.1em; white-space:nowrap; z-index:6; text-transform:uppercase; }
 
 /* ===================== MODAIS (perfil, ranking, solo) ===================== */

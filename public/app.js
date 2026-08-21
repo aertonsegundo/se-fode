@@ -1836,6 +1836,8 @@ function renderSeats() {
   // "Eu" fico embaixo; os demais preenchem a mesa no sentido horário (mesma direção do jogo).
   const ordered = [...players.slice(meIndex), ...players.slice(0, meIndex)];
   const forehead = state.handSize === 1 && state.phase !== "lobby";
+  // O CSS usa isso pra apertar as cadeiras e abrir espaço pra carta na mão de 1 carta.
+  $("#poker").dataset.forehead = forehead ? "1" : "";
   if (!state.table || !state.table.length) playedSeen.clear(); // mesa vazia: pode reanimar a próxima vaza
 
   $("#seats").innerHTML = ordered.map((player, k) => {
@@ -1863,16 +1865,15 @@ function renderSeats() {
     const cardZone = play
       ? `<div class="seat-card ${freshPlay ? "just-played" : ""} ${wonTrick ? "winning" : ""} ${melada ? "melada" : ""}">${melada ? '<span class="melada-tag">MELOU</span>' : ""}${cardHtml(play.card)}</div>`
       : "";
-    // no testa, a carta que todos veem fica colada na LATERAL do card do dono, pro lado de
-    // fora da mesa (nunca sobre o feltro/texto): assentos à esquerda (cos<0) recebem a carta
-    // à esquerda, os à direita (cos>0) à direita, e o assento oposto (topo, cos≈0) à esquerda.
-    // Nos assentos das extremas laterais (cos≈±1) a carta lateral sairia da tela no mobile,
-    // então lá ela vai pra cima do card (classe "edge", só tratada no CSS mobile).
-    // Ao ser jogada, migra pra frente dele (na mesa) via cardZone.
-    const foreheadSide = Number(cos) > 0 ? "right" : "left";
-    const foreheadEdge = Math.abs(Number(cos)) > 0.9 ? "edge" : "";
-    const foreheadOnSeat = foreheadCard && !play
-      ? `<div class="forehead-card ${foreheadSide} ${foreheadEdge}">${cardHtml(foreheadCard)}</div>`
+    // No testa, a carta que todos veem fica DENTRO do card do dono, ao lado do nome.
+    // Colada na lateral do assento ela saía da tela nas mesas cheias (8 lugares no
+    // celular) e aparecia cortada na borda. Ao ser jogada, migra pra frente dele
+    // (na mesa) via cardZone.
+    // A minha entra virada: mantém as cadeiras do mesmo tamanho (sem carta, o meu
+    // card ficava mais alto e encavalava nos vizinhos) e lembra que a carta é minha
+    // e eu é que não vejo.
+    const foreheadOnSeat = !play && (foreheadCard || (forehead && isMe))
+      ? `<div class="forehead-card">${foreheadCard ? cardHtml(foreheadCard) : '<div class="card mystery-card">?</div>'}</div>`
       : "";
 
     // Em dupla a cadeira mostra só o que é individual: aposta e rodadas ganhas.
@@ -1916,7 +1917,6 @@ function renderSeats() {
       <button type="button" data-seat="${player.id}" class="seat ${isMe ? "me" : ""} ${isTurn ? "turn" : ""} ${player.eliminated ? "out" : ""} ${!player.connected ? "off" : ""} ${wonTrick ? "won" : ""} ${fodeu ? "fodeu" : ""} ${voiceRoster.has(player.id) ? "in-voice" : ""} ${speaking.has(player.id) ? "speaking" : ""} ${banner && !isDoubles() ? `has-banner banner-${banner}` : ""} ${team ? `in-team team-${team.key}` : ""}" style="--cos:${cos};--sin:${sin}${team ? `;--team:${team.color}` : ""}" aria-label="Abrir perfil de ${escapeHtml(player.name)}${team ? `, ${team.label}` : ""}">
         <div class="turn-flag">VEZ</div>
         <div class="voice-badge" title="No chat de voz">🎙️</div>
-        ${foreheadOnSeat}
         ${isHostSeat ? '<div class="host-star" title="Dono da sala">★</div>' : ""}
         ${isDealer ? '<div class="dealer-chip" title="Dá as cartas — fala por último">D</div>' : ""}
         ${bannerRibbon}
@@ -1929,6 +1929,7 @@ function renderSeats() {
             <div class="seat-meta">${meta}</div>
             ${livesBlock}
           </div>
+          ${foreheadOnSeat}
         </div>
         ${wonTrick ? (combo ? `<div class="seat-tag combo">🔥 ${combo} SEGUIDAS</div>` : '<div class="seat-tag win">LEVOU</div>') : ""}
         ${fodeu ? `<div class="seat-tag lose">SE FODEU −${player.roundLoss}</div>` : ""}
@@ -1998,13 +1999,21 @@ function tableTallyHtml() {
     .filter((player) => player && !player.eliminated);
   if (order.length < 2) return "";
   const playing = state.phase === "playing";
+  // Na mão de 1 carta o painel vira sheet e cobre metade da mesa: sem as cartas
+  // aqui dentro, quem está apostando não vê a testa de todo mundo (mesa de 8).
+  const forehead = state.handSize === 1 && state.phase !== "lobby";
   const total = order.reduce((sum, player) => sum + (player.bid ?? 0), 0);
   const items = order.map((player) => {
     const mine = player.id === state.me?.id;
     const value = player.bid == null ? "—" : playing ? `${player.wins}/${player.bid}` : String(player.bid);
     const team = teamOfPlayer(player);
     const classes = ["tally-item", player.bid == null ? "pending" : "", mine ? "me" : "", team && team.id === me()?.teamId ? "partner" : ""].filter(Boolean).join(" ");
-    return `<span class="${classes}"><b>${team ? `${team.symbol} ` : ""}${escapeHtml(mine ? "você" : player.name)}</b><i>${value}</i></span>`;
+    const shown = player.foreheadCard || state.table.find((item) => item.playerId === player.id)?.card;
+    const tallyCard = !forehead ? ""
+      : mine ? '<em class="tally-card mystery">?</em>'
+      : shown ? `<em class="tally-card ${isRed(shown) ? "red" : ""}">${shown.rank}${shown.suit}</em>`
+      : "";
+    return `<span class="${classes}">${tallyCard}<b>${team ? `${team.symbol} ` : ""}${escapeHtml(mine ? "você" : player.name)}</b><i>${value}</i></span>`;
   }).join("");
   const label = playing ? "FEZ/APOSTA · SOMA" : "SOMA";
   // Em dupla, a meta que vale é a da equipe — a soma da mesa continua sendo a regra do pé.

@@ -707,6 +707,7 @@ function publicState(room, viewerId) {
 }
 
 function broadcast(room) {
+  room.lastActivity = Date.now(); // alimenta a faxina de salas (ver sweepRooms)
   if (room.phase === "lobby") ensureTeamSetup(room); // prévia das duplas antes de começar
   for (const player of room.players) {
     if (!player.isBot && player.connected && player.socketId) io.to(player.socketId).emit("state", publicState(room, player.id));
@@ -721,7 +722,9 @@ function roomListDTO() {
   for (const room of rooms.values()) {
     if (room.solo) continue; // partidas solo não aparecem
     const seated = room.players.filter((player) => !player.spectator);
-    if (!seated.some((player) => !player.isBot)) continue; // sala sem humanos sentados não lista
+    // Só lista mesa com gente ONLINE: assentos de quem caiu ou fechou a aba
+    // deixavam mesas fantasma ("aguardando jogadores") paradas na home por horas.
+    if (!seated.some((player) => !player.isBot && player.connected)) continue;
     list.push({
       code: room.code,
       name: room.name || `Mesa ${room.code}`,
@@ -745,6 +748,51 @@ function broadcastRoomList() {
   lastRoomListSig = sig;
   io.to("lobby").emit("rooms", list);
 }
+
+// ===== Faxina periódica de salas =====
+// Os timers de limpeza dependem de um "disconnect"/"leave" chegar pelo caminho certo.
+// Quando isso falha (socket zumbi, aba em segundo plano, troca de aparelho, saída
+// no game_over), a mesa ficava de pé para sempre. Este varredor não depende de
+// evento nenhum: de tempos em tempos olha o estado real e fecha o que está morto.
+const EMPTY_ROOM_TTL_MS = 5 * 60 * 1000;      // sem ninguém online: fecha em 5 min
+const IDLE_ROOM_TTL_MS = 2 * 60 * 60 * 1000;  // sem nada acontecer: fecha em 2 h
+
+function closeRoom(room, reason) {
+  for (const timer of [room.cleanupTimer, room.revealTimer, room.botTimer]) if (timer) clearTimeout(timer);
+  room.cleanupTimer = room.revealTimer = room.botTimer = null;
+  for (const player of room.players) {
+    if (player.disconnectTimer) { clearTimeout(player.disconnectTimer); player.disconnectTimer = null; }
+    if (player.isBot || !player.connected || !player.socketId) continue;
+    const socket = io.sockets.sockets.get(player.socketId);
+    if (!socket) continue;
+    socket.data.roomCode = null; // não deixa o disconnect mexer numa sala já apagada
+    socket.data.playerId = null;
+    socket.emit("expelled", reason);
+  }
+  rooms.delete(room.code);
+}
+
+function sweepRooms() {
+  const now = Date.now();
+  let changed = false;
+  for (const room of rooms.values()) {
+    const online = room.players.some((player) => !player.isBot && player.connected);
+    if (online) room.emptySince = null;
+    else if (!room.emptySince) room.emptySince = now;
+    if (room.emptySince && now - room.emptySince > EMPTY_ROOM_TTL_MS) {
+      closeRoom(room, "A mesa foi fechada: ninguém mais estava online.");
+      changed = true;
+      continue;
+    }
+    if (now - (room.lastActivity || now) > IDLE_ROOM_TTL_MS) {
+      closeRoom(room, "A mesa foi fechada por inatividade.");
+      changed = true;
+    }
+  }
+  if (changed) broadcastRoomList();
+}
+const roomSweeper = setInterval(sweepRooms, 60 * 1000);
+roomSweeper.unref?.(); // não segura o processo vivo (nem os testes)
 
 // ===== Chat de voz (WebRTC mesh, best-effort): o servidor só faz o relay da sinalização =====
 // Quem já está no voz (menos o próprio), para o novato saber com quem se conectar.
@@ -803,6 +851,8 @@ function newRoom(code, host) {
     autoTurnId: null,
     cleanupTimer: null,
     revealTimer: null,
+    lastActivity: Date.now(), // último sinal de vida (ver sweepRooms)
+    emptySince: null,         // desde quando está sem ninguém online
     message: "Esperando a turma chegar.",
   };
   assignRandomAvatar(room, host);
@@ -1531,6 +1581,13 @@ async function refreshUser(socket) {
 }
 
 io.on("connection", (socket) => {
+  // Qualquer evento de quem está na mesa conta como sinal de vida dela (chat, voz,
+  // figurinha, jogada): é o que segura a sala viva diante da faxina por inatividade.
+  socket.onAny(() => {
+    const room = socket.data.roomCode && rooms.get(socket.data.roomCode);
+    if (room) room.lastActivity = Date.now();
+  });
+
   // Home aberta: assina a lista de salas ao vivo (sai do canal ao entrar numa sala).
   socket.on("watch-lobby", () => {
     socket.join("lobby");
