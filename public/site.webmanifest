@@ -1,0 +1,15 @@
+{
+  "name": "Se Fode — Fodinha Online",
+  "short_name": "Se Fode",
+  "description": "Jogo de Fodinha online e gratuito para jogar com amigos pelo navegador.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#171713",
+  "theme_color": "#171713",
+  "icons": [
+    { "src": "/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/favicon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

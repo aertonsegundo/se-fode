@@ -44,6 +44,40 @@ No Render, adicione as três variáveis do Supabase em *Environment* (o `render.
 
 O projeto inclui um `render.yaml` pronto para criar gratuitamente um Web Service na região da Virgínia, com health check em `/health` e deploy manual pelo painel do Render.
 
+## Páginas públicas e SEO
+
+Além do jogo, o servidor entrega três páginas de conteúdo estático, sem login e sem
+JavaScript, para o Google indexar e para explicar o jogo a quem chega de fora:
+
+| URL | Arquivo |
+| --- | --- |
+| `/fodinha-online` | [`public/fodinha-online.html`](public/fodinha-online.html) |
+| `/como-jogar` | [`public/como-jogar.html`](public/como-jogar.html) |
+| `/regras` | [`public/regras.html`](public/regras.html) |
+
+Elas usam a folha própria [`public/pages.css`](public/pages.css) (a `styles.css` do jogo
+não é carregada nelas). O `server.js` mantém uma URL canônica por página: `/index.html`,
+`/regras.html` e `/regras/` respondem **301** para o endereço limpo.
+
+Também ficam no `/public`: [`robots.txt`](public/robots.txt),
+[`sitemap.xml`](public/sitemap.xml), [`site.webmanifest`](public/site.webmanifest) e a
+imagem de compartilhamento `og-cover.png`.
+
+> Ao criar uma página pública nova, adicione o slug em `PUBLIC_PAGES` (no `server.js`) e
+> a URL no `public/sitemap.xml`.
+
+Para regerar a imagem de compartilhamento depois de mexer em
+[`design/og-cover.html`](design/og-cover.html):
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
+  --window-size=1200,630 --virtual-time-budget=8000 \
+  --screenshot=public/og-cover.png design/og-cover.html
+```
+
+Os passos que só o dono do domínio pode executar (Search Console, DNS, `www`) estão em
+[`GOOGLE_SEARCH_CONSOLE.md`](GOOGLE_SEARCH_CONSOLE.md).
+
 ## Regras adotadas
 
 - Baralho de truco com 40 cartas; ordem `4 5 6 7 Q J K A 2 3`.

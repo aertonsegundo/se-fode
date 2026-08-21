@@ -995,3 +995,22 @@ img.emote-emoji { width:6rem; height:6rem; object-fit:contain; }
 /* Secundário: quem manda no fim de jogo é o botão de jogar de novo. */
 .action-panel .share-podium-btn { width:100%; margin:.7rem 0 .2rem; padding:.75rem; border:2px solid var(--acid); border-radius:8px; background:transparent; box-shadow:none; color:var(--acid); font-weight:800; font-size:.76rem; letter-spacing:.06em; }
 .action-panel .share-podium-btn:hover { background:#d8ff4518; }
+
+/* O #app reserva a altura da tela mesmo antes de o JS decidir qual seção mostrar,
+   para o texto abaixo já nascer fora da dobra e não pular quando a tela aparece. */
+#app { min-height:100vh; min-height:100dvh; }
+/* ===== Texto público da home (SEO) =====
+   Bloco de apresentação que o visitante deslogado e os buscadores leem direto no
+   HTML. Fica abaixo do card de login / da home e desaparece quando a mesa abre. */
+.intro { max-width:1040px; margin:0 auto; padding:3.2rem 2rem 4.2rem; position:relative; z-index:1; }
+.intro h1 { font:clamp(1.5rem,3.4vw,2.2rem)/1.05 "Archivo Black"; letter-spacing:-.03em; margin:0 0 1rem; color:var(--paper); text-transform:uppercase; }
+.intro p { margin:0 0 .9rem; max-width:68ch; font-size:clamp(.92rem,1.5vw,1.02rem); line-height:1.55; color:#c7c2b4; }
+.intro b { color:var(--paper); }
+.intro-links { display:flex; flex-wrap:wrap; gap:.6rem; margin-top:1.3rem; }
+.intro-links a { border:2px solid #45423a; color:var(--paper); text-decoration:none; padding:.55rem .9rem; font-size:.72rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; transition:background .12s, color .12s, border-color .12s; }
+.intro-links a:hover { background:var(--acid); border-color:var(--acid); color:var(--ink); }
+/* Mesa aberta: o texto sai da frente (o #intro é irmão posterior do #game). */
+#game:not(.hidden) ~ .intro { display:none; }
+@media (max-width:680px) {
+  .intro { padding:2.4rem 1.3rem 3.4rem; }
+}

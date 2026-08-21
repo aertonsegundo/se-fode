@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Áreas privadas: painel do admin, API e endereços de sala (conteúdo temporário).
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /socket.io/
+Disallow: /*?sala=
+Disallow: /*?convite=
+
+Sitemap: https://sefode.com/sitemap.xml

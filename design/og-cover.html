@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- Fonte da imagem de compartilhamento (og:image). Para regerar o PNG 1200x630:
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+       --disable-gpu --window-size=1200,630 --screenshot=public/og-cover.png \
+       --default-background-color=00000000 --virtual-time-budget=8000 design/og-cover.html -->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:wght@400;600;700;800&display=swap">
+<style>
+  :root { --ink:#171713; --paper:#f1eddf; --red:#ff3b30; --acid:#d8ff45; }
+  * { box-sizing:border-box; margin:0; }
+  body { width:1200px; height:630px; background:var(--ink); color:var(--paper);
+         font-family:"DM Sans",sans-serif; overflow:hidden; position:relative; }
+  .clover { position:absolute; right:-60px; bottom:-230px; font:520px/1 "Archivo Black";
+            color:#211f1b; transform:rotate(12deg); }
+  .noise { position:absolute; inset:0; opacity:.08;
+           background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E"); }
+  .wrap { position:relative; padding:82px 90px; height:100%; display:flex; flex-direction:column; justify-content:center; gap:26px; }
+  .kicker { font-size:24px; font-weight:700; letter-spacing:.28em; color:var(--acid); }
+  .mark { font:168px/.82 "Archivo Black"; letter-spacing:-.06em; transform:skew(-5deg); }
+  .mark span { color:var(--red); }
+  .tag { font-size:38px; font-weight:800; letter-spacing:-.01em; max-width:820px; line-height:1.15; }
+  .sub { font-size:26px; color:#c7c2b4; max-width:760px; }
+  .bar { position:absolute; left:0; bottom:0; height:16px; width:100%; background:var(--red); }
+  .bar i { display:block; height:100%; width:34%; background:var(--acid); }
+</style>
+</head>
+<body>
+  <div class="clover">♣</div>
+  <div class="noise"></div>
+  <div class="wrap">
+    <div class="kicker">FODINHA ONLINE · GRÁTIS</div>
+    <div class="mark">SE<span>FO</span>DE</div>
+    <div class="tag">Jogue Fodinha online com seus amigos.</div>
+    <div class="sub">Crie uma sala, compartilhe o código e sente à mesa. sefode.com</div>
+  </div>
+  <div class="bar"><i></i></div>
+</body>
+</html>

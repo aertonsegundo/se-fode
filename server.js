@@ -51,6 +51,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// Páginas públicas de conteúdo (SEO). Cada uma vive num .html do /public e é
+// servida numa URL limpa, sem extensão.
+const PUBLIC_PAGES = ["fodinha-online", "como-jogar", "regras"];
+
+// URL canônica única por página: sem `.html` e sem barra no fim. Evita o mesmo
+// conteúdo respondendo em dois endereços (duplicidade para os buscadores).
+// Só mexe nas páginas públicas e no /index.html — nada de tocar em /socket.io/.
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  const query = req.originalUrl.slice(req.path.length); // "?..." ou ""
+  if (req.path === "/index.html") return res.redirect(301, `/${query}`);
+  const slug = req.path.replace(/^\/+|\/+$/g, "").replace(/\.html$/, "");
+  if (PUBLIC_PAGES.includes(slug) && req.path !== `/${slug}`) {
+    return res.redirect(301, `/${slug}${query}`);
+  }
+  next();
+});
+
 // Sem cache "esquecido": o navegador sempre revalida html/css/js, então um novo
 // deploy nunca fica preso numa versao antiga em cache no cliente.
 app.use(express.static(path.join(__dirname, "public"), {
@@ -228,6 +246,11 @@ app.delete("/api/admin/emotes/:key", async (req, res) => {
 });
 
 app.get("/dashboard", (_req, res) => res.sendFile(path.join(__dirname, "public", "dashboard.html")));
+
+// Conteúdo público indexável: /fodinha-online, /como-jogar e /regras.
+for (const slug of PUBLIC_PAGES) {
+  app.get(`/${slug}`, (_req, res) => res.sendFile(path.join(__dirname, "public", `${slug}.html`)));
+}
 
 const cleanName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);
 const cleanRoomName = (value) => String(value || "").trim().replace(/\s+/g, " ").slice(0, 28);
